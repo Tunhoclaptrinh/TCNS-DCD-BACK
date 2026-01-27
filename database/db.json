@@ -1,0 +1,23 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "email": "test1769474878153@example.com",
+      "password": "$2a$10$B49CrBiiMihRgzFTJGKtzOLRCxIUoFaCybT7xPxHvnd8lC84FocyW",
+      "name": "Test User",
+      "role": "user",
+      "isActive": true,
+      "createdAt": "2026-01-27T00:47:58.339Z"
+    },
+    {
+      "id": 2,
+      "email": "test1769475851106@example.com",
+      "password": "$2a$10$8lsyZpVtw43HDeZTeKq./OoOZS649ZjLpg5mw7/NnR6qCTWaIgAJe",
+      "name": "Test User",
+      "role": "user",
+      "isActive": true,
+      "createdAt": "2026-01-27T01:04:11.184Z"
+    }
+  ],
+  "categories": []
+}
