@@ -2,22 +2,23 @@
   "users": [
     {
       "id": 1,
-      "email": "test1769474878153@example.com",
-      "password": "$2a$10$B49CrBiiMihRgzFTJGKtzOLRCxIUoFaCybT7xPxHvnd8lC84FocyW",
-      "name": "Test User",
-      "role": "user",
+      "name": "Admin",
+      "email": "admin@example.com",
+      "password": "$2a$10$ljLMJFWpt4uYURYEkQdvGeBijln.p8.XQjHSP/iKWCesuPVaLhg/m",
+      "phone": "0912345678",
+      "role": "admin",
       "isActive": true,
-      "createdAt": "2026-01-27T00:47:58.339Z"
+      "createdAt": "2024-01-15T10:30:00Z"
     },
     {
       "id": 2,
-      "email": "test1769475851106@example.com",
-      "password": "$2a$10$8lsyZpVtw43HDeZTeKq./OoOZS649ZjLpg5mw7/NnR6qCTWaIgAJe",
-      "name": "Test User",
-      "role": "user",
+      "name": "User",
+      "email": "user@example.com",
+      "password": "$2a$10$ljLMJFWpt4uYURYEkQdvGeBijln.p8.XQjHSP/iKWCesuPVaLhg/m",
+      "phone": "0987654321",
+      "role": "customer",
       "isActive": true,
-      "createdAt": "2026-01-27T01:04:11.184Z"
+      "createdAt": "2024-02-20T14:20:00Z"
     }
-  ],
-  "categories": []
+  ]
 }

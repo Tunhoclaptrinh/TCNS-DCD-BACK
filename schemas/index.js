@@ -1,4 +1,7 @@
 module.exports = {
+  // Auth & User
   users: require('./user.schema'),
-  categories: require('./category.schema')
+
+  // User Content
+  notifications: require('./notification.schema'),
 };

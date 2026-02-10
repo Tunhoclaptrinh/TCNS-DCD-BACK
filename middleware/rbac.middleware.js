@@ -1,33 +1,22 @@
 /**
  * RBAC Middleware - Role-Based Access Control
- * Updated for SEN (Cultural Heritage Game)
+ * Generic Base Project
  */
 
 const PERMISSIONS = {
   // 1. Admin: Quyền lực tuyệt đối
   admin: {
-    users: ['create', 'read', 'update', 'delete', 'list', 'block'],
-    heritage_sites: ['create', 'read', 'update', 'delete', 'list', 'publish'],
-    artifacts: ['create', 'read', 'update', 'delete', 'list'],
-    game_content: ['create', 'read', 'update', 'delete', 'list', 'import', 'export'], // Levels, Chapters, Characters
-    system: ['view_logs', 'view_stats', 'backup']
+    users: ['create', 'read', 'update', 'delete', 'list', 'block', 'view_stats', 'view_logs', 'backup', 'import_export', 'manage_status'],
   },
 
   // 2. Researcher: Nhà nghiên cứu/Biên tập viên
   researcher: {
-    heritage_sites: ['create', 'read', 'update', 'list'], // Không được delete
-    artifacts: ['create', 'read', 'update', 'list'],
-    game_content: ['read', 'list', 'suggest'], // Chỉ xem content game
     users: ['read'] // Xem profile cơ bản
   },
 
   // 3. Customer: Người chơi
   customer: {
-    heritage_sites: ['read', 'list'],
-    artifacts: ['read', 'list'],
-    game_play: ['play', 'submit_score', 'collect_reward', 'earn_rewards', 'scan_qr'],
     user_data: ['read_own', 'update_own', 'delete_own'], // Collections, Favorites, Progress
-    shop: ['purchase', 'use_item']
   }
 };
 
