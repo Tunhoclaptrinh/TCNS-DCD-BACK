@@ -6,7 +6,8 @@ const helmet = require('helmet');
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Force Restart: HISTORY SERVICE FIXEDge: 'Too many login attempts, please try again later'
+  max: 5, // Limit each IP to 5 requests per windowMs
+  message: 'Too many login attempts, please try again later'
 });
 
 
@@ -214,12 +215,12 @@ function startKeepAlive() {
     return;
   }
 
-  // Extract base URL (e.g., https://npc-sen.onrender.com) from /process_query
+  // Extract base URL from service URL
   try {
     const urlObj = new URL(serviceUrl);
     const targetUrl = `${urlObj.origin}/`; // Ping root path always
 
-    console.log(`⏰ Wake up SEN periodically: ${targetUrl}`);
+    console.log(`⏰ Keep-alive service started: ${targetUrl}`);
 
     // Initial ping
     pingService(targetUrl);

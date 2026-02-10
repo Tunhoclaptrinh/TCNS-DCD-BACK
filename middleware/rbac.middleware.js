@@ -38,7 +38,7 @@ function hasPermission(userRole, resource, action) {
 
 /**
  * Middleware: Check permission
- * Usage: checkPermission('heritage_sites', 'create')
+ * Usage: checkPermission('resource', 'create')
  */
 exports.checkPermission = (resource, action) => {
   return (req, res, next) => {

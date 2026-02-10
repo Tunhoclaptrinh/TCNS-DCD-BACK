@@ -31,40 +31,14 @@ class JsonAdapter {
 
   getDefaultData() {
     return {
-      // Core Heritage Data
+      // Core Data
       users: [],
-      cultural_categories: [],
-      heritage_sites: [],
-      artifacts: [],
-      timelines: [],
-      exhibitions: [],
 
       // User Content
       collections: [],
       favorites: [],
       reviews: [],
-      notifications: [],
-
-      // Game System
-      game_chapters: [],
-      game_levels: [],
-      game_characters: [],
-      game_progress: [],
-      game_sessions: [],
-      game_badges: [],
-      game_achievements: [],
-
-      // Game Features
-      scan_objects: [],
-      scan_history: [],
-      shop_items: [],
-      user_inventory: [],
-      ai_chat_history: [],
-
-      // Learning
-      learning_modules: [],
-      game_quests: [],
-      user_progress: []
+      notifications: []
     };
   }
 
@@ -72,39 +46,14 @@ class JsonAdapter {
 
   getRelatedCollection(collection, relation) {
     const relationMap = {
-      heritage_sites: {
-        artifacts: 'artifacts',
-        reviews: 'reviews',
-        timelines: 'timelines',
-        exhibitions: 'exhibitions'
-      },
-      artifacts: {
-        heritage_site: 'heritage_sites',
-        category: 'cultural_categories'
-      },
       users: {
         collections: 'collections',
         reviews: 'reviews',
         favorites: 'favorites',
-        game_progress: 'game_progress',
         notifications: 'notifications'
       },
-      game_chapters: {
-        levels: 'game_levels'
-      },
-      game_levels: {
-        chapter: 'game_chapters',
-        sessions: 'game_sessions',
-        artifacts: 'artifacts',
-        heritage_site: 'heritage_sites'
-      },
-      game_sessions: {
-        level: 'game_levels',
-        user: 'users'
-      },
       collections: {
-        user: 'users',
-        artifacts: 'artifacts'
+        user: 'users'
       }
     };
     return relationMap[collection]?.[relation];
@@ -112,35 +61,11 @@ class JsonAdapter {
 
   getForeignKey(collection, relation) {
     const keyMap = {
-      heritage_sites: {
-        artifacts: 'heritage_site_id',
-        reviews: 'heritage_site_id',
-        timelines: 'heritage_site_id',
-        exhibitions: 'heritage_site_id'
-      },
-      artifacts: {
-        heritage_site: 'heritage_site_id',
-        category: 'category_id'
-      },
       users: {
         collections: 'user_id',
         reviews: 'user_id',
         favorites: 'user_id',
-        game_progress: 'user_id',
         notifications: 'user_id'
-      },
-      game_chapters: {
-        levels: 'chapter_id'
-      },
-      game_levels: {
-        chapter: 'chapter_id',
-        sessions: 'level_id',
-        artifacts: 'artifact_ids',
-        heritage_site: 'heritage_site_id'
-      },
-      game_sessions: {
-        level: 'level_id',
-        user: 'user_id'
       },
       collections: {
         user: 'user_id'
