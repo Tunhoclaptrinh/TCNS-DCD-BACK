@@ -1,65 +1,66 @@
 /**
- * RBAC Middleware - Role-Based Access Control
- * Generic Base Project
+ * PERMISSIONS - Định nghĩa các quyền cơ bản theo vai trò
+ * Mỗi quyền là một chuỗi 'resource:action'
  */
-
 const PERMISSIONS = {
-  // 1. Admin: Quyền lực tuyệt đối
-  admin: {
-    users: ['create', 'read', 'update', 'delete', 'list', 'block', 'view_stats', 'view_logs', 'backup', 'import_export', 'manage_status'],
-  },
+  admin: ['*'], // Toàn quyền
 
-  // 2. Researcher: Nhà nghiên cứu/Biên tập viên
-  researcher: {
-    users: ['read'] // Xem profile cơ bản
-  },
+  researcher: [
+    'users:list',
+    'users:read',
+    'dashboard:view'
+  ],
 
-  // 3. Customer: Người chơi
-  customer: {
-    user_data: ['read_own', 'update_own', 'delete_own'], // Collections, Favorites, Progress
-  }
+  customer: [
+    'profile:read',
+    'profile:update',
+    'dashboard:view'
+  ]
 };
 
 /**
- * Check permission helper
+ * Check if a role has a specific permission
  */
-function hasPermission(userRole, resource, action) {
-  const rolePermissions = PERMISSIONS[userRole];
-  if (!rolePermissions) return false;
+const hasPermission = (role, permission) => {
+  const rolePermissions = PERMISSIONS[role] || [];
 
   // Admin bypass
-  if (userRole === 'admin') return true;
+  if (rolePermissions.includes('*')) return true;
 
-  const resourcePermissions = rolePermissions[resource];
-  if (!resourcePermissions) return false;
-
-  return resourcePermissions.includes(action);
-}
+  return rolePermissions.includes(permission);
+};
 
 /**
  * Middleware: Check permission
- * Usage: checkPermission('resource', 'create')
+ * @param {string} permission - Quyền cần kiểm tra (ví dụ: 'users:create')
  */
-exports.checkPermission = (resource, action) => {
+exports.checkPermission = (permission) => {
   return (req, res, next) => {
     const userRole = req.user?.role;
 
     if (!userRole) {
       return res.status(401).json({
         success: false,
-        message: 'Authentication required'
+        message: 'Yêu cầu đăng nhập'
       });
     }
 
-    if (!hasPermission(userRole, resource, action)) {
+    if (!hasPermission(userRole, permission)) {
       return res.status(403).json({
         success: false,
-        message: `Permission denied. Role '${userRole}' cannot '${action}' on '${resource}'`
+        message: `Bạn không có quyền: ${permission}`
       });
     }
 
     next();
   };
+};
+
+/**
+ * Helper to get all permissions for a role
+ */
+exports.getRolePermissions = (role) => {
+  return PERMISSIONS[role] || [];
 };
 
 /**

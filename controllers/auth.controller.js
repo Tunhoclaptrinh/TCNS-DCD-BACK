@@ -1,6 +1,7 @@
 const { validationResult } = require('express-validator');
 const db = require('../config/database');
 const { generateToken, hashPassword, comparePassword, sanitizeUser } = require('../utils/helpers');
+const { getRolePermissions } = require('../middleware/rbac.middleware');
 
 exports.register = async (req, res, next) => {
   try {
@@ -47,7 +48,8 @@ exports.register = async (req, res, next) => {
       success: true,
       message: 'Registration successful. Please login to continue.',
       data: {
-        user: sanitizeUser(user)
+        user: sanitizeUser(user),
+        permissions: getRolePermissions(user.role)
       }
     });
   } catch (error) {
@@ -109,6 +111,7 @@ exports.login = async (req, res, next) => {
       message: 'Login successful',
       data: {
         user: sanitizeUser(updatedUser),
+        permissions: getRolePermissions(updatedUser.role),
         token
       }
     });
@@ -122,7 +125,10 @@ exports.getMe = async (req, res, next) => {
   try {
     res.json({
       success: true,
-      data: sanitizeUser(req.user)
+      data: {
+        ...sanitizeUser(req.user),
+        permissions: getRolePermissions(req.user.role)
+      }
     });
   } catch (error) {
     next(error);

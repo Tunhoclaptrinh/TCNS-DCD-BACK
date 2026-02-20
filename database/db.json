@@ -8,7 +8,8 @@
       "phone": "0912345678",
       "role": "admin",
       "isActive": true,
-      "createdAt": "2024-01-15T10:30:00Z"
+      "createdAt": "2024-01-15T10:30:00Z",
+      "lastLogin": "2026-02-20T03:37:32.596Z"
     },
     {
       "id": 2,
@@ -18,7 +19,8 @@
       "phone": "0987654321",
       "role": "customer",
       "isActive": true,
-      "createdAt": "2024-02-20T14:20:00Z"
+      "createdAt": "2024-02-20T14:20:00Z",
+      "updatedAt": "2026-02-20T07:58:41.824Z"
     }
   ]
 }

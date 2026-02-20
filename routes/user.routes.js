@@ -16,59 +16,59 @@ router.put('/profile',
 // Quản lý user, stats, status
 router.post('/',
   protect,
-  checkPermission('users', 'create'),
+  checkPermission('users:create'),
   validateSchema('user'),
   userController.create
 );
 
 router.put('/:id',
   protect,
-  checkPermission('users', 'update'),
+  checkPermission('users:update'),
   userController.update
 );
 
 router.delete('/:id',
   protect,
-  checkPermission('users', 'delete'),
+  checkPermission('users:delete'),
   userController.delete
 );
 
 router.get('/',
   protect,
-  checkPermission('users', 'list'),
+  checkPermission('users:list'),
   userController.getAll
 );
 
 router.get('/stats/summary',
   protect,
-  checkPermission('users', 'view_stats'), // Quyền system hoặc users
+  checkPermission('users:view_stats'), // Quyền system hoặc users
   userController.getUserStats
 );
 
 router.patch('/:id/status',
   protect,
-  checkPermission('users', 'manage_status'),
+  checkPermission('users:manage_status'),
   userController.toggleUserStatus
 );
 
 router.delete('/:id/permanent',
   protect,
-  checkPermission('users', 'delete'),
+  checkPermission('users:delete'),
   userController.permanentDeleteUser
 );
 
 // === IMPORT/EXPORT (ADMIN ONLY) ===
-router.get('/template', protect, checkPermission('users', 'import_export'), (req, res, next) => {
+router.get('/template', protect, checkPermission('users:import_export'), (req, res, next) => {
   req.params.entity = 'users';
   importExportController.downloadTemplate(req, res, next);
 });
 
-router.post('/import', protect, checkPermission('users', 'import_export'), importExportController.getUploadMiddleware(), (req, res, next) => {
+router.post('/import', protect, checkPermission('users:import_export'), importExportController.getUploadMiddleware(), (req, res, next) => {
   req.params.entity = 'users';
   importExportController.importData(req, res, next);
 });
 
-router.get('/export', protect, checkPermission('users', 'import_export'), (req, res, next) => {
+router.get('/export', protect, checkPermission('users:import_export'), (req, res, next) => {
   req.params.entity = 'users';
   importExportController.exportData(req, res, next);
 });
