@@ -1,4 +1,4 @@
-# 🤝 Contributing to FunFood Backend
+# 🤝 Contributing to Base Backend
 
 ## Mục lục
 
@@ -49,14 +49,14 @@ Chúng tôi cam kết duy trì một cộng đồng mở và thân thiện, nơi
 
 ```bash
 # 1. Fork repository trên GitHub
-# https://github.com/yourname/funfood-backend
+# https://github.com/yourname/base-backend
 
 # 2. Clone fork của bạn
-git clone https://github.com/yourname/funfood-backend.git
-cd funfood-backend
+git clone https://github.com/yourname/base-backend.git
+cd base-backend
 
 # 3. Add upstream remote
-git remote add upstream https://github.com/original/funfood-backend.git
+git remote add upstream https://github.com/original/base-backend.git
 
 # 4. Verify remotes
 git remote -v
@@ -176,13 +176,13 @@ user.isActive = true;
 
 // JSDoc for functions
 /**
- * Calculate delivery fee based on distance
+ * Calculate fee based on distance
  * @param {number} distance - Distance in kilometers
- * @returns {number} Delivery fee in VND
+ * @returns {number} Fee
  * @example
- * calculateDeliveryFee(2.5) // 15000
+ * calculateFee(2.5) // 15000
  */
-function calculateDeliveryFee(distance) {
+function calculateFee(distance) {
   // ...
 }
 ```
@@ -194,8 +194,8 @@ function calculateDeliveryFee(distance) {
 const express = require("express");
 const db = require("../config/database");
 
-const DELIVERY_BASE_FEE = 15000;
-const DELIVERY_PER_KM = 5000;
+const BASE_FEE = 15000;
+const FEE_PER_KM = 5000;
 
 const calculateFee = (distance) => {
   // ...
@@ -270,7 +270,7 @@ git commit -m "docs: update API endpoints reference"
 git commit -m "refactor: extract payment logic to service"
 
 # Performance
-git commit -m "perf: optimize restaurant search with indexes"
+git commit -m "perf: optimize data search with indexes"
 
 # Test
 git commit -m "test: add unit tests for order validation"
@@ -354,7 +354,7 @@ npm test -- --coverage
 describe("OrderService", () => {
   describe("validateCreate", () => {
     it("should reject order with no items", async () => {
-      const data = {restaurantId: 1, items: []};
+      const data = {id: 1, items: []};
       const result = await orderService.validateCreate(data);
 
       expect(result.success).toBe(false);
@@ -363,7 +363,7 @@ describe("OrderService", () => {
 
     it("should accept valid order", async () => {
       const data = {
-        restaurantId: 1,
+        id: 1,
         items: [{productId: 1, quantity: 2}],
       };
       const result = await orderService.validateCreate(data);
@@ -380,14 +380,14 @@ describe("OrderService", () => {
 # Test authentication
 curl -X POST http://localhost:3000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"user@funfood.com","password":"123456"}'
+  -d '{"email":"user@example.com","password":"123456"}'
 
 # Test protected endpoint
 curl http://localhost:3000/api/auth/me \
   -H "Authorization: Bearer YOUR_TOKEN"
 
 # Test with different methods
-curl -X GET http://localhost:3000/api/restaurants
+curl -X GET http://localhost:3000/api/items
 curl -X POST http://localhost:3000/api/cart
 curl -X PUT http://localhost:3000/api/cart/1
 curl -X DELETE http://localhost:3000/api/cart/1
@@ -531,7 +531,7 @@ If you have ideas for fixing this
 
 Instead:
 
-1. Email: security@funfood.com
+1. Email: security@example.com
 2. Include details and reproduction steps
 3. Allow time for maintainers to patch
 
@@ -649,7 +649,7 @@ const data = await readFile("large-file.json");
 - 📖 Read documentation in `/docs` folder
 - 💬 Open an issue for questions
 - 🤝 Start discussions on GitHub
-- 📧 Email: dev@funfood.com
+- 📧 Email: dev@example.com
 
 ---
 
@@ -661,4 +661,4 @@ Contributors who submit meaningful PRs will be recognized in:
 - GitHub credits
 - Release notes
 
-Thank you for contributing to FunFood! 🙏
+Thank you for contributing to Base! 🙏

@@ -95,8 +95,7 @@
 base-backend/
 │
 ├── 📁 config/                      # Configuration Files
-│   ├── database.js                 # Database abstraction & CRUD
-│   └── endpoints.js                # API endpoints reference
+│   └── database.js                 # Database abstraction & CRUD
 │
 ├── 📁 controllers/                 # HTTP Request Handlers
 │   ├── auth.controller.js          # Authentication (Login, Register)

@@ -34,10 +34,7 @@ class JsonAdapter {
       // Core Data
       users: [],
 
-      // User Content
-      collections: [],
-      favorites: [],
-      reviews: [],
+      // Activity Data
       notifications: []
     };
   }
@@ -47,13 +44,7 @@ class JsonAdapter {
   getRelatedCollection(collection, relation) {
     const relationMap = {
       users: {
-        collections: 'collections',
-        reviews: 'reviews',
-        favorites: 'favorites',
         notifications: 'notifications'
-      },
-      collections: {
-        user: 'users'
       }
     };
     return relationMap[collection]?.[relation];
@@ -62,13 +53,7 @@ class JsonAdapter {
   getForeignKey(collection, relation) {
     const keyMap = {
       users: {
-        collections: 'user_id',
-        reviews: 'user_id',
-        favorites: 'user_id',
         notifications: 'user_id'
-      },
-      collections: {
-        user: 'user_id'
       }
     };
     return keyMap[collection]?.[relation];
