@@ -7,35 +7,35 @@ const helmet = require('helmet');
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5, // Limit each IP to 5 requests per windowMs
-  message: 'Too many login attempts, please try again later'
+  message: 'Too many login attempts, please try again later',
 });
-
 
 const app = express();
 
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'"],
+        imgSrc: ["'self'", 'data:', 'https:'],
+      },
     },
-  },
-  hsts: {
-    maxAge: 31536000,
-    includeSubDomains: true,
-    preload: true
-  },
-  crossOriginResourcePolicy: { policy: "cross-origin" }
-}));
-
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    },
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  }),
+);
 
 // Middleware
 const path = require('path');
 const corsOptions = {
   origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : '*',
-  credentials: process.env.CORS_CREDENTIALS === 'true' || false
+  credentials: process.env.CORS_CREDENTIALS === 'true' || false,
 };
 app.use(cors(corsOptions));
 app.use(express.json());
@@ -47,10 +47,10 @@ console.log(`📂 Serving static files from: ${uploadDir}`);
 app.use('/uploads', express.static(uploadDir));
 
 // Logging
-app.use(require('./middleware/logger.middleware'));
+app.use(require('./src/middleware/logger.middleware'));
 
 // Query parsing
-const { parseQuery, formatResponse, validateQuery, logQuery } = require('./middleware/query.middleware');
+const { parseQuery, formatResponse, validateQuery, logQuery } = require('./src/middleware/query.middleware');
 app.use(parseQuery);
 app.use(formatResponse);
 app.use(validateQuery);
@@ -83,20 +83,15 @@ app.get('/api', (req, res) => {
           'POST /api/auth/login',
           'GET /api/auth/me',
           'POST /api/auth/logout',
-          'PUT /api/auth/change-password'
-        ]
+          'PUT /api/auth/change-password',
+        ],
       },
 
       // Users
       users: {
         base: '/api/users',
-        routes: [
-          'GET /api/users',
-          'GET /api/users/:id',
-          'PUT /api/users/profile',
-          'GET /api/users/stats/summary'
-        ]
-      }
+        routes: ['GET /api/users', 'GET /api/users/:id', 'PUT /api/users/profile', 'GET /api/users/stats/summary'],
+      },
     },
 
     // Query parameters
@@ -105,7 +100,7 @@ app.get('/api', (req, res) => {
       sorting: '?_sort=name&_order=asc',
       filtering: '?field_gte=1000&field_lte=2000',
       search: '?q=search_term',
-      nearby: '?latitude=21.0285&longitude=105.8542&radius=5'
+      nearby: '?latitude=21.0285&longitude=105.8542&radius=5',
     },
 
     // Response format
@@ -113,12 +108,12 @@ app.get('/api', (req, res) => {
       success: {
         success: true,
         message: 'Operation successful',
-        data: {}
+        data: {},
       },
       error: {
         success: false,
         message: 'Error message',
-        statusCode: 400
+        statusCode: 400,
       },
       paginated: {
         success: true,
@@ -130,9 +125,9 @@ app.get('/api', (req, res) => {
           total: 100,
           totalPages: 10,
           hasNext: true,
-          hasPrev: false
-        }
-      }
+          hasPrev: false,
+        },
+      },
     },
 
     // Authentication
@@ -141,9 +136,9 @@ app.get('/api', (req, res) => {
       header: 'Authorization: Bearer <token>',
       testAccounts: {
         admin: 'admin@example.com / 123456',
-        user: 'user@example.com / 123456'
-      }
-    }
+        user: 'user@example.com / 123456',
+      },
+    },
   });
 });
 
@@ -154,7 +149,7 @@ app.get('/api/health', (req, res) => {
     message: 'Base API is running',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
   });
 });
 
@@ -166,7 +161,7 @@ app.use((req, res) => {
     success: false,
     message: 'Route not found',
     path: req.path,
-    method: req.method
+    method: req.method,
   });
 });
 
@@ -175,17 +170,20 @@ app.use((err, req, res, next) => {
   console.error('❌ Error:', {
     message: err.message,
     path: req.path,
-    method: req.method
+    method: req.method,
   });
 
   const statusCode = err.status || err.statusCode || 500;
   const response = {
     success: false,
     message: err.message || 'Internal Server Error',
-    error: process.env.NODE_ENV === 'development' ? {
-      type: err.name,
-      stack: err.stack
-    } : undefined
+    error:
+      process.env.NODE_ENV === 'development'
+        ? {
+            type: err.name,
+            stack: err.stack,
+          }
+        : undefined,
   };
 
   res.status(statusCode).json(response);
@@ -232,7 +230,6 @@ function startKeepAlive() {
     setInterval(() => {
       pingService(targetUrl);
     }, KEEPALIVE_INTERVAL);
-
   } catch (err) {
     console.error(err.message);
   }
