@@ -3,6 +3,7 @@ const db = require('../config/database');
 const { generateToken, hashPassword, comparePassword, sanitizeUser } = require('../utils/helpers');
 const { getRolePermissions } = require('../middleware/rbac.middleware');
 
+
 exports.register = async (req, res, next) => {
   try {
     const errors = validationResult(req);
@@ -56,6 +57,7 @@ exports.register = async (req, res, next) => {
     next(error);
   }
 };
+
 
 exports.login = async (req, res, next) => {
   try {
@@ -135,6 +137,7 @@ exports.getMe = async (req, res, next) => {
   }
 };
 
+
 exports.logout = async (req, res, next) => {
   try {
     res.json({
@@ -145,6 +148,7 @@ exports.logout = async (req, res, next) => {
     next(error);
   }
 };
+
 
 exports.changePassword = async (req, res, next) => {
   try {

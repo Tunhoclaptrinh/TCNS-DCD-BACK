@@ -60,6 +60,9 @@ app.use(logQuery);
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 
+const { setupSwagger } = require('./utils/swagger-auto');
+setupSwagger(app);
+
 // Import Routes
 // Mount all routes
 app.use('/api', require('./routes'));
