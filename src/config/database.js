@@ -109,15 +109,21 @@ class JsonAdapter {
         }
         if (key.endsWith('_like')) {
           const field = key.replace('_like', '');
-          const regex = new RegExp(filters[key], 'i');
-          return regex.test(item[field]);
+          // Escape special regex characters to prevent ReDoS
+          const escaped = String(filters[key]).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          return new RegExp(escaped, 'i').test(item[field]);
         }
         if (key.endsWith('_in')) {
           const field = key.replace('_in', '');
           const values = Array.isArray(filters[key]) ? filters[key] : filters[key].split(',');
           return values.includes(String(item[field]));
         }
-        return item[key] == filters[key];
+        // Strict equality — convert types to match
+        const filterVal = filters[key];
+        const itemVal = item[key];
+        if (typeof itemVal === 'number') return itemVal === Number(filterVal);
+        if (typeof itemVal === 'boolean') return itemVal === (filterVal === true || filterVal === 'true');
+        return itemVal === filterVal;
       });
     });
   }
@@ -152,7 +158,8 @@ class JsonAdapter {
       if (options.expand) {
         const relations = options.expand.split(',');
         relations.forEach((relation) => {
-          const foreignKey = `${relation}Id` || `${relation}_id`;
+          // Check both camelCase and snake_case foreign key formats
+          const foreignKey = item[`${relation}Id`] !== undefined ? `${relation}Id` : `${relation}_id`;
           if (item[foreignKey]) {
             const targetCollection = relation + 's';
             enriched[relation] = this.findById(targetCollection, item[foreignKey]);
@@ -186,8 +193,8 @@ class JsonAdapter {
 
   applyPagination(items, page = 1, limit = 10) {
     const total = items.length;
-    const currentPage = Math.max(1, parseInt(page));
-    const itemsPerPage = Math.max(1, parseInt(limit));
+    const currentPage = Math.max(1, Number(page) || 1);
+    const itemsPerPage = Math.max(1, Math.min(Number(limit) || 10, 1000));
     const totalPages = Math.ceil(total / itemsPerPage);
 
     const startIndex = (currentPage - 1) * itemsPerPage;
@@ -251,20 +258,22 @@ class JsonAdapter {
   }
 
   update(collection, id, data) {
-    const index = this.data[collection]?.findIndex((item) => item.id === parseInt(id));
+    if (!this.data[collection]) return null;
+    const index = this.data[collection].findIndex((item) => item.id === parseInt(id, 10));
     if (index === -1) return null;
 
     this.data[collection][index] = {
       ...this.data[collection][index],
       ...data,
-      id: parseInt(id),
+      id: parseInt(id, 10),
     };
     this.saveData();
     return this.data[collection][index];
   }
 
   delete(collection, id) {
-    const index = this.data[collection]?.findIndex((item) => item.id === parseInt(id));
+    if (!this.data[collection]) return false;
+    const index = this.data[collection].findIndex((item) => item.id === parseInt(id, 10));
     if (index === -1) return false;
 
     this.data[collection].splice(index, 1);
@@ -277,11 +286,61 @@ class JsonAdapter {
     if (items.length === 0) return 1;
     return Math.max(...items.map((item) => item.id)) + 1;
   }
+
+  // ==================== UTILITY METHODS ====================
+
+  exists(collection, query) {
+    if (!this.data[collection]) return false;
+    return this.data[collection].some((item) => {
+      return Object.keys(query).every((key) => item[key] === query[key]);
+    });
+  }
+
+  distinct(collection, field) {
+    if (!this.data[collection]) return [];
+    const values = this.data[collection].map((item) => item[field]).filter((v) => v !== undefined && v !== null);
+    return [...new Set(values)];
+  }
+
+  count(collection, query = null) {
+    if (!this.data[collection]) return 0;
+    if (!query || Object.keys(query).length === 0) {
+      return this.data[collection].length;
+    }
+    return this.data[collection].filter((item) => {
+      return Object.keys(query).every((key) => item[key] === query[key]);
+    }).length;
+  }
+
+  insertMany(collection, records) {
+    if (!this.data[collection]) {
+      this.data[collection] = [];
+    }
+
+    const created = records.map((data) => {
+      const id = this.getNextId(collection);
+      const newItem = { id, ...data };
+      this.data[collection].push(newItem);
+      return newItem;
+    });
+
+    this.saveData();
+    return created;
+  }
+
+  deleteMany(collection, ids) {
+    if (!this.data[collection]) return 0;
+
+    const parsedIds = ids.map((id) => parseInt(id, 10));
+    const before = this.data[collection].length;
+    this.data[collection] = this.data[collection].filter((item) => !parsedIds.includes(item.id));
+    const deleted = before - this.data[collection].length;
+
+    if (deleted > 0) this.saveData();
+    return deleted;
+  }
 }
 
-// ==================== ADAPTER SELECTION ====================
-// TODO: Add MongoDB/MySQL/PostgreSQL adapters when needed
-// For now, always use JSON file adapter
 const dbInstance = new JsonAdapter();
 
 export default dbInstance;
