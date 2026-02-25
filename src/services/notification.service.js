@@ -1,5 +1,5 @@
-const BaseService = require('../utils/BaseService');
-const db = require('../config/database');
+import BaseService from '@utils/BaseService';
+import db from '@config/database';
 
 class NotificationService extends BaseService {
   constructor() {
@@ -49,7 +49,6 @@ class NotificationService extends BaseService {
   }
 
   async markAllAsRead(userId) {
-    // This is a bit inefficient with JSON DB but works for now
     const notifications = await db.findAll('notifications');
     const userNotifications = notifications.filter((n) => n.user_id === userId && !n.is_read);
 
@@ -68,8 +67,6 @@ class NotificationService extends BaseService {
     const notifications = await db.findAll('notifications');
     const userNotificationIds = notifications.filter((n) => n.user_id === userId).map((n) => n.id);
 
-    // Since JSON DB might not support bulk delete properly, we do loop or simple filter rewrite
-    // Assuming simple delete loop for safety
     for (const id of userNotificationIds) {
       await db.delete('notifications', id);
     }
@@ -82,4 +79,4 @@ class NotificationService extends BaseService {
   }
 }
 
-module.exports = new NotificationService();
+export default new NotificationService();

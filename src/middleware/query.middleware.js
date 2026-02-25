@@ -6,7 +6,7 @@
 /**
  * Parse query parameters from request
  */
-exports.parseQuery = (req, res, next) => {
+export const parseQuery = (req, res, next) => {
   const query = req.query;
 
   const parsedQuery = {
@@ -22,7 +22,7 @@ exports.parseQuery = (req, res, next) => {
 
   // Validate and normalize values
   parsedQuery.page = Math.max(1, parsedQuery.page);
-  parsedQuery.limit = Math.min(Math.max(1, parsedQuery.limit), 100); // Max 100 items per page
+  parsedQuery.limit = Math.min(Math.max(1, parsedQuery.limit), 100);
 
   if (parsedQuery.order !== 'asc' && parsedQuery.order !== 'desc') {
     parsedQuery.order = 'asc';
@@ -30,7 +30,6 @@ exports.parseQuery = (req, res, next) => {
 
   // Extract filter parameters
   Object.keys(query).forEach((key) => {
-    // Skip special parameters
     const specialParams = [
       '_page',
       '_limit',
@@ -65,22 +64,15 @@ exports.parseQuery = (req, res, next) => {
     ) {
       parsedQuery.filter[key] = query[key];
     } else if (key === 'ids') {
-      // Map 'ids=1,2,3' to 'id_in=1,2,3' for compatibility
       parsedQuery.filter['id_in'] = query[key];
     } else {
-      // Regular filter - convert to appropriate type
       const value = query[key];
 
-      // Try to convert to number if possible
       if (!isNaN(value) && value !== '') {
         parsedQuery.filter[key] = Number(value);
-      }
-      // Convert boolean strings
-      else if (value === 'true' || value === 'false') {
+      } else if (value === 'true' || value === 'false') {
         parsedQuery.filter[key] = value === 'true';
-      }
-      // Keep as string
-      else {
+      } else {
         parsedQuery.filter[key] = value;
       }
     }
@@ -91,24 +83,20 @@ exports.parseQuery = (req, res, next) => {
     parsedQuery.filter = null;
   }
 
-  // Attach parsed query to request
   req.parsedQuery = parsedQuery;
-
   next();
 };
 
 /**
  * Format response with pagination headers (JSON Server style)
  */
-exports.formatResponse = (req, res, next) => {
+export const formatResponse = (req, res, next) => {
   const originalJson = res.json.bind(res);
 
   res.json = function (data) {
-    // If data has pagination info, set headers
     if (data && data.pagination) {
       const { page, limit, total, totalPages } = data.pagination;
 
-      // Set pagination headers
       res.set({
         'X-Total-Count': total,
         'X-Total-Pages': totalPages,
@@ -117,33 +105,27 @@ exports.formatResponse = (req, res, next) => {
         'Access-Control-Expose-Headers': 'X-Total-Count, X-Total-Pages, X-Current-Page, X-Per-Page, Link',
       });
 
-      // Build Link header for pagination navigation
       const links = [];
       const protocol = req.protocol;
       const host = req.get('host');
       const baseUrl = `${protocol}://${host}${req.baseUrl}${req.path}`;
 
-      // Create URLSearchParams from original query
       const buildLink = (pageNum) => {
         const params = new URLSearchParams(req.query);
         params.set('_page', pageNum);
         return `${baseUrl}?${params.toString()}`;
       };
 
-      // First page
       links.push(`<${buildLink(1)}>; rel="first"`);
 
-      // Previous page
       if (data.pagination.hasPrev) {
         links.push(`<${buildLink(page - 1)}>; rel="prev"`);
       }
 
-      // Next page
       if (data.pagination.hasNext) {
         links.push(`<${buildLink(page + 1)}>; rel="next"`);
       }
 
-      // Last page
       links.push(`<${buildLink(totalPages)}>; rel="last"`);
 
       res.set('Link', links.join(', '));
@@ -158,7 +140,7 @@ exports.formatResponse = (req, res, next) => {
 /**
  * Validate query parameters
  */
-exports.validateQuery = (req, res, next) => {
+export const validateQuery = (req, res, next) => {
   const { _page, page, _limit, limit } = req.query;
 
   const pageNum = parseInt(_page || page);
@@ -184,7 +166,7 @@ exports.validateQuery = (req, res, next) => {
 /**
  * Log query for debugging
  */
-exports.logQuery = (req, res, next) => {
+export const logQuery = (req, res, next) => {
   if (process.env.NODE_ENV === 'development' && Object.keys(req.query).length > 0) {
     console.log('📊 Query:', {
       path: req.path,
@@ -194,5 +176,3 @@ exports.logQuery = (req, res, next) => {
   }
   next();
 };
-
-module.exports = exports;

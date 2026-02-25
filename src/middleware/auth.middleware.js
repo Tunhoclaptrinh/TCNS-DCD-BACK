@@ -1,10 +1,10 @@
-const jwt = require('jsonwebtoken');
-const db = require('../config/database');
+import jwt from 'jsonwebtoken';
+import db from '@config/database';
 
 /**
  * Protect routes - Require authentication
  */
-exports.protect = async (req, res, next) => {
+export const protect = async (req, res, next) => {
   try {
     let token;
 
@@ -72,7 +72,7 @@ exports.protect = async (req, res, next) => {
  * Authorize roles - Check if user has required role
  * Usage: authorize('admin', 'researcher')
  */
-exports.authorize = (...roles) => {
+export const authorize = (...roles) => {
   return (req, res, next) => {
     if (!roles.includes(req.user.role)) {
       return res.status(403).json({
@@ -87,7 +87,7 @@ exports.authorize = (...roles) => {
 /**
  * Alias for authorize (for compatibility)
  */
-exports.authorizeRoles = (...allowedRoles) => {
+export const authorizeRoles = (...allowedRoles) => {
   return (req, res, next) => {
     if (!allowedRoles.includes(req.user.role)) {
       return res.status(403).json({

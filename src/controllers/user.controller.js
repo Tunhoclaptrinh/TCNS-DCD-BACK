@@ -1,6 +1,6 @@
-const { sanitizeUser } = require('../utils/helpers');
-const userService = require('../services/user.service');
-const BaseController = require('../utils/BaseController');
+import { sanitizeUser } from '@utils/helpers';
+import userService from '@services/user.service';
+import BaseController from '@utils/BaseController';
 
 class UserController extends BaseController {
   constructor() {
@@ -252,4 +252,4 @@ class UserController extends BaseController {
   };
 }
 
-module.exports = new UserController();
+export default new UserController();

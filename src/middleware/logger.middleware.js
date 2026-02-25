@@ -1,4 +1,4 @@
-module.exports = function apiLogger(req, res, next) {
+export default function apiLogger(req, res, next) {
   const start = Date.now();
 
   // Log request
@@ -20,4 +20,4 @@ module.exports = function apiLogger(req, res, next) {
   };
 
   next();
-};
+}

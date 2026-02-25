@@ -1,0 +1,30 @@
+{
+  "presets": [
+    [
+      "@babel/preset-env",
+      {
+        "targets": {
+          "node": "current"
+        }
+      }
+    ]
+  ],
+  "plugins": [
+    [
+      "module-resolver",
+      {
+        "root": ["./src"],
+        "alias": {
+          "@config": "./src/config",
+          "@controllers": "./src/controllers",
+          "@middleware": "./src/middleware",
+          "@routes": "./src/routes",
+          "@schemas": "./src/schemas",
+          "@services": "./src/services",
+          "@utils": "./src/utils",
+          "@tools": "./src/tools"
+        }
+      }
+    ]
+  ]
+}

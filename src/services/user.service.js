@@ -1,7 +1,7 @@
-const BaseService = require('../../utils/BaseService');
-const db = require('../config/database');
-const { sanitizeUser, hashPassword } = require('../../utils/helpers');
-const userSchema = require('../schemas/user.schema');
+import BaseService from '@utils/BaseService';
+import db from '@config/database';
+import { sanitizeUser, hashPassword } from '@utils/helpers';
+import userSchema from '@schemas/user.schema';
 
 class UserService extends BaseService {
   constructor() {
@@ -21,12 +21,10 @@ class UserService extends BaseService {
   async transformImportData(data) {
     const transformed = await super.transformImportData(data);
 
-    // Hash password if provided
     if (transformed.password) {
       transformed.password = await hashPassword(transformed.password);
     }
 
-    // Generate avatar if not provided
     if (!transformed.avatar && transformed.name) {
       transformed.avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(transformed.name)}&background=random`;
     }
@@ -39,7 +37,6 @@ class UserService extends BaseService {
       data.password = await hashPassword(data.password);
     }
 
-    // Generate avatar if not provided
     if (!data.avatar && data.name) {
       data.avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name)}&background=random`;
     }
@@ -58,7 +55,6 @@ class UserService extends BaseService {
       delete data.newPassword;
     }
 
-    // Hash password if provided directly (for admin updates)
     if (data.password) {
       data.password = await hashPassword(data.password);
     }
@@ -107,8 +103,6 @@ class UserService extends BaseService {
       };
     }
 
-    // In a generic base, we might only show basic info or notifications
-    // You can extend this with generic login history if implemented later
     const activity = {
       user: sanitizeUser(user),
       joinedAt: user.createdAt,
@@ -155,14 +149,11 @@ class UserService extends BaseService {
       };
     }
 
-    // Delete relationships (Generic)
-    // Add any other generic relationships here (e.g. notifications)
     const notifications = await db.findMany('notifications', { user_id: userId });
     for (const notif of notifications) {
       await db.delete('notifications', notif.id);
     }
 
-    // Finally delete user
     await db.delete('users', userId);
 
     return {
@@ -176,4 +167,4 @@ class UserService extends BaseService {
   }
 }
 
-module.exports = new UserService();
+export default new UserService();

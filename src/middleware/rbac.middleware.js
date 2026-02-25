@@ -24,9 +24,8 @@ const hasPermission = (role, permission) => {
 
 /**
  * Middleware: Check permission
- * @param {string} permission - Quyền cần kiểm tra (ví dụ: 'users:create')
  */
-exports.checkPermission = (permission) => {
+export const checkPermission = (permission) => {
   return (req, res, next) => {
     const userRole = req.user?.role;
 
@@ -51,21 +50,21 @@ exports.checkPermission = (permission) => {
 /**
  * Helper to get all permissions for a role
  */
-exports.getRolePermissions = (role) => {
+export const getRolePermissions = (role) => {
   return PERMISSIONS[role] || [];
 };
 
 /**
- * Middleware: Rate limiting (Giữ nguyên logic nhưng đổi config nếu cần)
+ * Middleware: Rate limiting
  */
 const rateLimitStore = {};
-exports.roleBasedRateLimit = (limits) => {
+export const roleBasedRateLimit = (limits) => {
   return (req, res, next) => {
     const userRole = req.user?.role || 'guest';
     const userId = req.user?.id || req.ip;
     const key = `${userRole}:${userId}`;
     const now = Date.now();
-    const windowMs = 60 * 60 * 1000; // 1 hour
+    const windowMs = 60 * 60 * 1000;
 
     if (!rateLimitStore[key]) {
       rateLimitStore[key] = { count: 0, resetTime: now + windowMs };
@@ -91,12 +90,10 @@ exports.roleBasedRateLimit = (limits) => {
   };
 };
 
-exports.getUserPermissions = (req, res) => {
+export const getUserPermissions = (req, res) => {
   const userRole = req.user?.role;
   res.json({
     success: true,
     data: { role: userRole, permissions: PERMISSIONS[userRole] || {} },
   });
 };
-
-module.exports = exports;

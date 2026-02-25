@@ -1,8 +1,9 @@
-const express = require('express');
+import express from 'express';
+import authController from '@controllers/auth.controller';
+import { protect } from '@middleware/auth.middleware';
+import { validateSchema, validateFields } from '@middleware/validation.middleware';
+
 const router = express.Router();
-const authController = require('../controllers/auth.controller');
-const { protect } = require('../middleware/auth.middleware');
-const { validateSchema, validateFields } = require('../middleware/validation.middleware');
 
 // Register - validate tất cả schema fields
 router.post('/register', validateSchema('user'), authController.register);
@@ -32,8 +33,7 @@ router.put(
 
 // Refresh Token (Simplified for demo)
 router.post('/refresh', (req, res) => {
-  // For demo, just return success true
   res.json({ success: true, token: 'demo_refreshed_token' });
 });
 
-module.exports = router;
+export default router;

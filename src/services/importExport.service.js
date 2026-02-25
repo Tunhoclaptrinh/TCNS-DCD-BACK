@@ -4,8 +4,9 @@
  * Business logic is delegated to individual services
  */
 
-const XLSX = require('xlsx');
-const { Parser } = require('json2csv');
+import XLSX from 'xlsx';
+import { Parser } from 'json2csv';
+import userService from '@services/user.service';
 
 class ImportExportService {
   constructor() {
@@ -17,7 +18,7 @@ class ImportExportService {
    */
   getServiceForEntity(entityName) {
     const serviceMap = {
-      users: require('./user.service'),
+      users: userService,
     };
 
     const service = serviceMap[entityName];
@@ -259,4 +260,4 @@ class ImportExportService {
   }
 }
 
-module.exports = new ImportExportService();
+export default new ImportExportService();

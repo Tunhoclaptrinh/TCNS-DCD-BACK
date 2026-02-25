@@ -1,5 +1,5 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
 const DB_FILE = path.join(__dirname, '../database/db.json');
 
@@ -31,10 +31,7 @@ class JsonAdapter {
 
   getDefaultData() {
     return {
-      // Core Data
       users: [],
-
-      // Activity Data
       notifications: [],
     };
   }
@@ -61,36 +58,25 @@ class JsonAdapter {
 
   // ==================== ENHANCED QUERY METHODS ====================
 
-  /**
-   * Find all with advanced filtering, pagination, sorting
-   * @param {string} collection - Collection name
-   * @param {object} options - Query options
-   * @returns {object} - { data, pagination }
-   */
   findAllAdvanced(collection, options = {}) {
     let items = [...(this.data[collection] || [])];
 
-    // 1. FILTERING
     if (options.filter) {
       items = this.applyFilters(items, options.filter);
     }
 
-    // 2. FULL-TEXT SEARCH
     if (options.q) {
       items = this.applyFullTextSearch(items, options.q);
     }
 
-    // 3. RELATIONS (embed & expand)
     if (options.embed || options.expand) {
       items = this.applyRelations(items, collection, options);
     }
 
-    // 4. SORTING
     if (options.sort) {
       items = this.applySorting(items, options.sort, options.order);
     }
 
-    // 5. PAGINATION
     const pagination = this.applyPagination(items, options.page, options.limit);
 
     return {
@@ -106,13 +92,9 @@ class JsonAdapter {
     };
   }
 
-  /**
-   * Apply filters (operators: _gte, _lte, _ne, _like, etc.)
-   */
   applyFilters(items, filters) {
     return items.filter((item) => {
       return Object.keys(filters).every((key) => {
-        // Operator filters
         if (key.endsWith('_gte')) {
           const field = key.replace('_gte', '');
           return item[field] >= filters[key];
@@ -135,16 +117,11 @@ class JsonAdapter {
           const values = Array.isArray(filters[key]) ? filters[key] : filters[key].split(',');
           return values.includes(String(item[field]));
         }
-
-        // Exact match
         return item[key] == filters[key];
       });
     });
   }
 
-  /**
-   * Full-text search across all fields
-   */
   applyFullTextSearch(items, query) {
     const searchTerm = query.toLowerCase();
     return items.filter((item) => {
@@ -157,14 +134,10 @@ class JsonAdapter {
     });
   }
 
-  /**
-   * Apply relations (embed nested resources)
-   */
   applyRelations(items, collection, options) {
     return items.map((item) => {
       const enriched = { ...item };
 
-      // Embed relations (one-to-many)
       if (options.embed) {
         const relations = options.embed.split(',');
         relations.forEach((relation) => {
@@ -176,7 +149,6 @@ class JsonAdapter {
         });
       }
 
-      // Expand relations (many-to-one)
       if (options.expand) {
         const relations = options.expand.split(',');
         relations.forEach((relation) => {
@@ -192,9 +164,6 @@ class JsonAdapter {
     });
   }
 
-  /**
-   * Apply sorting
-   */
   applySorting(items, sortField, order = 'asc') {
     const fields = sortField.split(',');
 
@@ -215,9 +184,6 @@ class JsonAdapter {
     });
   }
 
-  /**
-   * Apply pagination
-   */
   applyPagination(items, page = 1, limit = 10) {
     const total = items.length;
     const currentPage = Math.max(1, parseInt(page));
@@ -238,9 +204,6 @@ class JsonAdapter {
     };
   }
 
-  /**
-   * Get slice of data (for pagination)
-   */
   getSlice(collection, start, end) {
     const items = this.data[collection] || [];
     return {
@@ -317,18 +280,8 @@ class JsonAdapter {
 }
 
 // ==================== ADAPTER SELECTION ====================
+// TODO: Add MongoDB/MySQL/PostgreSQL adapters when needed
+// For now, always use JSON file adapter
+const dbInstance = new JsonAdapter();
 
-let dbInstance;
-
-if (process.env.DB_CONNECTION === 'mongodb') {
-  dbInstance = require('../utils/MongoAdapter');
-} else if (process.env.DB_CONNECTION === 'mysql') {
-  dbInstance = require('../utils/MySQLAdapter');
-} else if (process.env.DB_CONNECTION === 'postgresql') {
-  dbInstance = require('../utils/PostgreSQLAdapter');
-} else {
-  // Default: JSON file
-  dbInstance = new JsonAdapter();
-}
-
-module.exports = dbInstance;
+export default dbInstance;

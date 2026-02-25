@@ -1,7 +1,10 @@
-module.exports = {
+import users from './user.schema';
+import notifications from './notification.schema';
+
+export default {
   // Auth & User
-  users: require('./user.schema'),
+  users,
 
   // User Content
-  notifications: require('./notification.schema'),
+  notifications,
 };

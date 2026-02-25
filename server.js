@@ -1,12 +1,17 @@
-const express = require('express');
-const cors = require('cors');
-require('dotenv').config();
-const rateLimit = require('express-rate-limit');
-const helmet = require('helmet');
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
+import path from 'path';
+import os from 'os';
+import axios from 'axios';
+
+dotenv.config();
 
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limit each IP to 5 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 5,
   message: 'Too many login attempts, please try again later',
 });
 
@@ -32,7 +37,6 @@ app.use(
 );
 
 // Middleware
-const path = require('path');
 const corsOptions = {
   origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : '*',
   credentials: process.env.CORS_CREDENTIALS === 'true' || false,
@@ -47,10 +51,11 @@ console.log(`📂 Serving static files from: ${uploadDir}`);
 app.use('/uploads', express.static(uploadDir));
 
 // Logging
-app.use(require('./src/middleware/logger.middleware'));
+import loggerMiddleware from './src/middleware/logger.middleware';
+app.use(loggerMiddleware);
 
 // Query parsing
-const { parseQuery, formatResponse, validateQuery, logQuery } = require('./src/middleware/query.middleware');
+import { parseQuery, formatResponse, validateQuery, logQuery } from './src/middleware/query.middleware';
 app.use(parseQuery);
 app.use(formatResponse);
 app.use(validateQuery);
@@ -60,87 +65,13 @@ app.use(logQuery);
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 
-const { setupSwagger } = require('./utils/swagger-auto');
+// Swagger
+import { setupSwagger } from './src/utils/swagger-auto';
 setupSwagger(app);
 
 // Import Routes
-// Mount all routes
-app.use('/api', require('./routes'));
-
-// API Documentation
-app.get('/api', (req, res) => {
-  res.json({
-    name: 'Base Backend API',
-    version: '1.0.0',
-    description: 'Generic Backend API Starter',
-    documentation: 'DOCS_URL_HERE',
-    endpoints: {
-      // Authentication
-      auth: {
-        base: '/api/auth',
-        routes: [
-          'POST /api/auth/register',
-          'POST /api/auth/login',
-          'GET /api/auth/me',
-          'POST /api/auth/logout',
-          'PUT /api/auth/change-password',
-        ],
-      },
-
-      // Users
-      users: {
-        base: '/api/users',
-        routes: ['GET /api/users', 'GET /api/users/:id', 'PUT /api/users/profile', 'GET /api/users/stats/summary'],
-      },
-    },
-
-    // Query parameters
-    queryParams: {
-      pagination: '?_page=1&_limit=10',
-      sorting: '?_sort=name&_order=asc',
-      filtering: '?field_gte=1000&field_lte=2000',
-      search: '?q=search_term',
-      nearby: '?latitude=21.0285&longitude=105.8542&radius=5',
-    },
-
-    // Response format
-    responseFormat: {
-      success: {
-        success: true,
-        message: 'Operation successful',
-        data: {},
-      },
-      error: {
-        success: false,
-        message: 'Error message',
-        statusCode: 400,
-      },
-      paginated: {
-        success: true,
-        count: 10,
-        data: [],
-        pagination: {
-          page: 1,
-          limit: 10,
-          total: 100,
-          totalPages: 10,
-          hasNext: true,
-          hasPrev: false,
-        },
-      },
-    },
-
-    // Authentication
-    authentication: {
-      type: 'JWT Bearer Token',
-      header: 'Authorization: Bearer <token>',
-      testAccounts: {
-        admin: 'admin@example.com / 123456',
-        user: 'user@example.com / 123456',
-      },
-    },
-  });
-});
+import routes from './src/routes';
+app.use('/api', routes);
 
 // Health Check
 app.get('/api/health', (req, res) => {
@@ -191,13 +122,11 @@ app.use((err, req, res, next) => {
 
 // ==================== SERVER START ====================
 
-const os = require('os');
-
 function getNetworkIp() {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
-    for (const interface of interfaces[name]) {
-      const { address, family, internal } = interface;
+    for (const iface of interfaces[name]) {
+      const { address, family, internal } = iface;
       if (family === 'IPv4' && !internal) {
         return address;
       }
@@ -207,8 +136,7 @@ function getNetworkIp() {
 }
 
 // ==================== KEEPER ALIVE SERVICE ====================
-const axios = require('axios');
-const KEEPALIVE_INTERVAL = 14 * 60 * 1000; // 14 minutes
+const KEEPALIVE_INTERVAL = 14 * 60 * 1000;
 
 function startKeepAlive() {
   const serviceUrl = process.env.PYTHON_SERVICE_URL;
@@ -216,17 +144,14 @@ function startKeepAlive() {
     return;
   }
 
-  // Extract base URL from service URL
   try {
     const urlObj = new URL(serviceUrl);
-    const targetUrl = `${urlObj.origin}/`; // Ping root path always
+    const targetUrl = `${urlObj.origin}/`;
 
     console.log(`⏰ Keep-alive service started: ${targetUrl}`);
 
-    // Initial ping
     pingService(targetUrl);
 
-    // Periodic ping
     setInterval(() => {
       pingService(targetUrl);
     }, KEEPALIVE_INTERVAL);
@@ -237,12 +162,9 @@ function startKeepAlive() {
 
 async function pingService(url) {
   try {
-    // GET request to root should return 200 OK
     await axios.get(url, { timeout: 10000 });
     console.log(`[${new Date().toISOString()}] 💓 Wake up successful (Status: 200)`);
   } catch (error) {
-    // If root doesn't exist but we got a response, that's still a wake-up success (e.g. 404)
-    // But 405 means method not allowed, which is what we want to avoid.
     if (error.response) {
       console.log(`[${new Date().toISOString()}] 💓 Wake up successful (Status: ${error.response.status})`);
     } else {
@@ -267,8 +189,7 @@ app.listen(PORT, () => {
 ╚══════════════════════════════════════════════════════════════════╝
   `);
 
-  // Start Keep Alive
   startKeepAlive();
 });
 
-module.exports = app;
+export default app;

@@ -1,5 +1,5 @@
-const BaseController = require('../utils/BaseController');
-const notificationService = require('../services/notification.service');
+import BaseController from '@utils/BaseController';
+import notificationService from '@services/notification.service';
 
 class NotificationController extends BaseController {
   constructor() {
@@ -66,4 +66,4 @@ class NotificationController extends BaseController {
   };
 }
 
-module.exports = new NotificationController();
+export default new NotificationController();

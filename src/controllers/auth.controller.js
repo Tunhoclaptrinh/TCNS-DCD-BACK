@@ -1,9 +1,9 @@
-const { validationResult } = require('express-validator');
-const db = require('../config/database');
-const { generateToken, hashPassword, comparePassword, sanitizeUser } = require('../utils/helpers');
-const { getRolePermissions } = require('../middleware/rbac.middleware');
+import { validationResult } from 'express-validator';
+import db from '@config/database';
+import { generateToken, hashPassword, comparePassword, sanitizeUser } from '@utils/helpers';
+import { getRolePermissions } from '@middleware/rbac.middleware';
 
-exports.register = async (req, res, next) => {
+export const register = async (req, res, next) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -57,7 +57,7 @@ exports.register = async (req, res, next) => {
   }
 };
 
-exports.login = async (req, res, next) => {
+export const login = async (req, res, next) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -120,7 +120,7 @@ exports.login = async (req, res, next) => {
   }
 };
 
-exports.getMe = async (req, res, next) => {
+export const getMe = async (req, res, next) => {
   try {
     res.json({
       success: true,
@@ -134,7 +134,7 @@ exports.getMe = async (req, res, next) => {
   }
 };
 
-exports.logout = async (req, res, next) => {
+export const logout = async (req, res, next) => {
   try {
     res.json({
       success: true,
@@ -145,7 +145,7 @@ exports.logout = async (req, res, next) => {
   }
 };
 
-exports.changePassword = async (req, res, next) => {
+export const changePassword = async (req, res, next) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -207,3 +207,5 @@ exports.changePassword = async (req, res, next) => {
     next(error);
   }
 };
+
+export default { register, login, getMe, logout, changePassword };

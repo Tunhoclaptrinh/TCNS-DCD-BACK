@@ -1,10 +1,11 @@
-const express = require('express');
+import express from 'express';
+import userController from '@controllers/user.controller';
+import { protect } from '@middleware/auth.middleware';
+import { checkPermission } from '@middleware/rbac.middleware';
+import { getSchemaDoc, validateSchema } from '@middleware/validation.middleware';
+import importExportController from '@controllers/importExport.controller';
+
 const router = express.Router();
-const userController = require('../controllers/user.controller');
-const { protect } = require('../middleware/auth.middleware');
-const { checkPermission } = require('../middleware/rbac.middleware');
-const { getSchemaDoc, validateSchema } = require('../middleware/validation.middleware');
-const importExportController = require('../controllers/importExport.controller');
 
 // === USER PROFILE ROUTES (Must be before :id routes) ===
 router.put('/profile', protect, userController.updateProfile);
@@ -19,12 +20,7 @@ router.delete('/:id', protect, checkPermission('users:delete'), userController.d
 
 router.get('/', protect, checkPermission('users:list'), userController.getAll);
 
-router.get(
-  '/stats/summary',
-  protect,
-  checkPermission('users:view_stats'), // Quyền system hoặc users
-  userController.getUserStats,
-);
+router.get('/stats/summary', protect, checkPermission('users:view_stats'), userController.getUserStats);
 
 router.patch('/:id/status', protect, checkPermission('users:manage_status'), userController.toggleUserStatus);
 
@@ -62,4 +58,4 @@ router.get('/schema', (req, res, next) => {
 router.get('/:id/activity', protect, userController.getUserActivity);
 router.get('/:id', protect, userController.getById);
 
-module.exports = router;
+export default router;

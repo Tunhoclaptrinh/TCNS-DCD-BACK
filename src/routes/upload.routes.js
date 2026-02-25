@@ -1,10 +1,8 @@
-const express = require('express');
-const router = express.Router();
-const uploadController = require('../controllers/upload.controller');
-const { protect, authorize } = require('../middleware/auth.middleware');
+import express from 'express';
+import uploadController from '@controllers/upload.controller';
+import { protect, authorize } from '@middleware/auth.middleware';
 
-// Public routes (if any)
-// router.get('/public', uploadController.getPublicUploads);
+const router = express.Router();
 
 // Protected routes
 router.use(protect);
@@ -23,4 +21,4 @@ router.get('/file/info', uploadController.getFileInfo);
 router.get('/stats', uploadController.getStorageStats);
 router.post('/cleanup', uploadController.cleanupOldFiles);
 
-module.exports = router;
+export default router;

@@ -1,11 +1,14 @@
-const express = require('express');
+import express from 'express';
+import authRoutes from './auth.routes';
+import userRoutes from './user.routes';
+import uploadRoutes from './upload.routes';
+import notificationRoutes from './notification.routes';
+
 const router = express.Router();
 
-// Auth
-router.use('/auth', require('./auth.routes'));
-router.use('/users', require('./user.routes'));
+router.use('/auth', authRoutes);
+router.use('/users', userRoutes);
+router.use('/upload', uploadRoutes);
+router.use('/notifications', notificationRoutes);
 
-router.use('/upload', require('./upload.routes'));
-router.use('/notifications', require('./notification.routes'));
-
-module.exports = router;
+export default router;

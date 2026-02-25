@@ -3,13 +3,13 @@
  * Provides flexible validation methods
  */
 
-const schemas = require('../schemas');
+import schemas from '@schemas';
 
 /**
  * Auto-validate request body theo schema
  * Usage: router.post('/', validateSchema('product'), controller.create)
  */
-exports.validateSchema = (entity) => {
+export const validateSchema = (entity) => {
   return (req, res, next) => {
     const schema = schemas[entity];
     if (!schema) return next();
@@ -48,18 +48,18 @@ exports.validateSchema = (entity) => {
             if (rule.max !== undefined && num > rule.max) typeError = `${field} must be <= ${rule.max}`;
           }
           break;
-        case 'boolean':
-          // ✅ Unified boolean validation - accept both boolean and string representations
+        case 'boolean': {
           const boolStr = String(value).toLowerCase();
           if (!['true', 'false', '1', '0', 'yes', 'no'].includes(boolStr) && typeof value !== 'boolean') {
             typeError = `${field} must be true/false`;
           }
           break;
-        case 'email':
-          // ✅ Improved email regex - more robust validation
+        }
+        case 'email': {
           const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
           if (!emailRegex.test(value)) typeError = `${field} must be a valid email`;
           break;
+        }
         case 'date':
           if (isNaN(new Date(value).getTime())) typeError = `${field} must be a valid date`;
           break;
@@ -92,7 +92,7 @@ exports.validateSchema = (entity) => {
  * Validate specific fields only
  * Usage: router.put('/:id', validateFields('product', ['name', 'price']), controller.update)
  */
-exports.validateFields = (entity, fields) => {
+export const validateFields = (entity, fields) => {
   return (req, res, next) => {
     const schema = schemas[entity];
     if (!schema) return next();
@@ -120,18 +120,18 @@ exports.validateFields = (entity, fields) => {
         case 'number':
           if (isNaN(Number(value))) errors[field] = `${field} must be a number`;
           break;
-        case 'boolean':
-          // ✅ Unified boolean validation - match validateSchema behavior
+        case 'boolean': {
           const boolStr = String(value).toLowerCase();
           if (!['true', 'false', '1', '0', 'yes', 'no'].includes(boolStr) && typeof value !== 'boolean') {
             errors[field] = `${field} must be true/false`;
           }
           break;
-        case 'email':
-          // ✅ Improved email regex - match validateSchema
+        }
+        case 'email': {
           const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
           if (!emailRegex.test(value)) errors[field] = `${field} must be a valid email`;
           break;
+        }
       }
     }
 
@@ -152,9 +152,8 @@ exports.validateFields = (entity, fields) => {
 
 /**
  * Get schema documentation
- * GET /api/schema/:entity
  */
-exports.getSchemaDoc = (req, res) => {
+export const getSchemaDoc = (req, res) => {
   const { entity } = req.params;
   const schema = schemas[entity];
 
@@ -195,9 +194,8 @@ exports.getSchemaDoc = (req, res) => {
 
 /**
  * Get all schemas
- * GET /api/schemas
  */
-exports.getAllSchemas = (req, res) => {
+export const getAllSchemas = (req, res) => {
   const allSchemas = {};
 
   for (const [entity, schema] of Object.entries(schemas)) {

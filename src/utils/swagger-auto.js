@@ -1,17 +1,7 @@
-/**
- * Swagger Auto-Generator - Tự động đọc routes, controllers, schemas
- * - Tự scan routes/ folder → build OpenAPI paths
- * - Parse JSDoc @swagger.* annotations từ controllers
- * - Auto-detect middleware: protect, authorize, validateSchema, validateFields, checkPermission
- * - Auto-detect upload routes (multipart/form-data)
- * - Auto-generate smart summaries dựa trên method + path + entity
- * - Auto-attach requestBody từ schemas/
- */
-
-const swaggerUi = require('swagger-ui-express');
-const fs = require('fs');
-const path = require('path');
-const schemas = require('../src/schemas');
+import swaggerUi from 'swagger-ui-express';
+import fs from 'fs';
+import path from 'path';
+import schemas from '@schemas';
 
 // ==================== JSDoc Parser ====================
 
@@ -706,4 +696,4 @@ function setupSwagger(app) {
   console.log(`   - Tags: ${spec.tags.map((t) => t.name).join(', ')}`);
 }
 
-module.exports = { setupSwagger, buildSwaggerSpec };
+export { setupSwagger, buildSwaggerSpec };

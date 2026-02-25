@@ -2,8 +2,8 @@
  * Base Service - MongoDB/PostgreSQL/MySQL Compatible
  * All services extend this class and inherit CRUD + Import/Export + Schema-based Validation
  */
-const db = require('../config/database');
-const schemas = require('../src/schemas');
+import db from '@config/database';
+import schemas from '@schemas';
 
 class BaseService {
   constructor(collectionName) {
@@ -736,4 +736,4 @@ class BaseService {
   }
 }
 
-module.exports = BaseService;
+export default BaseService;

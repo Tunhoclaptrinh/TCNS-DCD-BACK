@@ -1,26 +1,17 @@
-/**
- * Upload Service
- * Handles file uploads, validation, processing, and storage
- */
-
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const sharp = require('sharp'); // For image processing (install: npm install sharp)
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import sharp from 'sharp';
 
 class UploadService {
   constructor() {
     this.uploadDir = path.join(__dirname, '../database/uploads');
-    this.maxFileSize = 5 * 1024 * 1024; // 5MB
+    this.maxFileSize = 5 * 1024 * 1024;
     this.allowedImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
 
-    // Create upload directories
     this.initUploadDirs();
   }
 
-  /**
-   * Initialize upload directories
-   */
   initUploadDirs() {
     const dirs = [
       this.uploadDir,
@@ -37,9 +28,6 @@ class UploadService {
     });
   }
 
-  /**
-   * Configure multer storage
-   */
   getMulterStorage(folder = 'temp') {
     return multer.diskStorage({
       destination: (req, file, cb) => {
@@ -57,9 +45,6 @@ class UploadService {
     });
   }
 
-  /**
-   * File filter for multer
-   */
   fileFilter(req, file, cb) {
     if (this.allowedImageTypes.includes(file.mimetype)) {
       cb(null, true);
@@ -68,9 +53,6 @@ class UploadService {
     }
   }
 
-  /**
-   * Get multer middleware for single file upload
-   */
   getSingleUpload(fieldName = 'image', folder = 'temp') {
     return multer({
       storage: this.getMulterStorage(folder),
@@ -81,9 +63,6 @@ class UploadService {
     }).single(fieldName);
   }
 
-  /**
-   * Get multer middleware for multiple files upload
-   */
   getMultipleUpload(fieldName = 'images', maxCount = 5, folder = 'temp') {
     return multer({
       storage: this.getMulterStorage(folder),
@@ -94,11 +73,6 @@ class UploadService {
     }).array(fieldName, maxCount);
   }
 
-  /**
-   * Process uploaded image
-   * @param {string} filePath - Path to uploaded file
-   * @param {object} options - Processing options
-   */
   async processImage(filePath, options = {}) {
     try {
       const { width = null, height = null, quality = 80, format = 'jpeg', fit = 'cover' } = options;
@@ -107,12 +81,10 @@ class UploadService {
 
       let sharpInstance = sharp(filePath);
 
-      // Resize if dimensions provided
       if (width || height) {
         sharpInstance = sharpInstance.resize(width, height, { fit });
       }
 
-      // Convert format and compress
       if (format === 'jpeg') {
         sharpInstance = sharpInstance.jpeg({ quality });
       } else if (format === 'png') {
@@ -123,7 +95,6 @@ class UploadService {
 
       await sharpInstance.toFile(processedPath);
 
-      // Delete original file
       fs.unlinkSync(filePath);
 
       return {
@@ -139,15 +110,10 @@ class UploadService {
     }
   }
 
-  /**
-   * Upload avatar
-   */
   async uploadAvatar(file, userId) {
     try {
-      // Move to avatars folder
       const newPath = path.join(this.uploadDir, 'avatars', `user-${userId}-${Date.now()}.jpeg`);
 
-      // Process: resize to 200x200
       const result = await this.processImage(file.path, {
         width: 200,
         height: 200,
@@ -160,10 +126,8 @@ class UploadService {
         throw new Error(result.error);
       }
 
-      // Move processed file
       fs.renameSync(result.filePath, newPath);
 
-      // Generate URL
       const url = `/uploads/avatars/${path.basename(newPath)}`;
 
       return {
@@ -173,7 +137,6 @@ class UploadService {
         path: newPath,
       };
     } catch (error) {
-      // Cleanup on error
       if (fs.existsSync(file.path)) {
         fs.unlinkSync(file.path);
       }
@@ -181,9 +144,6 @@ class UploadService {
     }
   }
 
-  /**
-   * Upload General File
-   */
   async uploadGeneralFile(file) {
     try {
       const generalDir = path.join(this.uploadDir, 'general');
@@ -192,7 +152,6 @@ class UploadService {
       }
       const newPath = path.join(generalDir, `file-${Date.now()}.jpeg`);
 
-      // General images: resize to reasonable max width, keep ratio
       const result = await this.processImage(file.path, {
         width: 1200,
         height: 1200,
@@ -217,12 +176,8 @@ class UploadService {
     }
   }
 
-  /**
-   * Delete file
-   */
   async deleteFile(url) {
     try {
-      // Extract path from URL
       const filename = url.split('/').pop();
       const folder = url.split('/').slice(-2, -1)[0];
       const filePath = path.join(this.uploadDir, folder, filename);
@@ -247,9 +202,6 @@ class UploadService {
     }
   }
 
-  /**
-   * Get file info
-   */
   async getFileInfo(url) {
     try {
       const filename = url.split('/').pop();
@@ -283,13 +235,10 @@ class UploadService {
     }
   }
 
-  /**
-   * Cleanup old files (older than X days)
-   */
   async cleanupOldFiles(days = 30) {
     const folders = ['avatars', 'general', 'temp'];
     const now = Date.now();
-    const maxAge = days * 24 * 60 * 60 * 1000; // Convert to milliseconds
+    const maxAge = days * 24 * 60 * 60 * 1000;
     let deletedCount = 0;
 
     for (const folder of folders) {
@@ -317,9 +266,6 @@ class UploadService {
     };
   }
 
-  /**
-   * Get storage stats
-   */
   async getStorageStats() {
     const folders = ['avatars', 'general', 'temp'];
     const stats = {
@@ -359,9 +305,6 @@ class UploadService {
     };
   }
 
-  /**
-   * Format bytes to human readable
-   */
   formatBytes(bytes, decimals = 2) {
     if (bytes === 0) return '0 Bytes';
 
@@ -375,4 +318,4 @@ class UploadService {
   }
 }
 
-module.exports = new UploadService();
+export default new UploadService();
