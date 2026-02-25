@@ -8,7 +8,9 @@
     "dev": "nodemon server.js",
     "query": "node tools/run-query.js",
     "fix-sequences": "node tools/fix-sequences.js",
-    "test-ai": "node tools/test-ai.js"
+    "test-ai": "node tools/test-ai.js",
+    "format": "prettier --write .",
+    "prepare": "husky"
   },
   "keywords": [
     "base",
@@ -40,6 +42,14 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.1",
+    "nodemon": "^3.0.1",
+    "prettier": "^3.5.3"
+  },
+  "lint-staged": {
+    "*.{js,json,md}": [
+      "prettier --write"
+    ]
   }
 }
