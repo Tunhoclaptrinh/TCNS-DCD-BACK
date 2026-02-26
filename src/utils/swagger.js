@@ -374,30 +374,9 @@ function buildOperation({ method, routePath, basePath, jsdoc, isProtected, isAdm
   return operation;
 }
 
-// ==================== Schema Converter ====================
-
-function convertToOpenApiSchema(schema) {
-  const properties = {};
-  const required = [];
-
-  for (const [field, rule] of Object.entries(schema)) {
-    properties[field] = ruleToProperty(rule);
-    if (rule.required) required.push(field);
-  }
-
-  const result = { type: 'object', properties };
-  if (required.length > 0) result.required = required;
-  return result;
-}
-
 // ==================== Spec Builder ====================
 
 function buildSwaggerSpec() {
-  const componentSchemas = {};
-  for (const [entity, schema] of Object.entries(schemas)) {
-    componentSchemas[capitalize(entity)] = convertToOpenApiSchema(schema);
-  }
-
   const paths = scanRoutes();
 
   const tagSet = new Set();
@@ -412,13 +391,12 @@ function buildSwaggerSpec() {
     info: {
       title: 'Base Backend API',
       version: '1.0.0',
-      description: 'API Documentation — Tự sinh từ routes, controllers, schemas',
+      description: 'API Documentation',
     },
-    servers: [{ url: '/api', description: 'API Server' }],
+    servers: [{ description: 'API Server' }],
     tags: Array.from(tagSet).map((name) => ({ name })),
     paths,
     components: {
-      schemas: componentSchemas,
       securitySchemes: {
         bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
       },
@@ -444,7 +422,6 @@ function setupSwagger(app) {
 
   console.log('📚 Swagger Auto-Generator initialized');
   console.log(`   - Scanned ${Object.keys(spec.paths).length} endpoints`);
-  console.log(`   - Loaded ${Object.keys(spec.components.schemas).length} schemas`);
   console.log(`   - Tags: ${spec.tags.map((t) => t.name).join(', ')}`);
 }
 
