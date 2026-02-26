@@ -38,9 +38,7 @@ class NotificationService extends BaseService {
       };
     }
 
-    const updated = await db.update('notifications', notificationId, {
-      is_read: true,
-    });
+    const updated = await db.update('notifications', notificationId, { is_read: true });
 
     return {
       success: true,
@@ -49,32 +47,26 @@ class NotificationService extends BaseService {
   }
 
   async markAllAsRead(userId) {
-    const notifications = await db.findAll('notifications');
-    const userNotifications = notifications.filter((n) => n.user_id === userId && !n.is_read);
+    const unreadNotifications = await db.findMany('notifications', { user_id: userId, is_read: false });
 
-    for (const notif of userNotifications) {
-      await db.update('notifications', notif.id, { is_read: true });
-    }
+    await Promise.all(unreadNotifications.map((n) => db.update('notifications', n.id, { is_read: true })));
 
     return {
       success: true,
       message: 'All notifications marked as read',
-      count: userNotifications.length,
+      count: unreadNotifications.length,
     };
   }
 
   async deleteAll(userId) {
-    const notifications = await db.findAll('notifications');
-    const userNotificationIds = notifications.filter((n) => n.user_id === userId).map((n) => n.id);
+    const userNotifications = await db.findMany('notifications', { user_id: userId });
 
-    for (const id of userNotificationIds) {
-      await db.delete('notifications', id);
-    }
+    await Promise.all(userNotifications.map((n) => db.delete('notifications', n.id)));
 
     return {
       success: true,
       message: 'All notifications deleted',
-      count: userNotificationIds.length,
+      count: userNotifications.length,
     };
   }
 }
