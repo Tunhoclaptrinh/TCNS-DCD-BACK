@@ -347,19 +347,31 @@ let dbInstance;
 
 const dbConnection = (process.env.DB_CONNECTION || 'json').toLowerCase();
 
-if (dbConnection === 'mongodb' || dbConnection === 'mongo') {
-  if (!process.env.DATABASE_URL) {
-    console.warn('⚠️ DB_CONNECTION=mongodb but DATABASE_URL is missing. Falling back to JSON.');
-    dbInstance = new JsonAdapter();
+async function initDatabase() {
+  if (dbInstance) return dbInstance;
+
+  if (dbConnection === 'mongodb' || dbConnection === 'mongo') {
+    if (!process.env.DATABASE_URL) {
+      console.warn('⚠️ DB_CONNECTION=mongodb but DATABASE_URL is missing. Falling back to JSON.');
+      dbInstance = new JsonAdapter();
+    } else {
+      const { default: MongoConnect } = await import('@config/mongo-connect');
+      const adapter = new MongoConnect();
+      await adapter.initConnection();
+      await adapter.loadSchemasAsModels();
+      dbInstance = adapter;
+    }
   } else {
-    const { default: MongoConnect } = await import('@config/mongo-connect');
-    const adapter = new MongoConnect();
-    await adapter.initConnection();
-    await adapter.loadSchemasAsModels();
-    dbInstance = adapter;
+    dbInstance = new JsonAdapter();
   }
-} else {
+
+  return dbInstance;
+}
+
+// Init ngay cho JSON adapter (sync), MongoDB sẽ init khi gọi initDatabase()
+if (dbConnection !== 'mongodb' && dbConnection !== 'mongo') {
   dbInstance = new JsonAdapter();
 }
 
+export { initDatabase };
 export default dbInstance;

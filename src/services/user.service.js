@@ -1,23 +1,22 @@
-import BaseService from '@utils/BaseService';
+import BaseService from '@utils/base-service';
 import db from '@config/database';
 import { sanitizeUser, hashPassword } from '@utils/helpers';
+import ApiError from '@utils/api-error';
 import userSchema from '@schemas/user.schema';
+
+function generateAvatarUrl(name) {
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
+}
 
 class UserService extends BaseService {
   constructor() {
     super('users');
   }
 
-  /**
-   * Get schema for import/export
-   */
   getSchema() {
     return userSchema;
   }
 
-  /**
-   * Transform import data - hash password
-   */
   async transformImportData(data) {
     const transformed = await super.transformImportData(data);
 
@@ -26,7 +25,7 @@ class UserService extends BaseService {
     }
 
     if (!transformed.avatar && transformed.name) {
-      transformed.avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(transformed.name)}&background=random`;
+      transformed.avatar = generateAvatarUrl(transformed.name);
     }
 
     return transformed;
@@ -38,7 +37,7 @@ class UserService extends BaseService {
     }
 
     if (!data.avatar && data.name) {
-      data.avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name)}&background=random`;
+      data.avatar = generateAvatarUrl(data.name);
     }
 
     return {
@@ -53,9 +52,7 @@ class UserService extends BaseService {
     if (data.newPassword) {
       data.password = await hashPassword(data.newPassword);
       delete data.newPassword;
-    }
-
-    if (data.password) {
+    } else if (data.password) {
       data.password = await hashPassword(data.password);
     }
 
@@ -71,99 +68,52 @@ class UserService extends BaseService {
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
 
-    const stats = {
-      total: users.length,
-      active: users.filter((u) => u.isActive).length,
-      inactive: users.filter((u) => !u.isActive).length,
-      byRole: {
-        customer: users.filter((u) => u.role === 'customer').length,
-        admin: users.filter((u) => u.role === 'admin').length,
-        researcher: users.filter((u) => u.role === 'researcher').length,
-      },
-      recentSignups: users.filter((u) => {
-        const createdAt = new Date(u.createdAt);
-        return createdAt >= weekAgo;
-      }).length,
-    };
+    const stats = { total: users.length, active: 0, inactive: 0, byRole: {}, recentSignups: 0 };
 
-    return {
-      success: true,
-      data: stats,
-    };
+    for (const user of users) {
+      if (user.isActive) stats.active++;
+      else stats.inactive++;
+
+      stats.byRole[user.role] = (stats.byRole[user.role] || 0) + 1;
+
+      if (new Date(user.createdAt) >= weekAgo) stats.recentSignups++;
+    }
+
+    return stats;
   }
 
   async getUserActivity(userId) {
     const user = await db.findById('users', userId);
+    if (!user) throw ApiError.notFound('User not found');
 
-    if (!user) {
-      return {
-        success: false,
-        message: 'User not found',
-        statusCode: 404,
-      };
-    }
-
-    const activity = {
+    return {
       user: sanitizeUser(user),
       joinedAt: user.createdAt,
       lastLogin: user.lastLogin,
-    };
-
-    return {
-      success: true,
-      data: activity,
     };
   }
 
   async toggleUserStatus(userId) {
     const user = await db.findById('users', userId);
-
-    if (!user) {
-      return {
-        success: false,
-        message: 'User not found',
-        statusCode: 404,
-      };
-    }
+    if (!user) throw ApiError.notFound('User not found');
 
     const updated = await db.update('users', userId, {
       isActive: !user.isActive,
       updatedAt: new Date().toISOString(),
     });
 
-    return {
-      success: true,
-      message: `User ${updated.isActive ? 'activated' : 'deactivated'} successfully`,
-      data: sanitizeUser(updated),
-    };
+    return sanitizeUser(updated);
   }
 
   async permanentDeleteUser(userId) {
     const user = await db.findById('users', userId);
-
-    if (!user) {
-      return {
-        success: false,
-        message: 'User not found',
-        statusCode: 404,
-      };
-    }
+    if (!user) throw ApiError.notFound('User not found');
 
     const notifications = await db.findMany('notifications', { user_id: userId });
-    for (const notif of notifications) {
-      await db.delete('notifications', notif.id);
-    }
-
+    await Promise.all(notifications.map((n) => db.delete('notifications', n.id)));
     await db.delete('users', userId);
 
-    return {
-      success: true,
-      message: 'Permanently deleted user and related data',
-      deleted: {
-        user: 1,
-        notifications: notifications.length,
-      },
-    };
+    return { user: 1, notifications: notifications.length };
   }
 }
 

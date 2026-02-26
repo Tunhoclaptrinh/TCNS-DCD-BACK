@@ -2,6 +2,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import sharp from 'sharp';
+import ApiError from '@utils/api-error';
 
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']);
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -69,41 +70,31 @@ class UploadService {
     const { width = null, height = null, quality = 80, format = 'jpeg', fit = 'cover' } = options;
     const processedPath = filePath.replace(path.extname(filePath), `-processed.${format}`);
 
-    try {
-      let instance = sharp(filePath);
+    let instance = sharp(filePath);
 
-      if (width || height) {
-        instance = instance.resize(width, height, { fit });
-      }
-
-      const applyFormat = FORMAT_MAP[format];
-      if (applyFormat) {
-        instance = applyFormat(instance, quality);
-      }
-
-      await instance.toFile(processedPath);
-      fs.unlinkSync(filePath);
-
-      return {
-        success: true,
-        filePath: processedPath,
-        filename: path.basename(processedPath),
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
+    if (width || height) {
+      instance = instance.resize(width, height, { fit });
     }
+
+    const applyFormat = FORMAT_MAP[format];
+    if (applyFormat) {
+      instance = applyFormat(instance, quality);
+    }
+
+    await instance.toFile(processedPath);
+    fs.unlinkSync(filePath);
+
+    return { filePath: processedPath, filename: path.basename(processedPath) };
   }
 
   async uploadAndProcess(file, folder, filename, imageOptions) {
     try {
       const result = await this.processImage(file.path, imageOptions);
-      if (!result.success) throw new Error(result.error);
 
       const newPath = path.join(this.uploadDir, folder, filename);
       fs.renameSync(result.filePath, newPath);
 
       return {
-        success: true,
         url: `/uploads/${folder}/${path.basename(newPath)}`,
         filename: path.basename(newPath),
         path: newPath,
@@ -135,42 +126,31 @@ class UploadService {
   }
 
   async deleteFile(url) {
-    try {
-      const filePath = resolveFromUrl(this.uploadDir, url);
+    const filePath = resolveFromUrl(this.uploadDir, url);
 
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-        return { success: true, message: 'File deleted successfully' };
-      }
-
-      return { success: false, message: 'File not found' };
-    } catch (error) {
-      return { success: false, error: error.message };
+    if (!fs.existsSync(filePath)) {
+      throw ApiError.notFound('File not found');
     }
+
+    fs.unlinkSync(filePath);
+    return { message: 'File deleted successfully' };
   }
 
   async getFileInfo(url) {
-    try {
-      const filePath = resolveFromUrl(this.uploadDir, url);
+    const filePath = resolveFromUrl(this.uploadDir, url);
 
-      if (!fs.existsSync(filePath)) {
-        return { success: false, message: 'File not found' };
-      }
-
-      const stats = fs.statSync(filePath);
-      return {
-        success: true,
-        data: {
-          filename: path.basename(filePath),
-          size: stats.size,
-          created: stats.birthtime,
-          modified: stats.mtime,
-          path: filePath,
-        },
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
+    if (!fs.existsSync(filePath)) {
+      throw ApiError.notFound('File not found');
     }
+
+    const stats = fs.statSync(filePath);
+    return {
+      filename: path.basename(filePath),
+      size: stats.size,
+      created: stats.birthtime,
+      modified: stats.mtime,
+      path: filePath,
+    };
   }
 
   getFolderStats(folderPath) {
@@ -203,11 +183,7 @@ class UploadService {
       }
     }
 
-    return {
-      success: true,
-      message: `Deleted ${deletedCount} old files`,
-      deletedCount,
-    };
+    return { message: `Deleted ${deletedCount} old files`, deletedCount };
   }
 
   async getStorageStats() {
@@ -227,7 +203,7 @@ class UploadService {
     }
 
     stats.totalSizeFormatted = this.formatBytes(stats.totalSize);
-    return { success: true, data: stats };
+    return stats;
   }
 
   formatBytes(bytes, decimals = 2) {

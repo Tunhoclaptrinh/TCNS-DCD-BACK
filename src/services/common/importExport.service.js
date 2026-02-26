@@ -1,6 +1,7 @@
 import XLSX from 'xlsx';
 import { Parser } from 'json2csv';
 import userService from '@services/user.service';
+import ApiError from '@utils/api-error';
 
 const SERVICE_MAP = {
   users: userService,
@@ -16,7 +17,7 @@ class ImportExportService {
 
   getServiceForEntity(entityName) {
     const service = SERVICE_MAP[entityName];
-    if (!service) throw new Error(`Service not found for entity: ${entityName}`);
+    if (!service) throw ApiError.notFound(`Service not found for entity: ${entityName}`);
     return service;
   }
 
@@ -24,7 +25,7 @@ class ImportExportService {
     const extension = filename.split('.').pop().toLowerCase();
 
     if (!['csv', 'xlsx', 'xls'].includes(extension)) {
-      throw new Error('Unsupported file format. Use .xlsx, .xls, or .csv');
+      throw ApiError.badRequest('Unsupported file format. Use .xlsx, .xls, or .csv');
     }
 
     const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
@@ -60,7 +61,7 @@ class ImportExportService {
     rawData = this.cleanImportData(rawData);
 
     if (!rawData || rawData.length === 0) {
-      return { success: false, message: 'File is empty or invalid' };
+      throw ApiError.badRequest('File is empty or invalid');
     }
 
     const schema = service.getSchema();
@@ -70,10 +71,7 @@ class ImportExportService {
       .filter((h) => !fileHeaders.includes(h));
 
     if (missingHeaders.length > 0) {
-      return {
-        success: false,
-        message: `Missing required columns: ${missingHeaders.join(', ')}`,
-      };
+      throw ApiError.badRequest(`Missing required columns: ${missingHeaders.join(', ')}`);
     }
 
     return await service.importData(rawData);

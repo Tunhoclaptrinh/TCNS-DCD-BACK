@@ -1,6 +1,7 @@
 import { sanitizeUser } from '@utils/helpers';
 import userService from '@services/user.service';
-import BaseController from '@utils/BaseController';
+import BaseController from '@utils/base-controller';
+import ApiError from '@utils/api-error';
 
 class UserController extends BaseController {
   constructor() {
@@ -10,15 +11,8 @@ class UserController extends BaseController {
   getAll = async (req, res, next) => {
     try {
       const result = await this.service.findAll(req.parsedQuery);
-
-      const sanitizedData = result.data.map((user) => sanitizeUser(user));
-
-      res.json({
-        success: true,
-        count: sanitizedData.length,
-        data: sanitizedData,
-        pagination: result.pagination,
-      });
+      result.data = result.data.map((user) => sanitizeUser(user));
+      res.json(result);
     } catch (error) {
       next(error);
     }
@@ -26,27 +20,13 @@ class UserController extends BaseController {
 
   getById = async (req, res, next) => {
     try {
-      const result = await this.service.findById(req.params.id);
+      const data = await this.service.findById(req.params.id);
 
-      if (!result.success) {
-        return res.status(result.statusCode || 404).json({
-          success: false,
-          message: result.message,
-        });
-      }
-
-      // Check authorization
       if (req.user.id !== parseInt(req.params.id) && req.user.role !== 'admin') {
-        return res.status(403).json({
-          success: false,
-          message: 'Not authorized to view this profile',
-        });
+        throw ApiError.forbidden('Not authorized to view this profile');
       }
 
-      res.json({
-        success: true,
-        data: sanitizeUser(result.data),
-      });
+      res.json(sanitizeUser(data));
     } catch (error) {
       next(error);
     }
@@ -54,21 +34,8 @@ class UserController extends BaseController {
 
   create = async (req, res, next) => {
     try {
-      const result = await this.service.create(req.body);
-
-      if (!result.success) {
-        return res.status(result.statusCode || 400).json({
-          success: false,
-          message: result.message,
-          errors: result.errors,
-        });
-      }
-
-      res.status(201).json({
-        success: true,
-        message: 'User created successfully',
-        data: sanitizeUser(result.data),
-      });
+      const data = await this.service.create(req.body);
+      res.status(201).json(sanitizeUser(data));
     } catch (error) {
       next(error);
     }
@@ -76,21 +43,8 @@ class UserController extends BaseController {
 
   update = async (req, res, next) => {
     try {
-      const result = await this.service.update(req.params.id, req.body);
-
-      if (!result.success) {
-        return res.status(result.statusCode || 400).json({
-          success: false,
-          message: result.message,
-          errors: result.errors,
-        });
-      }
-
-      res.json({
-        success: true,
-        message: 'User updated successfully',
-        data: sanitizeUser(result.data),
-      });
+      const data = await this.service.update(req.params.id, req.body);
+      res.json(sanitizeUser(data));
     } catch (error) {
       next(error);
     }
@@ -98,27 +52,12 @@ class UserController extends BaseController {
 
   delete = async (req, res, next) => {
     try {
-      // Prevent deleting self
       if (parseInt(req.params.id) === req.user.id) {
-        return res.status(400).json({
-          success: false,
-          message: 'Cannot delete your own account',
-        });
+        throw ApiError.badRequest('Cannot delete your own account');
       }
 
       const result = await this.service.delete(req.params.id);
-
-      if (!result.success) {
-        return res.status(result.statusCode || 400).json({
-          success: false,
-          message: result.message,
-        });
-      }
-
-      res.json({
-        success: true,
-        message: result.message,
-      });
+      res.json(result);
     } catch (error) {
       next(error);
     }
@@ -126,12 +65,8 @@ class UserController extends BaseController {
 
   getUserStats = async (req, res, next) => {
     try {
-      const result = await this.service.getUserStats();
-
-      res.json({
-        success: true,
-        data: result.data,
-      });
+      const data = await this.service.getUserStats();
+      res.json(data);
     } catch (error) {
       next(error);
     }
@@ -139,27 +74,12 @@ class UserController extends BaseController {
 
   getUserActivity = async (req, res, next) => {
     try {
-      // Check authorization
       if (req.user.id !== parseInt(req.params.id) && req.user.role !== 'admin') {
-        return res.status(403).json({
-          success: false,
-          message: 'Not authorized',
-        });
+        throw ApiError.forbidden('Not authorized');
       }
 
-      const result = await this.service.getUserActivity(req.params.id);
-
-      if (!result.success) {
-        return res.status(result.statusCode || 404).json({
-          success: false,
-          message: result.message,
-        });
-      }
-
-      res.json({
-        success: true,
-        data: result.data,
-      });
+      const data = await this.service.getUserActivity(req.params.id);
+      res.json(data);
     } catch (error) {
       next(error);
     }
@@ -167,24 +87,12 @@ class UserController extends BaseController {
 
   toggleUserStatus = async (req, res, next) => {
     try {
-      // Prevent admin from deactivating themselves
       if (parseInt(req.params.id) === req.user.id) {
-        return res.status(400).json({
-          success: false,
-          message: 'Không thể vô hiệu hóa tài khoản của chính mình',
-        });
+        throw ApiError.badRequest('Không thể vô hiệu hóa tài khoản của chính mình');
       }
 
-      const result = await this.service.toggleUserStatus(req.params.id);
-
-      if (!result.success) {
-        return res.status(result.statusCode || 404).json({
-          success: false,
-          message: result.message,
-        });
-      }
-
-      res.json(result);
+      const data = await this.service.toggleUserStatus(req.params.id);
+      res.json(data);
     } catch (error) {
       next(error);
     }
@@ -192,24 +100,12 @@ class UserController extends BaseController {
 
   permanentDeleteUser = async (req, res, next) => {
     try {
-      // Prevent admin from deleting themselves
       if (parseInt(req.params.id) === req.user.id) {
-        return res.status(400).json({
-          success: false,
-          message: 'Cannot delete your own account',
-        });
+        throw ApiError.badRequest('Cannot delete your own account');
       }
 
-      const result = await this.service.permanentDeleteUser(req.params.id);
-
-      if (!result.success) {
-        return res.status(result.statusCode || 404).json({
-          success: false,
-          message: result.message,
-        });
-      }
-
-      res.json(result);
+      const data = await this.service.permanentDeleteUser(req.params.id);
+      res.json(data);
     } catch (error) {
       next(error);
     }
@@ -226,26 +122,11 @@ class UserController extends BaseController {
       if (avatar) updateData.avatar = avatar;
 
       if (Object.keys(updateData).length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'No fields to update',
-        });
+        throw ApiError.badRequest('No fields to update');
       }
 
-      const result = await this.service.update(req.user.id, updateData);
-
-      if (!result.success) {
-        return res.status(result.statusCode || 400).json({
-          success: false,
-          message: result.message,
-        });
-      }
-
-      res.json({
-        success: true,
-        message: 'Profile updated successfully',
-        data: sanitizeUser(result.data),
-      });
+      const data = await this.service.update(req.user.id, updateData);
+      res.json(sanitizeUser(data));
     } catch (error) {
       next(error);
     }

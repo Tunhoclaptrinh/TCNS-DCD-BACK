@@ -1,5 +1,6 @@
-import BaseService from '@utils/BaseService';
+import BaseService from '@utils/base-service';
 import db from '@config/database';
+import ApiError from '@utils/api-error';
 
 class NotificationService extends BaseService {
   constructor() {
@@ -20,7 +21,6 @@ class NotificationService extends BaseService {
     const unreadCount = result.data.filter((n) => !n.is_read).length;
 
     return {
-      success: true,
       data: result.data,
       unreadCount,
       pagination: result.pagination,
@@ -31,19 +31,10 @@ class NotificationService extends BaseService {
     const notification = await db.findById('notifications', notificationId);
 
     if (!notification || notification.user_id !== userId) {
-      return {
-        success: false,
-        message: 'Notification not found',
-        statusCode: 404,
-      };
+      throw ApiError.notFound('Notification not found');
     }
 
-    const updated = await db.update('notifications', notificationId, { is_read: true });
-
-    return {
-      success: true,
-      data: updated,
-    };
+    return await db.update('notifications', notificationId, { is_read: true });
   }
 
   async markAllAsRead(userId) {
@@ -51,11 +42,7 @@ class NotificationService extends BaseService {
 
     await Promise.all(unreadNotifications.map((n) => db.update('notifications', n.id, { is_read: true })));
 
-    return {
-      success: true,
-      message: 'All notifications marked as read',
-      count: unreadNotifications.length,
-    };
+    return { message: 'All notifications marked as read', count: unreadNotifications.length };
   }
 
   async deleteAll(userId) {
@@ -63,11 +50,7 @@ class NotificationService extends BaseService {
 
     await Promise.all(userNotifications.map((n) => db.delete('notifications', n.id)));
 
-    return {
-      success: true,
-      message: 'All notifications deleted',
-      count: userNotifications.length,
-    };
+    return { message: 'All notifications deleted', count: userNotifications.length };
   }
 }
 

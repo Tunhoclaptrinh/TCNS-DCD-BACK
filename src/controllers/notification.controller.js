@@ -1,5 +1,5 @@
-import BaseController from '@utils/BaseController';
-import notificationService from '@services/notification.service';
+import BaseController from '@utils/base-controller';
+import notificationService from '@services/common/notification.service';
 
 class NotificationController extends BaseController {
   constructor() {
@@ -8,14 +8,8 @@ class NotificationController extends BaseController {
 
   getNotifications = async (req, res, next) => {
     try {
-      const result = await this.service.getNotifications(req.user.id, req.parsedQuery);
-
-      res.json({
-        success: true,
-        data: result.data,
-        unreadCount: result.unreadCount,
-        pagination: result.pagination,
-      });
+      const data = await this.service.getNotifications(req.user.id, req.parsedQuery);
+      res.json(data);
     } catch (error) {
       next(error);
     }
@@ -23,13 +17,8 @@ class NotificationController extends BaseController {
 
   markAsRead = async (req, res, next) => {
     try {
-      const result = await this.service.markAsRead(req.params.id, req.user.id);
-
-      if (!result.success) {
-        return res.status(result.statusCode || 400).json(result);
-      }
-
-      res.json(result);
+      const data = await this.service.markAsRead(req.params.id, req.user.id);
+      res.json(data);
     } catch (error) {
       next(error);
     }
@@ -37,8 +26,8 @@ class NotificationController extends BaseController {
 
   markAllAsRead = async (req, res, next) => {
     try {
-      const result = await this.service.markAllAsRead(req.user.id);
-      res.json(result);
+      const data = await this.service.markAllAsRead(req.user.id);
+      res.json(data);
     } catch (error) {
       next(error);
     }
@@ -46,11 +35,8 @@ class NotificationController extends BaseController {
 
   deleteNotification = async (req, res, next) => {
     try {
-      const result = await this.service.delete(req.params.id);
-      if (!result) {
-        return res.status(404).json({ success: false, message: 'Notification not found' });
-      }
-      res.json({ success: true, message: 'Notification deleted' });
+      const data = await this.service.delete(req.params.id);
+      res.json(data);
     } catch (error) {
       next(error);
     }
@@ -58,8 +44,8 @@ class NotificationController extends BaseController {
 
   clearAll = async (req, res, next) => {
     try {
-      const result = await this.service.deleteAll(req.user.id);
-      res.json(result);
+      const data = await this.service.deleteAll(req.user.id);
+      res.json(data);
     } catch (error) {
       next(error);
     }
