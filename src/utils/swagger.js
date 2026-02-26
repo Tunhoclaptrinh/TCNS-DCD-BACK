@@ -420,7 +420,7 @@ function setupSwagger(app) {
     }),
   );
 
-  console.log('📚 Swagger Auto-Generator initialized');
+  console.log('📚 Swagger Generator initialized');
   console.log(`   - Scanned ${Object.keys(spec.paths).length} endpoints`);
   console.log(`   - Tags: ${spec.tags.map((t) => t.name).join(', ')}`);
 }
