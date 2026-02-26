@@ -125,13 +125,15 @@ async function bootstrap() {
 
   app.listen(PORT, () => {
     const ip = getNetworkIp();
+    const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
     console.log(`
 ╔══════════════════════════════════════════╗
 ║  🚀 Server Started                      ║
 ╠══════════════════════════════════════════╣
 ║  📍 Local:   http://localhost:${PORT}        ║
 ║  📡 Network: http://${ip}:${PORT}     ║
-║  📡 ApiDocs: http://localhost:${PORT}/api-docs ║
+║  � Base:    ${baseUrl.padEnd(28)}║
+║  �📡 ApiDocs: ${baseUrl}/api-docs        ║
 ║  🌍 Env:     ${(process.env.NODE_ENV || 'development').padEnd(26)}║
 ╚══════════════════════════════════════════╝`);
 

@@ -393,7 +393,10 @@ function buildSwaggerSpec() {
       version: '1.0.0',
       description: 'API Documentation',
     },
-    servers: [{ description: 'API Server' }],
+    servers: [
+      ...(process.env.BASE_URL ? [{ url: process.env.BASE_URL, description: 'Production Server' }] : []),
+      { url: `http://localhost:${process.env.PORT || 3000}`, description: 'Local Server' },
+    ],
     tags: Array.from(tagSet).map((name) => ({ name })),
     paths,
     components: {
