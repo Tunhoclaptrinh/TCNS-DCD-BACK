@@ -1,17 +1,17 @@
 import jwt from 'jsonwebtoken';
 import db from '@config/database';
 
-/**
- * Protect routes - Require authentication
- */
+function extractToken(req) {
+  const auth = req.headers.authorization;
+  if (auth && auth.startsWith('Bearer')) {
+    return auth.split(' ')[1];
+  }
+  return null;
+}
+
 export const protect = async (req, res, next) => {
   try {
-    let token;
-
-    // Get token from header
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-      token = req.headers.authorization.split(' ')[1];
-    }
+    const token = extractToken(req);
 
     if (!token) {
       return res.status(401).json({
@@ -20,58 +20,50 @@ export const protect = async (req, res, next) => {
       });
     }
 
+    let decoded;
     try {
-      // Verify token
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-      // Get user from database
-      const user = await db.findById('users', decoded.id);
-
-      if (!user) {
-        return res.status(401).json({
-          success: false,
-          message: 'User not found',
-        });
-      }
-
-      if (!user.isActive) {
-        return res.status(401).json({
-          success: false,
-          message: 'User account is inactive',
-        });
-      }
-
-      // Token version check: Invalidate old tokens
-      if (decoded.loginTime && user.lastLogin) {
-        const tokenTime = new Date(decoded.loginTime).getTime();
-        const lastLoginTime = new Date(user.lastLogin).getTime();
-
-        if (tokenTime < lastLoginTime) {
-          return res.status(401).json({
-            success: false,
-            message: 'Token has been invalidated. Please login again.',
-          });
-        }
-      }
-
-      // Add user to request
-      req.user = user;
-      next();
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
     } catch (err) {
       return res.status(401).json({
         success: false,
         message: 'Token is invalid or expired',
       });
     }
+
+    const user = await db.findById('users', decoded.id);
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    if (!user.isActive) {
+      return res.status(401).json({
+        success: false,
+        message: 'User account is inactive',
+      });
+    }
+
+    // Invalidate old tokens
+    if (decoded.loginTime && user.lastLogin) {
+      const isTokenOutdated = new Date(decoded.loginTime).getTime() < new Date(user.lastLogin).getTime();
+      if (isTokenOutdated) {
+        return res.status(401).json({
+          success: false,
+          message: 'Token has been invalidated. Please login again.',
+        });
+      }
+    }
+
+    req.user = user;
+    next();
   } catch (error) {
     next(error);
   }
 };
 
-/**
- * Authorize roles - Check if user has required role
- * Usage: authorize('admin', 'researcher')
- */
 export const authorize = (...roles) => {
   return (req, res, next) => {
     if (!roles.includes(req.user.role)) {
@@ -84,17 +76,4 @@ export const authorize = (...roles) => {
   };
 };
 
-/**
- * Alias for authorize (for compatibility)
- */
-export const authorizeRoles = (...allowedRoles) => {
-  return (req, res, next) => {
-    if (!allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied',
-      });
-    }
-    next();
-  };
-};
+export const authorizeRoles = authorize;

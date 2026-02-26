@@ -1,158 +1,127 @@
-/**
- * Validation Middleware - Auto-generated from Schemas
- * Provides flexible validation methods
- */
-
 import schemas from '@schemas';
 
-/**
- * Auto-validate request body theo schema
- * Usage: router.post('/', validateSchema('product'), controller.create)
- */
+const BOOL_VALUES = new Set(['true', 'false', '1', '0', 'yes', 'no']);
+const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+function isEmpty(value) {
+  return value === undefined || value === null || value === '';
+}
+
+function validateType(field, value, rule) {
+  switch (rule.type) {
+    case 'string':
+      if (typeof value !== 'string') return `${field} must be a string`;
+      if (rule.minLength && value.length < rule.minLength)
+        return `${field} must be at least ${rule.minLength} characters`;
+      if (rule.maxLength && value.length > rule.maxLength)
+        return `${field} must be at most ${rule.maxLength} characters`;
+      break;
+    case 'number': {
+      if (isNaN(Number(value))) return `${field} must be a number`;
+      const num = Number(value);
+      if (rule.min !== undefined && num < rule.min) return `${field} must be >= ${rule.min}`;
+      if (rule.max !== undefined && num > rule.max) return `${field} must be <= ${rule.max}`;
+      break;
+    }
+    case 'boolean':
+      if (typeof value !== 'boolean' && !BOOL_VALUES.has(String(value).toLowerCase())) {
+        return `${field} must be true/false`;
+      }
+      break;
+    case 'email':
+      if (!EMAIL_REGEX.test(value)) return `${field} must be a valid email`;
+      break;
+    case 'date':
+      if (isNaN(new Date(value).getTime())) return `${field} must be a valid date`;
+      break;
+    case 'enum':
+      if (!rule.enum.includes(value)) return `${field} must be one of: ${rule.enum.join(', ')}`;
+      break;
+  }
+  return null;
+}
+
+function collectErrors(schema, body, fieldFilter) {
+  const errors = {};
+
+  for (const [field, rule] of Object.entries(schema)) {
+    if (fieldFilter && !fieldFilter.includes(field)) continue;
+
+    const value = body[field];
+
+    if (rule.required && isEmpty(value)) {
+      errors[field] = `${field} is required`;
+      continue;
+    }
+
+    if (!rule.required && isEmpty(value)) continue;
+
+    const error = validateType(field, value, rule);
+    if (error) errors[field] = error;
+  }
+
+  return errors;
+}
+
+function respondErrors(res, errors) {
+  if (Object.keys(errors).length === 0) return false;
+
+  res.status(400).json({
+    success: false,
+    message: 'Validation failed',
+    errors: Object.entries(errors).map(([field, message]) => ({ field, message })),
+  });
+  return true;
+}
+
 export const validateSchema = (entity) => {
   return (req, res, next) => {
     const schema = schemas[entity];
     if (!schema) return next();
 
-    const errors = {};
-
-    for (const [field, rule] of Object.entries(schema)) {
-      const value = req.body[field];
-
-      // Required check
-      if (rule.required && (value === undefined || value === null || value === '')) {
-        errors[field] = `${field} is required`;
-        continue;
-      }
-
-      // Skip if optional and empty
-      if (!rule.required && (value === undefined || value === null)) {
-        continue;
-      }
-
-      // Type validation
-      let typeError = null;
-      switch (rule.type) {
-        case 'string':
-          if (typeof value !== 'string') typeError = `${field} must be a string`;
-          if (rule.minLength && value.length < rule.minLength)
-            typeError = `${field} must be at least ${rule.minLength} characters`;
-          if (rule.maxLength && value.length > rule.maxLength)
-            typeError = `${field} must be at most ${rule.maxLength} characters`;
-          break;
-        case 'number':
-          if (isNaN(Number(value))) typeError = `${field} must be a number`;
-          else {
-            const num = Number(value);
-            if (rule.min !== undefined && num < rule.min) typeError = `${field} must be >= ${rule.min}`;
-            if (rule.max !== undefined && num > rule.max) typeError = `${field} must be <= ${rule.max}`;
-          }
-          break;
-        case 'boolean': {
-          const boolStr = String(value).toLowerCase();
-          if (!['true', 'false', '1', '0', 'yes', 'no'].includes(boolStr) && typeof value !== 'boolean') {
-            typeError = `${field} must be true/false`;
-          }
-          break;
-        }
-        case 'email': {
-          const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-          if (!emailRegex.test(value)) typeError = `${field} must be a valid email`;
-          break;
-        }
-        case 'date':
-          if (isNaN(new Date(value).getTime())) typeError = `${field} must be a valid date`;
-          break;
-        case 'enum':
-          if (!rule.enum.includes(value)) typeError = `${field} must be one of: ${rule.enum.join(', ')}`;
-          break;
-      }
-
-      if (typeError) {
-        errors[field] = typeError;
-      }
-    }
-
-    if (Object.keys(errors).length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: Object.entries(errors).map(([field, message]) => ({
-          field,
-          message,
-        })),
-      });
-    }
+    const errors = collectErrors(schema, req.body);
+    if (respondErrors(res, errors)) return;
 
     next();
   };
 };
 
-/**
- * Validate specific fields only
- * Usage: router.put('/:id', validateFields('product', ['name', 'price']), controller.update)
- */
 export const validateFields = (entity, fields) => {
   return (req, res, next) => {
     const schema = schemas[entity];
     if (!schema) return next();
 
-    const errors = {};
-    const fieldsToValidate = Array.isArray(fields) ? fields : [fields];
-
-    for (const field of fieldsToValidate) {
-      const value = req.body[field];
-      const rule = schema[field];
-
-      if (!rule) continue;
-
-      // Required check
-      if (rule.required && (value === undefined || value === null || value === '')) {
-        errors[field] = `${field} is required`;
-        continue;
-      }
-
-      // Type validation (simplified)
-      switch (rule.type) {
-        case 'string':
-          if (typeof value !== 'string') errors[field] = `${field} must be a string`;
-          break;
-        case 'number':
-          if (isNaN(Number(value))) errors[field] = `${field} must be a number`;
-          break;
-        case 'boolean': {
-          const boolStr = String(value).toLowerCase();
-          if (!['true', 'false', '1', '0', 'yes', 'no'].includes(boolStr) && typeof value !== 'boolean') {
-            errors[field] = `${field} must be true/false`;
-          }
-          break;
-        }
-        case 'email': {
-          const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-          if (!emailRegex.test(value)) errors[field] = `${field} must be a valid email`;
-          break;
-        }
-      }
-    }
-
-    if (Object.keys(errors).length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: Object.entries(errors).map(([field, message]) => ({
-          field,
-          message,
-        })),
-      });
-    }
+    const fieldFilter = Array.isArray(fields) ? fields : [fields];
+    const errors = collectErrors(schema, req.body, fieldFilter);
+    if (respondErrors(res, errors)) return;
 
     next();
   };
 };
 
-/**
- * Get schema documentation
- */
+function buildFieldDoc(rule) {
+  const doc = {
+    type: rule.type,
+    required: rule.required || false,
+    description: rule.description || '',
+  };
+
+  const constraints = {};
+  if (rule.min !== undefined) constraints.min = rule.min;
+  if (rule.max !== undefined) constraints.max = rule.max;
+  if (rule.minLength) constraints.minLength = rule.minLength;
+  if (rule.maxLength) constraints.maxLength = rule.maxLength;
+  if (rule.enum) constraints.enum = rule.enum;
+  if (rule.unique) constraints.unique = true;
+  if (rule.foreignKey) constraints.foreignKey = rule.foreignKey;
+
+  if (Object.keys(constraints).length > 0) {
+    doc.constraints = constraints;
+  }
+
+  return doc;
+}
+
 export const getSchemaDoc = (req, res) => {
   const { entity } = req.params;
   const schema = schemas[entity];
@@ -164,55 +133,30 @@ export const getSchemaDoc = (req, res) => {
     });
   }
 
-  const doc = {
-    entity,
-    fields: {},
-  };
-
+  const fields = {};
   for (const [field, rule] of Object.entries(schema)) {
-    doc.fields[field] = {
-      type: rule.type,
-      required: rule.required || false,
-      description: rule.description || '',
-      constraints: {},
-    };
-
-    if (rule.min !== undefined) doc.fields[field].constraints.min = rule.min;
-    if (rule.max !== undefined) doc.fields[field].constraints.max = rule.max;
-    if (rule.minLength) doc.fields[field].constraints.minLength = rule.minLength;
-    if (rule.maxLength) doc.fields[field].constraints.maxLength = rule.maxLength;
-    if (rule.enum) doc.fields[field].constraints.enum = rule.enum;
-    if (rule.unique) doc.fields[field].constraints.unique = true;
-    if (rule.foreignKey) doc.fields[field].constraints.foreignKey = rule.foreignKey;
+    fields[field] = buildFieldDoc(rule);
   }
 
   res.json({
     success: true,
-    data: doc,
+    data: { entity, fields },
   });
 };
 
-/**
- * Get all schemas
- */
 export const getAllSchemas = (req, res) => {
   const allSchemas = {};
 
   for (const [entity, schema] of Object.entries(schemas)) {
-    const doc = {
-      entity,
-      fields: {},
-    };
-
+    const fields = {};
     for (const [field, rule] of Object.entries(schema)) {
-      doc.fields[field] = {
+      fields[field] = {
         type: rule.type,
         required: rule.required || false,
         description: rule.description || '',
       };
     }
-
-    allSchemas[entity] = doc;
+    allSchemas[entity] = { entity, fields };
   }
 
   res.json({

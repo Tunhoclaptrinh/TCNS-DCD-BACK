@@ -1,30 +1,19 @@
-/**
- * PERMISSIONS - Định nghĩa các quyền cơ bản theo vai trò
- * Mỗi quyền là một chuỗi 'resource:action'
- */
 const PERMISSIONS = {
-  admin: ['*'], // Toàn quyền
-
+  admin: ['*'],
   researcher: ['users:list', 'users:read', 'dashboard:view'],
-
   customer: ['profile:read', 'profile:update', 'dashboard:view'],
 };
 
-/**
- * Check if a role has a specific permission
- */
-const hasPermission = (role, permission) => {
-  const rolePermissions = PERMISSIONS[role] || [];
+const ADMIN_WILDCARD = '*';
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 
-  // Admin bypass
-  if (rolePermissions.includes('*')) return true;
-
+function hasPermission(role, permission) {
+  const rolePermissions = PERMISSIONS[role];
+  if (!rolePermissions) return false;
+  if (rolePermissions.includes(ADMIN_WILDCARD)) return true;
   return rolePermissions.includes(permission);
-};
+}
 
-/**
- * Middleware: Check permission
- */
 export const checkPermission = (permission) => {
   return (req, res, next) => {
     const userRole = req.user?.role;
@@ -47,33 +36,24 @@ export const checkPermission = (permission) => {
   };
 };
 
-/**
- * Helper to get all permissions for a role
- */
 export const getRolePermissions = (role) => {
   return PERMISSIONS[role] || [];
 };
 
-/**
- * Middleware: Rate limiting
- */
-const rateLimitStore = {};
+const rateLimitStore = new Map();
+
 export const roleBasedRateLimit = (limits) => {
   return (req, res, next) => {
     const userRole = req.user?.role || 'guest';
     const userId = req.user?.id || req.ip;
     const key = `${userRole}:${userId}`;
     const now = Date.now();
-    const windowMs = 60 * 60 * 1000;
 
-    if (!rateLimitStore[key]) {
-      rateLimitStore[key] = { count: 0, resetTime: now + windowMs };
-    }
+    let record = rateLimitStore.get(key);
 
-    const record = rateLimitStore[key];
-    if (now > record.resetTime) {
-      record.count = 0;
-      record.resetTime = now + windowMs;
+    if (!record || now > record.resetTime) {
+      record = { count: 0, resetTime: now + RATE_LIMIT_WINDOW_MS };
+      rateLimitStore.set(key, record);
     }
 
     const limit = limits[userRole] || limits.guest || 100;
@@ -94,6 +74,6 @@ export const getUserPermissions = (req, res) => {
   const userRole = req.user?.role;
   res.json({
     success: true,
-    data: { role: userRole, permissions: PERMISSIONS[userRole] || {} },
+    data: { role: userRole, permissions: PERMISSIONS[userRole] || [] },
   });
 };

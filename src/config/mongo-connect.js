@@ -1,12 +1,10 @@
-const mongoose = require('mongoose');
-const fs = require('fs');
-const path = require('path');
+import mongoose from 'mongoose';
+import fs from 'fs';
+import path from 'path';
 
-class MongoAdapter {
+class MongoConnect {
   constructor() {
     this.models = {};
-    // Relationships definition
-    // foreignField MUST BE 'id' (the numeric public ID), not '_id' (internal ObjectId)
     this.relations = {
       users: {
         notifications: { ref: 'notifications', localField: 'id', foreignField: 'user_id' },
@@ -15,16 +13,15 @@ class MongoAdapter {
         user: { ref: 'users', localField: 'user_id', foreignField: 'id', justOne: true },
       },
     };
-
-    this.initConnection();
-    this.loadSchemasAsModels();
   }
+
+  // ==================== CONNECTION ====================
 
   async initConnection() {
     if (mongoose.connection.readyState === 0) {
       try {
         await mongoose.connect(process.env.DATABASE_URL);
-        console.log('🔌 MongoDB Adapter Connected (Dual-ID Mode)');
+        console.log('🔌 MongoDB Adapter Connected');
       } catch (error) {
         console.error('❌ MongoDB Connection Error:', error);
         throw error;
@@ -32,7 +29,9 @@ class MongoAdapter {
     }
   }
 
-  loadSchemasAsModels() {
+  // ==================== SCHEMA LOADING ====================
+
+  async loadSchemasAsModels() {
     const schemasDir = path.join(__dirname, '../schemas');
 
     if (!fs.existsSync(schemasDir)) {
@@ -47,25 +46,20 @@ class MongoAdapter {
       'notification.schema.js': 'notifications',
     };
 
-    files.forEach((file) => {
-      if (file === 'index.js') return;
+    for (const file of files) {
+      if (file === 'index.js') continue;
 
       const entityName = modelMapping[file];
-
-      if (!entityName) {
-        return;
-      }
+      if (!entityName) continue;
 
       try {
-        const schemaDef = require(path.join(schemasDir, file));
+        const schemaDef = (await import(path.join(schemasDir, file))).default;
 
-        if (!schemaDef || typeof schemaDef !== 'object') {
-          return;
-        }
+        if (!schemaDef || typeof schemaDef !== 'object') continue;
 
         const mongooseFields = {};
 
-        // Explicitly add 'id' field for compatibility
+        // Auto-increment numeric id field
         mongooseFields.id = { type: Number, unique: true, index: true };
 
         for (const [key, val] of Object.entries(schemaDef)) {
@@ -76,9 +70,8 @@ class MongoAdapter {
           if (val.type === 'boolean') type = Boolean;
           if (val.type === 'date') type = Date;
           if (val.type === 'array') type = Array;
-          if (val.type === 'object') type = mongoose.Schema.Types.Mixed; // Store objects as Mixed
-
-          if (val.foreignKey) type = Number; // Foreign keys are numbers
+          if (val.type === 'object') type = mongoose.Schema.Types.Mixed;
+          if (val.foreignKey) type = Number;
 
           mongooseFields[key] = {
             type: type,
@@ -101,15 +94,15 @@ class MongoAdapter {
               virtuals: true,
               versionKey: false,
               transform: function (doc, ret) {
-                delete ret._id; // Hide internal ObjectId
+                delete ret._id;
                 delete ret.__v;
               },
             },
             toObject: { virtuals: true },
-            id: false, // Disable Mongoose's default virtual 'id' since we have a real one
+            id: false,
           });
 
-          // Setup Virtuals for populate
+          // Setup virtuals for populate
           const rels = this.relations[entityName];
           if (rels) {
             for (const [field, config] of Object.entries(rels)) {
@@ -132,7 +125,7 @@ class MongoAdapter {
       } catch (error) {
         console.error(`❌ Error loading schema ${file}:`, error.message);
       }
-    });
+    }
 
     console.log(`📦 Total models loaded: ${Object.keys(this.models).length}`);
   }
@@ -142,11 +135,10 @@ class MongoAdapter {
   }
 
   // ==================== FIND ALL ADVANCED ====================
+
   async findAllAdvanced(collection, options = {}) {
     const Model = this.getModel(collection);
-    if (!Model) {
-      throw new Error(`Model not found for collection: ${collection}`);
-    }
+    if (!Model) throw new Error(`Model not found for collection: ${collection}`);
 
     const query = {};
 
@@ -195,16 +187,14 @@ class MongoAdapter {
 
     let queryBuilder = Model.find(query);
 
+    // Sort
     if (options.sort) {
       const sortFields = options.sort.split(',');
       const orders = options.order ? options.order.split(',') : [];
       const sortObj = {};
-
       sortFields.forEach((field, index) => {
-        const order = orders[index] === 'desc' ? -1 : 1;
-        sortObj[field] = order;
+        sortObj[field] = orders[index] === 'desc' ? -1 : 1;
       });
-
       queryBuilder = queryBuilder.sort(sortObj);
     } else {
       queryBuilder = queryBuilder.sort({ createdAt: -1 });
@@ -215,20 +205,19 @@ class MongoAdapter {
     if (options.embed) populateFields.push(...options.embed.split(','));
     if (options.expand) populateFields.push(...options.expand.split(','));
 
-    populateFields.forEach((field) => {
+    for (const field of populateFields) {
       try {
         queryBuilder = queryBuilder.populate(field);
       } catch (e) {
         console.warn(`⚠️ Cannot populate ${field}`);
       }
-    });
+    }
 
-    const data = await queryBuilder.skip(skip).limit(limit).exec(); // Use exec() to get Mongoose Documents
-    const total = await Model.countDocuments(query);
+    const [data, total] = await Promise.all([queryBuilder.skip(skip).limit(limit).exec(), Model.countDocuments(query)]);
 
     return {
       success: true,
-      data: data, // toJSON transform will auto-hide _id
+      data,
       pagination: {
         page,
         limit,
@@ -241,7 +230,6 @@ class MongoAdapter {
   }
 
   // ==================== CRUD METHODS ====================
-  // Note: All query by public 'id' (Number), not '_id' (ObjectId)
 
   async findAll(collection) {
     const Model = this.getModel(collection);
@@ -271,12 +259,10 @@ class MongoAdapter {
     const Model = this.getModel(collection);
     if (!Model) throw new Error(`Model not found: ${collection}`);
 
-    // Auto-generate numeric ID if not present
     if (!data.id) {
       data.id = await this.getNextId(collection);
     }
 
-    // Safety: ensure no _id is passed, allowing Mongo to generate it
     delete data._id;
 
     const created = await Model.create(data);
@@ -287,7 +273,6 @@ class MongoAdapter {
     const Model = this.getModel(collection);
     if (!Model) return null;
 
-    // FIND by 'id' and update
     const updated = await Model.findOneAndUpdate({ id: parseInt(id) }, data, { new: true, runValidators: true });
     return updated;
   }
@@ -296,9 +281,59 @@ class MongoAdapter {
     const Model = this.getModel(collection);
     if (!Model) return false;
 
-    // FIND by 'id' and delete
     const deleted = await Model.findOneAndDelete({ id: parseInt(id) });
     return !!deleted;
+  }
+
+  // ==================== UTILITY METHODS ====================
+
+  async insertMany(collection, records) {
+    const Model = this.getModel(collection);
+    if (!Model) throw new Error(`Model not found: ${collection}`);
+
+    // Auto-generate numeric IDs for records that don't have one
+    let nextId = await this.getNextId(collection);
+    const prepared = records.map((record) => {
+      const item = { ...record };
+      delete item._id;
+      if (!item.id) {
+        item.id = nextId++;
+      }
+      return item;
+    });
+
+    const created = await Model.insertMany(prepared);
+    return created;
+  }
+
+  async deleteMany(collection, query) {
+    const Model = this.getModel(collection);
+    if (!Model) return 0;
+
+    const result = await Model.deleteMany(query);
+    return result.deletedCount;
+  }
+
+  async exists(collection, query) {
+    const Model = this.getModel(collection);
+    if (!Model) return false;
+
+    const doc = await Model.exists(query);
+    return !!doc;
+  }
+
+  async distinct(collection, field, query = {}) {
+    const Model = this.getModel(collection);
+    if (!Model) return [];
+
+    return await Model.distinct(field, query);
+  }
+
+  async count(collection, query = {}) {
+    const Model = this.getModel(collection);
+    if (!Model) return 0;
+
+    return await Model.countDocuments(query);
   }
 
   async getNextId(collection) {
@@ -306,7 +341,6 @@ class MongoAdapter {
     if (!Model) return 1;
 
     try {
-      // Find max 'id'
       const lastItem = await Model.findOne().sort({ id: -1 }).select('id').lean();
       return lastItem ? lastItem.id + 1 : 1;
     } catch (error) {
@@ -317,10 +351,13 @@ class MongoAdapter {
   async getSlice(collection, start, end) {
     const Model = this.getModel(collection);
     if (!Model) return { data: [], total: 0 };
-    const items = await Model.find()
-      .skip(start)
-      .limit(end - start);
-    const total = await Model.countDocuments();
+
+    const [items, total] = await Promise.all([
+      Model.find()
+        .skip(start)
+        .limit(end - start),
+      Model.countDocuments(),
+    ]);
     return { data: items, total };
   }
 
@@ -329,4 +366,4 @@ class MongoAdapter {
   }
 }
 
-module.exports = new MongoAdapter();
+export default MongoConnect;

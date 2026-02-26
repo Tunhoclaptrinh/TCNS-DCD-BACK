@@ -341,6 +341,25 @@ class JsonAdapter {
   }
 }
 
-const dbInstance = new JsonAdapter();
+// ==================== ADAPTER SELECTION ====================
+
+let dbInstance;
+
+const dbConnection = (process.env.DB_CONNECTION || 'json').toLowerCase();
+
+if (dbConnection === 'mongodb' || dbConnection === 'mongo') {
+  if (!process.env.DATABASE_URL) {
+    console.warn('⚠️ DB_CONNECTION=mongodb but DATABASE_URL is missing. Falling back to JSON.');
+    dbInstance = new JsonAdapter();
+  } else {
+    const { default: MongoConnect } = await import('@config/mongo-connect');
+    const adapter = new MongoConnect();
+    await adapter.initConnection();
+    await adapter.loadSchemasAsModels();
+    dbInstance = adapter;
+  }
+} else {
+  dbInstance = new JsonAdapter();
+}
 
 export default dbInstance;
