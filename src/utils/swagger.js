@@ -102,11 +102,32 @@ function getMountPaths(routesDir) {
 
   const content = fs.readFileSync(indexPath, 'utf-8');
   const mountMap = {};
-  const mountRegex = /router\.use\s*\(\s*['"`]\/([^'"`]+)['"`]\s*,\s*require\s*\(\s*['"`]\.\/([^'"`]+)['"`]\s*\)/g;
 
-  let match;
-  while ((match = mountRegex.exec(content)) !== null) {
-    mountMap[match[2].replace('.routes', '').replace('./', '')] = match[1];
+  // Parse import: import varName from './xxx.routes'
+  const importMap = {};
+  const importRegex = /import\s+(\w+)\s+from\s+['"`]\.\/([^'"`]+)['"`]/g;
+  let importMatch;
+  while ((importMatch = importRegex.exec(content)) !== null) {
+    const varName = importMatch[1];
+    const fileName = importMatch[2].replace('.routes', '').replace('./', '');
+    importMap[varName] = fileName;
+  }
+
+  // Parse router.use('/path', varName)
+  const useRegex = /router\.use\s*\(\s*['"`]\/([^'"`]+)['"`]\s*,\s*(\w+)\s*\)/g;
+  let useMatch;
+  while ((useMatch = useRegex.exec(content)) !== null) {
+    const mountPath = useMatch[1];
+    const varName = useMatch[2];
+    const fileName = importMap[varName];
+    if (fileName) mountMap[fileName] = mountPath;
+  }
+
+  // Fallback: require() syntax
+  const requireRegex = /router\.use\s*\(\s*['"`]\/([^'"`]+)['"`]\s*,\s*require\s*\(\s*['"`]\.\/([^'"`]+)['"`]\s*\)/g;
+  let reqMatch;
+  while ((reqMatch = requireRegex.exec(content)) !== null) {
+    mountMap[reqMatch[2].replace('.routes', '').replace('./', '')] = reqMatch[1];
   }
 
   return mountMap;
@@ -394,8 +415,8 @@ function buildSwaggerSpec() {
       description: 'API Documentation',
     },
     servers: [
-      ...(process.env.BASE_URL ? [{ url: process.env.BASE_URL, description: 'Production Server' }] : []),
-      { url: `http://localhost:${process.env.PORT || 3000}`, description: 'Local Server' },
+      ...(process.env.BASE_URL ? [{ url: `${process.env.BASE_URL}/api`, description: 'Production Server' }] : []),
+      { url: `http://localhost:${process.env.PORT || 3000}/api`, description: 'Local Server' },
     ],
     tags: Array.from(tagSet).map((name) => ({ name })),
     paths,
