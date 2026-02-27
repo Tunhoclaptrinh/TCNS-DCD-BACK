@@ -32,7 +32,7 @@ export default {
   },
   role: {
     type: 'enum',
-    enum: ['customer', 'admin'],
+    enum: ['customer', 'admin', 'staff'],
     required: false,
     default: 'customer',
     description: 'Vai trò người dùng',

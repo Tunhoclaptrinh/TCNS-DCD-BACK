@@ -407,6 +407,24 @@ function buildSwaggerSpec() {
     }
   }
 
+  const generatedSchemas = {};
+  for (const [key, schemaDef] of Object.entries(schemas)) {
+    const schemaName = capitalize(key);
+    const properties = {};
+    const required = [];
+
+    for (const [field, rule] of Object.entries(schemaDef)) {
+      properties[field] = ruleToProperty(rule);
+      if (rule.required) required.push(field);
+    }
+
+    generatedSchemas[schemaName] = {
+      type: 'object',
+      properties,
+      ...(required.length > 0 && { required }),
+    };
+  }
+
   return {
     openapi: '3.0.0',
     info: {
@@ -424,6 +442,7 @@ function buildSwaggerSpec() {
       securitySchemes: {
         bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
       },
+      schemas: generatedSchemas,
     },
   };
 }

@@ -373,5 +373,20 @@ if (dbConnection !== 'mongodb' && dbConnection !== 'mongo') {
   dbInstance = new JsonAdapter();
 }
 
+const dbProxy = new Proxy(
+  {},
+  {
+    get(target, prop) {
+      if (!dbInstance) {
+        throw new Error(
+          `Database is not initialized. Call initDatabase() first. Attempted to access: ${prop.toString()}`,
+        );
+      }
+      const value = dbInstance[prop];
+      return typeof value === 'function' ? value.bind(dbInstance) : value;
+    },
+  },
+);
+
 export { initDatabase };
-export default dbInstance;
+export default dbProxy;

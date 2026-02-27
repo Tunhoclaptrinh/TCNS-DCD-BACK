@@ -21,6 +21,18 @@
       "isActive": true,
       "createdAt": "2024-02-20T14:20:00Z",
       "updatedAt": "2026-02-20T07:58:41.824Z"
+    },
+    {
+      "id": 3,
+      "email": "admin@admin.com",
+      "password": "$2a$10$cgt5v54ahNmLYYnOJSnAfOdEwEI2m9n1QSHlHn9KTm2VCOkEQ2rH.",
+      "name": "string",
+      "phone": "stringstri",
+      "address": "",
+      "avatar": "https://ui-avatars.com/api/?name=string&background=random",
+      "role": "customer",
+      "isActive": true,
+      "createdAt": "2026-02-27T17:29:15.919Z"
     }
   ]
 }
