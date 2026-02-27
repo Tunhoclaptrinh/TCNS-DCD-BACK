@@ -39,8 +39,24 @@ app.use(
 // ==================== CORE MIDDLEWARE ====================
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : '*',
-    credentials: process.env.CORS_CREDENTIALS === 'true',
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+
+      if (!process.env.CORS_ORIGIN || process.env.CORS_ORIGIN === '*') {
+        return callback(null, true); // true sets Access-Control-Allow-Origin to the request origin
+      }
+
+      const allowedOrigins = process.env.CORS_ORIGIN.split(',').map((o) => o.trim().replace(/\/$/, ''));
+      const reqOrigin = origin.replace(/\/$/, '');
+
+      if (allowedOrigins.includes(reqOrigin)) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    },
+    credentials: process.env.CORS_CREDENTIALS ? process.env.CORS_CREDENTIALS === 'true' : true,
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   }),
 );
 app.use(express.json());
