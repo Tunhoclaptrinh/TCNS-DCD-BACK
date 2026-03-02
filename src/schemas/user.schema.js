@@ -25,7 +25,7 @@ export default {
   },
   phone: {
     type: 'string',
-    required: true,
+    required: false,
     minLength: 10,
     maxLength: 11,
     description: 'Số điện thoại',
