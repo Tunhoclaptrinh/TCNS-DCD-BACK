@@ -4,6 +4,10 @@ export const responseInterceptor = (req, res, next) => {
   res.json = function (data) {
     // Nếu đã là response chuẩn (có success field) → không wrap lại
     if (data && typeof data === 'object' && 'success' in data) {
+      // Tự động set HTTP status code khi service trả về lỗi
+      if (data.success === false && data.statusCode) {
+        res.statusCode = data.statusCode;
+      }
       data.timestamp = new Date().toISOString();
       return originalJson(data);
     }
