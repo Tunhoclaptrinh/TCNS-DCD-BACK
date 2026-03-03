@@ -6,9 +6,6 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "query": "node tools/run-query.js",
-    "fix-sequences": "node tools/fix-sequences.js",
-    "test-ai": "node tools/test-ai.js",
     "format": "prettier --write .",
     "prepare": "husky"
   },
