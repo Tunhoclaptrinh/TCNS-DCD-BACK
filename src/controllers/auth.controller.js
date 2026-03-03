@@ -51,15 +51,19 @@ export const login = async (req, res, next) => {
     checkValidation(req);
 
     const { email, password } = req.body;
+    const normalizedEmail = String(email || '').toLowerCase().trim();
 
-    const user = await db.findOne('users', { email });
+    const user = await db.findOne('users', { email: normalizedEmail });
     if (!user) throw ApiError.unauthorized('Invalid email or password');
     if (!user.isActive) throw ApiError.unauthorized('Account is inactive');
 
     const isMatch = await comparePassword(password, user.password);
     if (!isMatch) throw ApiError.unauthorized('Invalid email or password');
 
-    await db.update('users', user.id, { lastLogin: new Date().toISOString() });
+    await db.update('users', user.id, {
+      lastLogin: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
     const updatedUser = await db.findById('users', user.id);
     const token = generateToken(updatedUser.id);
 
