@@ -54,4 +54,21 @@ export default {
     default: true,
     description: 'Trạng thái hoạt động',
   },
+  isOnline: {
+    type: 'boolean',
+    required: false,
+    default: false,
+    description: 'Đang trực tuyến',
+  },
+  lastSeen: {
+    type: 'string',
+    required: false,
+    description: 'Lần cuối hoạt động (ISO string)',
+  },
+
+  lastLogin: {
+    type: 'Date',
+    required: false,
+    description: 'Lần cuối đăng nhập (ISO string)',
+  },
 };
