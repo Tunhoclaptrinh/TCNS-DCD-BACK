@@ -21,8 +21,10 @@ class UserController extends BaseController {
   getById = async (req, res, next) => {
     try {
       const data = await this.service.findById(req.params.id);
+      const targetId = parseInt(req.params.id, 10);
+      const canReadOthers = ['admin', 'staff', 'researcher'].includes(req.user.role);
 
-      if (req.user.id !== parseInt(req.params.id) && req.user.role !== 'admin') {
+      if (req.user.id !== targetId && !canReadOthers) {
         throw ApiError.forbidden('Not authorized to view this profile');
       }
 
@@ -74,7 +76,10 @@ class UserController extends BaseController {
 
   getUserActivity = async (req, res, next) => {
     try {
-      if (req.user.id !== parseInt(req.params.id) && req.user.role !== 'admin') {
+      const targetId = parseInt(req.params.id, 10);
+      const canReadOthers = ['admin', 'staff', 'researcher'].includes(req.user.role);
+
+      if (req.user.id !== targetId && !canReadOthers) {
         throw ApiError.forbidden('Not authorized');
       }
 
@@ -98,13 +103,44 @@ class UserController extends BaseController {
     }
   };
 
+  promoteUser = async (req, res, next) => {
+    try {
+      if (parseInt(req.params.id, 10) === req.user.id) {
+        throw ApiError.badRequest('Cannot change your own role');
+      }
+
+      const { role, reason } = req.body;
+      if (!role) {
+        throw ApiError.badRequest('role is required');
+      }
+
+      const data = await this.service.promoteUser(req.params.id, role, reason, req.user.id, req.user.role);
+      res.json(data);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  expelUser = async (req, res, next) => {
+    try {
+      if (parseInt(req.params.id, 10) === req.user.id) {
+        throw ApiError.badRequest('Cannot expel your own account');
+      }
+
+      const data = await this.service.expelUser(req.params.id, req.body.reason, req.user.id, req.user.role);
+      res.json(data);
+    } catch (error) {
+      next(error);
+    }
+  };
+
   permanentDeleteUser = async (req, res, next) => {
     try {
       if (parseInt(req.params.id) === req.user.id) {
         throw ApiError.badRequest('Cannot delete your own account');
       }
 
-      const data = await this.service.permanentDeleteUser(req.params.id);
+      const data = await this.service.permanentDeleteUser(req.params.id, req.user.id, req.user.role);
       res.json(data);
     } catch (error) {
       next(error);

@@ -33,6 +33,10 @@ class JsonAdapter {
     return {
       users: [],
       notifications: [],
+      notification_settings: [],
+      duty_slots: [],
+      duty_swap_requests: [],
+      reward_penalties: [],
     };
   }
 
@@ -102,6 +106,14 @@ class JsonAdapter {
         if (key.endsWith('_lte')) {
           const field = key.replace('_lte', '');
           return item[field] <= filters[key];
+        }
+        if (key.endsWith('_gt')) {
+          const field = key.replace('_gt', '');
+          return item[field] > filters[key];
+        }
+        if (key.endsWith('_lt')) {
+          const field = key.replace('_lt', '');
+          return item[field] < filters[key];
         }
         if (key.endsWith('_ne')) {
           const field = key.replace('_ne', '');

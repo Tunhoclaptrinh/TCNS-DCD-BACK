@@ -18,7 +18,7 @@ const SPECIAL_PARAMS = new Set([
   'includeRelations',
 ]);
 
-const OPERATOR_SUFFIXES = ['_gte', '_lte', '_ne', '_like', '_in'];
+const OPERATOR_SUFFIXES = ['_gte', '_lte', '_gt', '_lt', '_ne', '_like', '_in'];
 
 function hasOperator(key) {
   return OPERATOR_SUFFIXES.some((suffix) => key.endsWith(suffix));

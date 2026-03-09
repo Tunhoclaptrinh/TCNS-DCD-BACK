@@ -6,6 +6,9 @@ const router = express.Router();
 
 router.use(protect); // All routes need auth
 
+router.get('/settings', notificationController.getSettings);
+router.put('/settings', notificationController.updateSettings);
+
 router.get('/', notificationController.getNotifications);
 router.patch('/:id/read', notificationController.markAsRead);
 router.patch('/read-all', notificationController.markAllAsRead);

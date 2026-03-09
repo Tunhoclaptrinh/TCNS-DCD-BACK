@@ -458,6 +458,10 @@ function setupSwagger(app) {
     '/api-docs',
     swaggerUi.serve,
     swaggerUi.setup(spec, {
+      swaggerOptions: {
+        defaultModelsExpandDepth: -1,
+        defaultModelExpandDepth: -1,
+      },
       customCss: '.swagger-ui .topbar { display: none }',
       customSiteTitle: 'Base API - Swagger',
     }),

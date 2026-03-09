@@ -3,6 +3,7 @@ import db from '@config/database';
 import { sanitizeUser, hashPassword } from '@utils/helpers';
 import ApiError from '@utils/api-error';
 import userSchema from '@schemas/user.schema';
+import notificationService from '@services/common/notification.service';
 
 function generateAvatarUrl(name) {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
@@ -68,11 +69,12 @@ class UserService extends BaseService {
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
 
-    const stats = { total: users.length, active: 0, inactive: 0, byRole: {}, recentSignups: 0 };
+    const stats = { total: users.length, active: 0, inactive: 0, expelled: 0, byRole: {}, recentSignups: 0 };
 
     for (const user of users) {
       if (user.isActive) stats.active++;
       else stats.inactive++;
+      if (user.expelled) stats.expelled++;
 
       stats.byRole[user.role] = (stats.byRole[user.role] || 0) + 1;
 
@@ -105,15 +107,139 @@ class UserService extends BaseService {
     return sanitizeUser(updated);
   }
 
-  async permanentDeleteUser(userId) {
+  async promoteUser(userId, role, reason, actorId, actorRole) {
+    const allowedRoles = ['customer', 'staff', 'admin'];
+    if (!allowedRoles.includes(role)) {
+      throw ApiError.badRequest(`Invalid role. Allowed roles: ${allowedRoles.join(', ')}`);
+    }
+
     const user = await db.findById('users', userId);
     if (!user) throw ApiError.notFound('User not found');
+    if (user.expelled) throw ApiError.badRequest('Cannot promote expelled user');
+    if (Number(actorId) === Number(user.id)) throw ApiError.badRequest('Cannot change your own role');
+
+    if (actorRole !== 'admin') {
+      if (role === 'admin') {
+        throw ApiError.forbidden('Only admin can assign admin role');
+      }
+      if (user.role === 'admin') {
+        throw ApiError.forbidden('Only admin can change admin role');
+      }
+    }
+
+    const now = new Date().toISOString();
+    const updated = await db.update('users', userId, {
+      role,
+      promotedAt: now,
+      promotedBy: actorId,
+      promotionReason: reason || '',
+      updatedAt: now,
+    });
+
+    await notificationService.notifyUser(user.id, {
+      title: 'Cập nhật chức vụ',
+      message: `Chức vụ của bạn đã được cập nhật thành '${role}'.`,
+      type: 'system',
+      category: 'system',
+      metadata: {
+        role,
+        reason: reason || '',
+      },
+    });
+
+    return sanitizeUser(updated);
+  }
+
+  async expelUser(userId, reason, actorId, actorRole) {
+    const user = await db.findById('users', userId);
+    if (!user) throw ApiError.notFound('User not found');
+    if (Number(actorId) === Number(user.id)) throw ApiError.badRequest('Cannot expel your own account');
+
+    if (actorRole !== 'admin' && user.role === 'admin') {
+      throw ApiError.forbidden('Only admin can expel admin account');
+    }
+
+    if (user.expelled) {
+      return sanitizeUser(user);
+    }
+
+    const now = new Date().toISOString();
+    const updated = await db.update('users', userId, {
+      expelled: true,
+      expelledAt: now,
+      expelReason: reason || '',
+      expelledBy: actorId,
+      isActive: false,
+      updatedAt: now,
+    });
+
+    await notificationService.notifyUser(user.id, {
+      title: 'Thông báo khai trừ',
+      message: 'Tài khoản của bạn đã bị khai trừ khỏi tổ chức.',
+      type: 'approval',
+      category: 'approval',
+      metadata: {
+        reason: reason || '',
+      },
+    });
+
+    return sanitizeUser(updated);
+  }
+
+  async permanentDeleteUser(userId, actorId, actorRole) {
+    const user = await db.findById('users', userId);
+    if (!user) throw ApiError.notFound('User not found');
+    if (Number(actorId) === Number(user.id)) throw ApiError.badRequest('Cannot delete your own account');
+
+    if (actorRole !== 'admin' && user.role === 'admin') {
+      throw ApiError.forbidden('Only admin can delete admin account');
+    }
 
     const parsedUserId = Number(userId);
     const normalizedUserId = Number.isNaN(parsedUserId) ? userId : parsedUserId;
 
     const notifications = await db.findMany('notifications', { user_id: normalizedUserId });
+    const notificationSettings = await db.findMany('notification_settings', { user_id: normalizedUserId });
+    const rewardPenaltiesByUser = await db.findMany('reward_penalties', { user_id: normalizedUserId });
+    const rewardPenaltiesByCreator = await db.findMany('reward_penalties', { created_by: normalizedUserId });
+    const swapByRequester = await db.findMany('duty_swap_requests', { requester_id: normalizedUserId });
+    const swapByTarget = await db.findMany('duty_swap_requests', { target_user_id: normalizedUserId });
+    const swapByApprover = await db.findMany('duty_swap_requests', { approved_by: normalizedUserId });
+    const dutySlots = await db.findAll('duty_slots');
+
     await Promise.all(notifications.map((n) => db.delete('notifications', n.id)));
+    await Promise.all(notificationSettings.map((n) => db.delete('notification_settings', n.id)));
+
+    const rewardPenaltyMap = new Map();
+    for (const item of [...rewardPenaltiesByUser, ...rewardPenaltiesByCreator]) {
+      rewardPenaltyMap.set(item.id, item);
+    }
+    await Promise.all([...rewardPenaltyMap.values()].map((item) => db.delete('reward_penalties', item.id)));
+
+    const swapMap = new Map();
+    for (const item of [...swapByRequester, ...swapByTarget, ...swapByApprover]) {
+      swapMap.set(item.id, item);
+    }
+    await Promise.all([...swapMap.values()].map((item) => db.delete('duty_swap_requests', item.id)));
+
+    const slotUpdates = dutySlots
+      .map((slot) => {
+        const assignedUserIds = Array.isArray(slot.assigned_user_ids) ? slot.assigned_user_ids : [];
+        const filtered = assignedUserIds.filter((id) => Number(id) !== Number(normalizedUserId));
+        if (filtered.length === assignedUserIds.length) {
+          return null;
+        }
+        return db.update('duty_slots', slot.id, {
+          assigned_user_ids: filtered,
+          updatedAt: new Date().toISOString(),
+        });
+      })
+      .filter(Boolean);
+
+    if (slotUpdates.length > 0) {
+      await Promise.all(slotUpdates);
+    }
+
     await db.delete('users', userId);
 
     return { user: 1, notifications: notifications.length };

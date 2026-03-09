@@ -71,4 +71,44 @@ export default {
     required: false,
     description: 'Lần cuối đăng nhập (ISO string)',
   },
+  expelled: {
+    type: 'boolean',
+    required: false,
+    default: false,
+    description: 'Đã bị khai trừ khỏi tổ chức',
+  },
+  expelledAt: {
+    type: 'date',
+    required: false,
+    description: 'Thời điểm khai trừ',
+  },
+  expelReason: {
+    type: 'string',
+    required: false,
+    maxLength: 500,
+    description: 'Lý do khai trừ',
+  },
+  expelledBy: {
+    type: 'number',
+    required: false,
+    foreignKey: 'users',
+    description: 'ID người thực hiện khai trừ',
+  },
+  promotedAt: {
+    type: 'date',
+    required: false,
+    description: 'Thời điểm cập nhật chức vụ gần nhất',
+  },
+  promotedBy: {
+    type: 'number',
+    required: false,
+    foreignKey: 'users',
+    description: 'ID người cập nhật chức vụ',
+  },
+  promotionReason: {
+    type: 'string',
+    required: false,
+    maxLength: 500,
+    description: 'Lý do cập nhật chức vụ',
+  },
 };

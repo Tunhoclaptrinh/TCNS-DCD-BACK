@@ -1,7 +1,36 @@
 const PERMISSIONS = {
   admin: ['*'],
-  researcher: ['users:list', 'users:read', 'dashboard:view'],
-  customer: ['profile:read', 'profile:update', 'dashboard:view'],
+  staff: [
+    'users:list',
+    'users:read',
+    'users:create',
+    'users:update',
+    'users:delete',
+    'users:manage_status',
+    'users:view_stats',
+    'users:manage_rank',
+    'users:expel',
+    'dashboard:view',
+    'duty:view',
+    'duty:register',
+    'duty:update',
+    'duty:manage',
+    'duty:approve_swap',
+    'reward_penalty:view',
+    'reward_penalty:manage',
+    'reports:view',
+    'reports:export',
+  ],
+  researcher: ['users:list', 'users:read', 'dashboard:view', 'reports:view'],
+  customer: [
+    'profile:read',
+    'profile:update',
+    'dashboard:view',
+    'duty:view',
+    'duty:register',
+    'duty:update',
+    'reward_penalty:view',
+  ],
 };
 
 const ADMIN_WILDCARD = '*';

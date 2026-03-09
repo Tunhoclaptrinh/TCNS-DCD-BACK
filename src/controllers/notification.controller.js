@@ -50,6 +50,24 @@ class NotificationController extends BaseController {
       next(error);
     }
   };
+
+  getSettings = async (req, res, next) => {
+    try {
+      const data = await this.service.getSettings(req.user.id);
+      res.json(data);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updateSettings = async (req, res, next) => {
+    try {
+      const data = await this.service.updateSettings(req.user.id, req.body);
+      res.json(data);
+    } catch (error) {
+      next(error);
+    }
+  };
 }
 
 export default new NotificationController();

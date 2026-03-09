@@ -8,11 +8,47 @@ class MongoConnect {
     this.relations = {
       users: {
         notifications: { ref: 'notifications', localField: 'id', foreignField: 'user_id' },
+        notification_settings: { ref: 'notification_settings', localField: 'id', foreignField: 'user_id' },
       },
       notifications: {
         user: { ref: 'users', localField: 'user_id', foreignField: 'id', justOne: true },
       },
+      notification_settings: {
+        user: { ref: 'users', localField: 'user_id', foreignField: 'id', justOne: true },
+      },
+      reward_penalties: {
+        user: { ref: 'users', localField: 'user_id', foreignField: 'id', justOne: true },
+        creator: { ref: 'users', localField: 'created_by', foreignField: 'id', justOne: true },
+      },
+      duty_swap_requests: {
+        requester: { ref: 'users', localField: 'requester_id', foreignField: 'id', justOne: true },
+        target_user: { ref: 'users', localField: 'target_user_id', foreignField: 'id', justOne: true },
+        approver: { ref: 'users', localField: 'approved_by', foreignField: 'id', justOne: true },
+        duty_slot: { ref: 'duty_slots', localField: 'duty_slot_id', foreignField: 'id', justOne: true },
+      },
     };
+  }
+
+  castQueryValue(val) {
+    if (val === null || val === undefined) return val;
+    if (typeof val === 'number' || typeof val === 'boolean' || val instanceof Date) return val;
+
+    const text = String(val).trim();
+    if (text === '') return text;
+
+    if (text === 'true') return true;
+    if (text === 'false') return false;
+
+    if (/^-?\d+(\.\d+)?$/.test(text)) {
+      return Number(text);
+    }
+
+    const maybeDate = new Date(text);
+    if (!Number.isNaN(maybeDate.getTime())) {
+      return maybeDate;
+    }
+
+    return text;
   }
 
   // ==================== CONNECTION ====================
@@ -44,6 +80,10 @@ class MongoConnect {
     const modelMapping = {
       'user.schema.js': 'users',
       'notification.schema.js': 'notifications',
+      'notification-setting.schema.js': 'notification_settings',
+      'duty-slot.schema.js': 'duty_slots',
+      'duty-swap-request.schema.js': 'duty_swap_requests',
+      'reward-penalty.schema.js': 'reward_penalties',
     };
 
     for (const file of files) {
@@ -155,28 +195,28 @@ class MongoConnect {
       for (const [key, val] of Object.entries(options.filter)) {
         if (key.endsWith('_gte')) {
           const field = key.replace('_gte', '');
-          query[field] = { ...query[field], $gte: Number(val) };
+          query[field] = { ...query[field], $gte: this.castQueryValue(val) };
         } else if (key.endsWith('_lte')) {
           const field = key.replace('_lte', '');
-          query[field] = { ...query[field], $lte: Number(val) };
+          query[field] = { ...query[field], $lte: this.castQueryValue(val) };
         } else if (key.endsWith('_gt')) {
           const field = key.replace('_gt', '');
-          query[field] = { ...query[field], $gt: Number(val) };
+          query[field] = { ...query[field], $gt: this.castQueryValue(val) };
         } else if (key.endsWith('_lt')) {
           const field = key.replace('_lt', '');
-          query[field] = { ...query[field], $lt: Number(val) };
+          query[field] = { ...query[field], $lt: this.castQueryValue(val) };
         } else if (key.endsWith('_ne')) {
           const field = key.replace('_ne', '');
-          query[field] = { $ne: val };
+          query[field] = { $ne: this.castQueryValue(val) };
         } else if (key.endsWith('_like')) {
           const field = key.replace('_like', '');
           query[field] = { $regex: val, $options: 'i' };
         } else if (key.endsWith('_in')) {
           const field = key.replace('_in', '');
           const values = Array.isArray(val) ? val : val.split(',');
-          query[field] = { $in: values };
+          query[field] = { $in: values.map((item) => this.castQueryValue(item)) };
         } else {
-          query[key] = val;
+          query[key] = this.castQueryValue(val);
         }
       }
     }

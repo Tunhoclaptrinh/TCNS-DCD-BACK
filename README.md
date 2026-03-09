@@ -13,6 +13,10 @@ Base Backend được xây dựng trên **Node.js + Express**, theo kiến trúc
 - **Database**: JSON file (dev, zero-config) hoặc MongoDB (production).
 - **Swagger**: Tài liệu API tự động sinh từ code — xem `SWAGGER_AUTO.md`.
 
+## Tài liệu sử dụng nhanh module cốt lõi
+
+- Xem hướng dẫn thao tác đầy đủ tại: `CORE_MODULES_USAGE.md`
+
 ---
 
 ## Getting Started

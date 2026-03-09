@@ -2,6 +2,14 @@ import BaseService from '@utils/base-service';
 import db from '@config/database';
 import ApiError from '@utils/api-error';
 
+const DEFAULT_SETTINGS = {
+  shift_notifications: true,
+  approval_notifications: true,
+  system_notifications: true,
+  email_notifications: false,
+  sms_notifications: false,
+};
+
 function normalizeId(id) {
   const parsed = Number(id);
   return Number.isNaN(parsed) ? id : parsed;
@@ -10,6 +18,91 @@ function normalizeId(id) {
 class NotificationService extends BaseService {
   constructor() {
     super('notifications');
+  }
+
+  async getSettings(userId) {
+    const normalizedUserId = normalizeId(userId);
+    let settings = await db.findOne('notification_settings', { user_id: normalizedUserId });
+
+    if (!settings) {
+      settings = await db.create('notification_settings', {
+        user_id: normalizedUserId,
+        ...DEFAULT_SETTINGS,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    return settings;
+  }
+
+  async updateSettings(userId, payload = {}) {
+    const settings = await this.getSettings(userId);
+    const allowedKeys = Object.keys(DEFAULT_SETTINGS);
+    const updateData = {};
+
+    for (const key of allowedKeys) {
+      if (payload[key] === undefined) continue;
+      updateData[key] = payload[key] === true || payload[key] === 'true' || payload[key] === 1 || payload[key] === '1';
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return settings;
+    }
+
+    const updated = await db.update('notification_settings', settings.id, {
+      ...updateData,
+      updatedAt: new Date().toISOString(),
+    });
+    return updated;
+  }
+
+  isCategoryEnabled(settings, category) {
+    if (!settings) return true;
+    if (category === 'shift') return settings.shift_notifications !== false;
+    if (category === 'approval') return settings.approval_notifications !== false;
+    return settings.system_notifications !== false;
+  }
+
+  async notifyUser(userId, payload = {}, options = {}) {
+    const normalizedUserId = normalizeId(userId);
+    const category = payload.category || 'system';
+    const force = options.force === true;
+
+    if (!force) {
+      const settings = await this.getSettings(normalizedUserId);
+      if (!this.isCategoryEnabled(settings, category)) {
+        return { skipped: true };
+      }
+    }
+
+    return await db.create('notifications', {
+      user_id: normalizedUserId,
+      title: payload.title || 'Thông báo',
+      message: payload.message || '',
+      type: payload.type || (category === 'approval' ? 'approval' : category === 'shift' ? 'shift' : 'system'),
+      category,
+      channel: payload.channel || 'in_app',
+      ref_id: payload.ref_id || null,
+      metadata: payload.metadata || null,
+      is_read: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  async notifyUsers(userIds = [], payload = {}, options = {}) {
+    const uniqueUserIds = [
+      ...new Set(userIds.map((id) => normalizeId(id)).filter((id) => id !== null && id !== undefined)),
+    ];
+    const created = [];
+
+    for (const userId of uniqueUserIds) {
+      const item = await this.notifyUser(userId, payload, options);
+      created.push(item);
+    }
+
+    return created;
   }
 
   async getNotifications(userId, options = {}) {

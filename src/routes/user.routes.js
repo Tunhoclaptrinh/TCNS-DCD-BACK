@@ -23,6 +23,8 @@ router.get('/', protect, checkPermission('users:list'), userController.getAll);
 router.get('/stats/summary', protect, checkPermission('users:view_stats'), userController.getUserStats);
 
 router.patch('/:id/status', protect, checkPermission('users:manage_status'), userController.toggleUserStatus);
+router.patch('/:id/promote', protect, checkPermission('users:manage_rank'), userController.promoteUser);
+router.patch('/:id/expel', protect, checkPermission('users:expel'), userController.expelUser);
 
 router.delete('/:id/permanent', protect, checkPermission('users:delete'), userController.permanentDeleteUser);
 

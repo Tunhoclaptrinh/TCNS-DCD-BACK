@@ -18,6 +18,24 @@ export const generateToken = (id, loginTime = null) => {
 };
 
 /**
+ * Generate JWT refresh token
+ */
+export const generateRefreshToken = (id, loginTime = null) => {
+  const payload = { id };
+
+  if (loginTime) {
+    payload.loginTime = loginTime;
+  }
+
+  const refreshSecret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET;
+  const refreshExpire = (process.env.JWT_REFRESH_EXPIRE || '30d').trim();
+
+  return jwt.sign(payload, refreshSecret, {
+    expiresIn: refreshExpire,
+  });
+};
+
+/**
  * Hash password
  */
 export const hashPassword = async (password) => {
