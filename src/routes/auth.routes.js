@@ -31,9 +31,7 @@ router.put(
   authController.changePassword,
 );
 
-// Refresh Token (Simplified for demo)
-router.post('/refresh', (req, res) => {
-  res.json({ success: true, token: 'demo_refreshed_token' });
-});
+// Refresh Token
+router.post('/refresh', authController.refresh);
 
 export default router;

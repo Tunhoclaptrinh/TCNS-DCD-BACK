@@ -37,7 +37,20 @@ export const comparePassword = async (password, hashedPassword) => {
  */
 export const sanitizeUser = (user) => {
   if (!user) return null;
+  if (Array.isArray(user)) {
+    return user.map((item) => sanitizeUser(item));
+  }
+
   const userObj = user.toObject ? user.toObject() : user;
+
+  // Keep response envelope unchanged, only sanitize nested user payload.
+  if (userObj && typeof userObj === 'object' && Object.prototype.hasOwnProperty.call(userObj, 'data')) {
+    return {
+      ...userObj,
+      data: sanitizeUser(userObj.data),
+    };
+  }
+
   const { password, __v, _id, ...userWithoutSensitive } = userObj;
   return userWithoutSensitive;
 };

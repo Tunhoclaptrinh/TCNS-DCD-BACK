@@ -1,4 +1,5 @@
 import { validationResult } from 'express-validator';
+import jwt from 'jsonwebtoken';
 import db from '@config/database';
 import { generateToken, hashPassword, comparePassword, sanitizeUser } from '@utils/helpers';
 import { getRolePermissions } from '@middleware/rbac.middleware';
@@ -51,7 +52,9 @@ export const login = async (req, res, next) => {
     checkValidation(req);
 
     const { email, password } = req.body;
-    const normalizedEmail = String(email || '').toLowerCase().trim();
+    const normalizedEmail = String(email || '')
+      .toLowerCase()
+      .trim();
 
     const user = await db.findOne('users', { email: normalizedEmail });
     if (!user) throw ApiError.unauthorized('Invalid email or password');
@@ -60,12 +63,13 @@ export const login = async (req, res, next) => {
     const isMatch = await comparePassword(password, user.password);
     if (!isMatch) throw ApiError.unauthorized('Invalid email or password');
 
+    const loginTime = new Date().toISOString();
     await db.update('users', user.id, {
-      lastLogin: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      lastLogin: loginTime,
+      updatedAt: loginTime,
     });
     const updatedUser = await db.findById('users', user.id);
-    const token = generateToken(updatedUser.id);
+    const token = generateToken(updatedUser.id, updatedUser.lastLogin || loginTime);
 
     res.json({
       user: sanitizeUser(updatedUser),
@@ -118,7 +122,12 @@ export const changePassword = async (req, res, next) => {
     if (!isMatch) throw ApiError.badRequest('Current password is incorrect');
 
     const hashedPassword = await hashPassword(newPassword);
-    await db.update('users', req.user.id, { password: hashedPassword });
+    const now = new Date().toISOString();
+    await db.update('users', req.user.id, {
+      password: hashedPassword,
+      updatedAt: now,
+      lastLogin: now,
+    });
 
     res.json({ message: 'Password changed successfully' });
   } catch (error) {
@@ -126,4 +135,37 @@ export const changePassword = async (req, res, next) => {
   }
 };
 
-export default { register, login, getMe, logout, changePassword };
+export const refresh = async (req, res, next) => {
+  try {
+    const refreshToken = req.body?.refreshToken || req.body?.token;
+    if (!refreshToken) {
+      throw ApiError.badRequest('Refresh token is required');
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(refreshToken, process.env.JWT_SECRET, { ignoreExpiration: true });
+    } catch {
+      throw ApiError.unauthorized('Invalid refresh token');
+    }
+
+    const user = await db.findById('users', decoded.id);
+    if (!user || !user.isActive) {
+      throw ApiError.unauthorized('User not found or inactive');
+    }
+
+    if (decoded.loginTime && user.lastLogin) {
+      const isTokenOutdated = new Date(decoded.loginTime).getTime() < new Date(user.lastLogin).getTime();
+      if (isTokenOutdated) {
+        throw ApiError.unauthorized('Token has been invalidated. Please login again.');
+      }
+    }
+
+    const token = generateToken(user.id, user.lastLogin || null);
+    res.json({ success: true, token });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export default { register, login, getMe, logout, changePassword, refresh };

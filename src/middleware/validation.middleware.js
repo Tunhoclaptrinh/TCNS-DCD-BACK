@@ -7,6 +7,26 @@ function isEmpty(value) {
   return value === undefined || value === null || value === '';
 }
 
+function resolveSchema(entity) {
+  if (!entity) return null;
+
+  const key = String(entity).trim();
+  const lowerKey = key.toLowerCase();
+
+  if (schemas[key]) return schemas[key];
+  if (schemas[lowerKey]) return schemas[lowerKey];
+
+  if (!lowerKey.endsWith('s') && schemas[`${lowerKey}s`]) {
+    return schemas[`${lowerKey}s`];
+  }
+
+  if (lowerKey.endsWith('s') && schemas[lowerKey.slice(0, -1)]) {
+    return schemas[lowerKey.slice(0, -1)];
+  }
+
+  return null;
+}
+
 function validateType(field, value, rule) {
   switch (rule.type) {
     case 'string':
@@ -76,7 +96,7 @@ function respondErrors(res, errors) {
 
 export const validateSchema = (entity) => {
   return (req, res, next) => {
-    const schema = schemas[entity];
+    const schema = resolveSchema(entity);
     if (!schema) return next();
 
     const errors = collectErrors(schema, req.body);
@@ -88,7 +108,7 @@ export const validateSchema = (entity) => {
 
 export const validateFields = (entity, fields) => {
   return (req, res, next) => {
-    const schema = schemas[entity];
+    const schema = resolveSchema(entity);
     if (!schema) return next();
 
     const fieldFilter = Array.isArray(fields) ? fields : [fields];
@@ -124,7 +144,7 @@ function buildFieldDoc(rule) {
 
 export const getSchemaDoc = (req, res) => {
   const { entity } = req.params;
-  const schema = schemas[entity];
+  const schema = resolveSchema(entity);
 
   if (!schema) {
     return res.status(404).json({

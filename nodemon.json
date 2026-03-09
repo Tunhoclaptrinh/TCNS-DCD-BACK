@@ -1,15 +1,6 @@
 {
-  "watch": ["*.js", "config/", "controllers/", "middleware/", "routes/", "schemas/", "services/", "utils/"],
-  "ignore": [
-    "database/*.json",
-    "database/uploads/*",
-    "uploads/*",
-    "scripts/*",
-    "tools/*",
-    "test-fetch.js",
-    "*.log",
-    "node_modules/"
-  ],
+  "watch": ["index.js", "src/"],
+  "ignore": ["src/database/*.json", "src/database/uploads/*", "test-fetch.js", "*.log", "node_modules/"],
   "ext": "js,json",
   "legacyWatch": true,
   "polling": true

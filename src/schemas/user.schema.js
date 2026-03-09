@@ -67,7 +67,7 @@ export default {
   },
 
   lastLogin: {
-    type: 'Date',
+    type: 'date',
     required: false,
     description: 'Lần cuối đăng nhập (ISO string)',
   },

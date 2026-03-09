@@ -109,7 +109,10 @@ class UserService extends BaseService {
     const user = await db.findById('users', userId);
     if (!user) throw ApiError.notFound('User not found');
 
-    const notifications = await db.findMany('notifications', { user_id: userId });
+    const parsedUserId = Number(userId);
+    const normalizedUserId = Number.isNaN(parsedUserId) ? userId : parsedUserId;
+
+    const notifications = await db.findMany('notifications', { user_id: normalizedUserId });
     await Promise.all(notifications.map((n) => db.delete('notifications', n.id)));
     await db.delete('users', userId);
 

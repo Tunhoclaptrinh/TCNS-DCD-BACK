@@ -35,7 +35,7 @@ class NotificationController extends BaseController {
 
   deleteNotification = async (req, res, next) => {
     try {
-      const data = await this.service.delete(req.params.id);
+      const data = await this.service.deleteForUser(req.params.id, req.user.id);
       res.json(data);
     } catch (error) {
       next(error);
