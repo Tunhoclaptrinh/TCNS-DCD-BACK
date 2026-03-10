@@ -10,6 +10,12 @@ const router = express.Router();
 // === USER PROFILE ROUTES (Must be before :id routes) ===
 router.put('/profile', protect, userController.updateProfile);
 
+// === BASE & SEARCH ROUTES ===
+router.get('/search', protect, userController.search);
+router.get('/count', protect, checkPermission('users:list'), userController.count);
+router.post('/bulk', protect, checkPermission('users:update'), userController.bulk);
+router.post('/validate', protect, userController.validate);
+
 // === ADMIN ROUTES ===
 // Quản lý user, stats, status
 router.post('/', protect, checkPermission('users:create'), validateSchema('user'), userController.create);

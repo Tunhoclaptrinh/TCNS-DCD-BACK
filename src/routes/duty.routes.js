@@ -8,6 +8,7 @@ const router = express.Router();
 router.use(protect);
 
 router.get('/week', checkPermission('duty:view'), dutyController.getWeeklySchedule);
+router.get('/stats/summary', checkPermission('duty:view'), dutyController.getStats);
 
 router.post('/slots', checkPermission('duty:manage'), dutyController.createSlot);
 router.put('/slots/:id', checkPermission('duty:manage'), dutyController.updateSlot);

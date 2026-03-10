@@ -60,6 +60,56 @@ class BaseController {
       next(error);
     }
   };
+
+  count = async (req, res, next) => {
+    try {
+      const count = await this.service.count(req.parsedQuery.filter || {});
+      res.json({ count });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  bulk = async (req, res, next) => {
+    try {
+      const { operation, items, updates, ids } = req.body;
+      let result;
+
+      switch (operation) {
+        case 'create':
+          result = await this.service.bulkCreate(items || []);
+          break;
+        case 'update':
+          result = await this.service.bulkUpdate(updates || []);
+          break;
+        case 'delete':
+          result = await this.service.bulkDelete(ids || items || []);
+          break;
+        default:
+          return res.status(400).json({ message: 'Invalid bulk operation' });
+      }
+
+      res.json({
+        success: result.failed === 0,
+        message: `Bulk ${operation} completed: ${result.success} succeeded, ${result.failed} failed`,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  validate = async (req, res, next) => {
+    try {
+      const result = await this.service.validateBySchema(req.body);
+      res.json({
+        valid: result.success,
+        errors: result.errors,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 }
 
 export default BaseController;

@@ -75,6 +75,15 @@ class DutyController {
       next(error);
     }
   };
+
+  getStats = async (req, res, next) => {
+    try {
+      const data = await dutyService.getStats();
+      res.json(data);
+    } catch (error) {
+      next(error);
+    }
+  };
 }
 
 export default new DutyController();

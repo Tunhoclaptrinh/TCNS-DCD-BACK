@@ -423,6 +423,24 @@ class DutyService extends BaseService {
 
     return updatedRequest;
   }
+
+  async getStats() {
+    const slots = await db.findAll('duty_slots');
+    const stats = {
+      total: slots.length,
+      open: slots.filter((s) => s.status === 'open').length,
+      locked: slots.filter((s) => s.status === 'locked').length,
+      totalAssigned: slots.reduce((acc, s) => acc + (s.assigned_user_ids?.length || 0), 0),
+    };
+
+    return {
+      success: true,
+      data: {
+        global: stats,
+        byDepartment: {}, // Add department breakdown if needed later
+      },
+    };
+  }
 }
 
 export default new DutyService();

@@ -159,6 +159,11 @@ class BaseService {
     return Object.keys(errors).length === 0 ? { success: true } : { success: false, errors };
   }
 
+  async count(query = {}) {
+    const items = await db.findMany(this.collection, query);
+    return items.length;
+  }
+
   // ==================== CRUD METHODS ====================
 
   async findAll(options = {}) {
@@ -259,6 +264,77 @@ class BaseService {
       data: result.data,
       pagination: result.pagination,
     };
+  }
+
+  // ==================== BATCH METHODS ====================
+
+  async bulkCreate(items = []) {
+    const results = { total: items.length, success: 0, failed: 0, errors: [], inserted: [] };
+
+    for (const item of items) {
+      try {
+        const res = await this.create(item);
+        if (res.success) {
+          results.success++;
+          results.inserted.push(res.data);
+        } else {
+          results.failed++;
+          results.errors.push({ data: item, errors: res.errors || [res.message] });
+        }
+      } catch (error) {
+        results.failed++;
+        results.errors.push({ data: item, errors: [error.message] });
+      }
+    }
+
+    return results;
+  }
+
+  async bulkUpdate(updates = []) {
+    const results = { total: updates.length, success: 0, failed: 0, errors: [], updated: [] };
+
+    for (const update of updates) {
+      try {
+        const id = update.id;
+        const data = update.data;
+        if (!id) throw new Error('ID is required for each update item');
+
+        const res = await this.update(id, data);
+        if (res.success) {
+          results.success++;
+          results.updated.push(res.data);
+        } else {
+          results.failed++;
+          results.errors.push({ id, data, errors: res.errors || [res.message] });
+        }
+      } catch (error) {
+        results.failed++;
+        results.errors.push({ id: update.id, data: update.data, errors: [error.message] });
+      }
+    }
+
+    return results;
+  }
+
+  async bulkDelete(ids = []) {
+    const results = { total: ids.length, success: 0, failed: 0, errors: [] };
+
+    for (const id of ids) {
+      try {
+        const res = await this.delete(id);
+        if (res.success) {
+          results.success++;
+        } else {
+          results.failed++;
+          results.errors.push({ id, errors: [res.message] });
+        }
+      } catch (error) {
+        results.failed++;
+        results.errors.push({ id, errors: [error.message] });
+      }
+    }
+
+    return results;
   }
 
   // ==================== IMPORT/EXPORT ====================
