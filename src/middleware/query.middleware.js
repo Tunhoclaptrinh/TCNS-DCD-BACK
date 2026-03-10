@@ -18,7 +18,7 @@ const SPECIAL_PARAMS = new Set([
   'includeRelations',
 ]);
 
-const OPERATOR_SUFFIXES = ['_gte', '_lte', '_gt', '_lt', '_ne', '_like', '_in'];
+const OPERATOR_SUFFIXES = ['_gte', '_lte', '_gt', '_lt', '_ne', '_like', '_not_like', '_ilike', '_in', '_nin'];
 
 function hasOperator(key) {
   return OPERATOR_SUFFIXES.some((suffix) => key.endsWith(suffix));
@@ -27,6 +27,8 @@ function hasOperator(key) {
 function castValue(value) {
   if (value === 'true') return true;
   if (value === 'false') return false;
+  // Preserve leading zeros for strings like phone numbers (e.g., "09123")
+  if (typeof value === 'string' && value.startsWith('0') && value.length > 1) return value;
   if (value !== '' && !isNaN(value)) return Number(value);
   return value;
 }

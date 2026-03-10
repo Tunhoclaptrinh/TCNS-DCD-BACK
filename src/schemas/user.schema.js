@@ -6,6 +6,54 @@ export default {
     maxLength: 100,
     description: 'Tên người dùng',
   },
+  lastName: {
+    type: 'string',
+    required: false,
+    description: 'Họ và tên đệm',
+  },
+  firstName: {
+    type: 'string',
+    required: false,
+    description: 'Tên',
+  },
+  dob: {
+    type: 'date',
+    required: false,
+    description: 'Ngày sinh',
+  },
+  studentId: {
+    type: 'string',
+    required: false,
+    description: 'Mã số sinh viên',
+  },
+  classId: {
+    type: 'string',
+    required: false,
+    description: 'Mã lớp',
+  },
+  hometown: {
+    type: 'string',
+    required: false,
+    description: 'Quê quán',
+  },
+  position: {
+    type: 'enum',
+    enum: ['ctc', 'tv', 'tvb', 'pb', 'tb', 'dt'],
+    required: false,
+    description: 'Chức vụ',
+  },
+  department: {
+    type: 'string',
+    required: false,
+    description: 'Bộ phận/Phòng ban',
+  },
+  status: {
+    type: 'enum',
+    enum: ['active', 'inactive', 'dismissed'],
+    required: false,
+    default: 'active',
+    description: 'Trạng thái nhân sự',
+  },
   email: {
     type: 'email',
     required: true,
@@ -30,13 +78,19 @@ export default {
     maxLength: 11,
     description: 'Số điện thoại',
   },
+  address: {
+    type: 'string',
+    required: false,
+    description: 'Địa chỉ liên lạc',
+  },
   role: {
     type: 'enum',
-    enum: ['customer', 'admin', 'staff'],
+    enum: ['admin', 'staff', 'customer', 'researcher', 'curator'],
     required: false,
     default: 'customer',
     description: 'Vai trò người dùng',
   },
+
   bio: {
     type: 'string',
     required: false,

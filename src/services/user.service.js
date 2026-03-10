@@ -37,6 +37,10 @@ class UserService extends BaseService {
       data.password = await hashPassword(data.password);
     }
 
+    if (data.firstName || data.lastName) {
+      data.name = `${data.lastName || ''} ${data.firstName || ''}`.trim();
+    }
+
     if (!data.avatar && data.name) {
       data.avatar = generateAvatarUrl(data.name);
     }
@@ -44,6 +48,7 @@ class UserService extends BaseService {
     return {
       ...data,
       isActive: data.isActive !== undefined ? data.isActive : true,
+      status: data.status || 'active',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -57,6 +62,13 @@ class UserService extends BaseService {
       data.password = await hashPassword(data.password);
     }
 
+    if (data.firstName || data.lastName) {
+      const current = await db.findById('users', id);
+      const lastName = data.lastName !== undefined ? data.lastName : current.lastName;
+      const firstName = data.firstName !== undefined ? data.firstName : current.firstName;
+      data.name = `${lastName || ''} ${firstName || ''}`.trim();
+    }
+
     return {
       ...data,
       updatedAt: new Date().toISOString(),
@@ -65,20 +77,59 @@ class UserService extends BaseService {
 
   async getUserStats() {
     const users = await db.findAll('users');
-
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
 
-    const stats = { total: users.length, active: 0, inactive: 0, expelled: 0, byRole: {}, recentSignups: 0 };
+    const createUserStatItem = () => ({
+      total: 0,
+      active: 0,
+      inactive: 0,
+      dismissed: 0,
+      ctv: 0,
+      official: 0,
+      management: 0,
+      recentSignups: 0,
+      byRole: {},
+      byPosition: {},
+    });
+
+    const stats = {
+      global: createUserStatItem(),
+      byDepartment: {},
+    };
+
+    const processUser = (item, user) => {
+      item.total++;
+      if (user.status === 'active') item.active++;
+      else if (user.status === 'inactive') item.inactive++;
+      else if (user.status === 'dismissed') item.dismissed++;
+
+      // CTV: tvb, Official: tv, Management: ctc
+      if (user.position === 'tvb') item.ctv++;
+      else if (user.position === 'tv') item.official++;
+      else if (user.position === 'ctc') item.management++;
+
+      if (new Date(user.createdAt) >= weekAgo) item.recentSignups++;
+
+      if (user.role) {
+        item.byRole[user.role] = (item.byRole[user.role] || 0) + 1;
+      }
+      if (user.position) {
+        item.byPosition[user.position] = (item.byPosition[user.position] || 0) + 1;
+      }
+    };
 
     for (const user of users) {
-      if (user.isActive) stats.active++;
-      else stats.inactive++;
-      if (user.expelled) stats.expelled++;
+      // Global stats
+      processUser(stats.global, user);
 
-      stats.byRole[user.role] = (stats.byRole[user.role] || 0) + 1;
-
-      if (new Date(user.createdAt) >= weekAgo) stats.recentSignups++;
+      // Department stats
+      if (user.department) {
+        if (!stats.byDepartment[user.department]) {
+          stats.byDepartment[user.department] = createUserStatItem();
+        }
+        processUser(stats.byDepartment[user.department], user);
+      }
     }
 
     return stats;

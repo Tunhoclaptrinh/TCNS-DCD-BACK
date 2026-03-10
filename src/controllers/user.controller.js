@@ -149,13 +149,36 @@ class UserController extends BaseController {
 
   updateProfile = async (req, res, next) => {
     try {
-      const { name, phone, address, avatar } = req.body;
+      const {
+        name,
+        lastName,
+        firstName,
+        dob,
+        studentId,
+        classId,
+        hometown,
+        position,
+        department,
+        phone,
+        address,
+        avatar,
+        bio,
+      } = req.body;
 
       const updateData = {};
       if (name) updateData.name = name;
+      if (lastName !== undefined) updateData.lastName = lastName;
+      if (firstName !== undefined) updateData.firstName = firstName;
+      if (dob) updateData.dob = dob;
+      if (studentId) updateData.studentId = studentId;
+      if (classId) updateData.classId = classId;
+      if (hometown) updateData.hometown = hometown;
+      if (position) updateData.position = position;
+      if (department) updateData.department = department;
       if (phone) updateData.phone = phone;
       if (address) updateData.address = address;
       if (avatar) updateData.avatar = avatar;
+      if (bio !== undefined) updateData.bio = bio;
 
       if (Object.keys(updateData).length === 0) {
         throw ApiError.badRequest('No fields to update');

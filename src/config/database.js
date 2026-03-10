@@ -119,17 +119,28 @@ class JsonAdapter {
           const field = key.replace('_ne', '');
           return item[field] !== filters[key];
         }
-        if (key.endsWith('_like')) {
-          const field = key.replace('_like', '');
+        if (key.endsWith('_like') || key.endsWith('_ilike')) {
+          const field = key.replace('_like', '').replace('_ilike', '');
           // Escape special regex characters to prevent ReDoS
           const escaped = String(filters[key]).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           return new RegExp(escaped, 'i').test(item[field]);
         }
+        if (key.endsWith('_not_like')) {
+          const field = key.replace('_not_like', '');
+          const escaped = String(filters[key]).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          return !new RegExp(escaped, 'i').test(item[field]);
+        }
         if (key.endsWith('_in')) {
           const field = key.replace('_in', '');
-          const values = Array.isArray(filters[key]) ? filters[key] : filters[key].split(',');
+          const values = Array.isArray(filters[key]) ? filters[key] : String(filters[key]).split(',');
           return values.includes(String(item[field]));
         }
+        if (key.endsWith('_nin')) {
+          const field = key.replace('_nin', '');
+          const values = Array.isArray(filters[key]) ? filters[key] : String(filters[key]).split(',');
+          return !values.includes(String(item[field]));
+        }
+
         // Strict equality — convert types to match
         const filterVal = filters[key];
         const itemVal = item[key];
