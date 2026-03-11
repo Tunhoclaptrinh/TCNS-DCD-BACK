@@ -63,45 +63,46 @@ npm run dev
 
 ```
 base-backend/
-├── index.js                        # Entrypoint
+├── index.ts                        # Entrypoint
 ├── src/
-│   ├── server.js                   # Khởi tạo Express, middleware, routes
+│   ├── server.ts                   # Khởi tạo Express, middleware, routes
 │   ├── config/                     # Cấu hình database abstraction
 │   ├── controllers/                # HTTP Request Handlers
-│   │   ├── auth.controller.js
-│   │   ├── user.controller.js
-│   │   ├── notification.controller.js
-│   │   ├── upload.controller.js
-│   │   └── importExport.controller.js
+│   │   ├── auth.controller.ts
+│   │   ├── user.controller.ts
+│   │   ├── notification.controller.ts
+│   │   ├── upload.controller.ts
+│   │   └── importExport.controller.ts
 │   ├── services/                   # Business Logic
-│   │   ├── user.service.js
+│   │   ├── user.service.ts
 │   │   └── common/
-│   │       ├── notification.service.js
-│   │       ├── upload.service.js
-│   │       └── importExport.service.js
+│   │       ├── notification.service.ts
+│   │       ├── upload.service.ts
+│   │       └── importExport.service.ts
 │   ├── middleware/
-│   │   ├── auth.middleware.js       # JWT validation, protect, authorize
-│   │   ├── rbac.middleware.js       # checkPermission('resource:action')
-│   │   ├── validation.middleware.js # Schema validation
-│   │   ├── query.middleware.js      # Parsing filter/sort/pagination
-│   │   ├── logger.middleware.js     # Request logging
-│   │   └── response.middleware.js   # Chuẩn hoá response format
+│   │   ├── auth.middleware.ts       # JWT validation, protect, authorize
+│   │   ├── rbac.middleware.ts       # checkPermission('resource:action')
+│   │   ├── validation.middleware.ts # Schema validation
+│   │   ├── query.middleware.ts      # Parsing filter/sort/pagination
+│   │   ├── logger.middleware.ts     # Request logging
+│   │   └── response.middleware.ts   # Chuẩn hoá response format
 │   ├── routes/
-│   │   ├── index.js                # Route aggregator
-│   │   ├── auth.routes.js
-│   │   ├── user.routes.js
-│   │   ├── notification.routes.js
-│   │   └── upload.routes.js
+│   │   ├── index.ts                # Route aggregator
+│   │   ├── auth.routes.ts
+│   │   ├── user.routes.ts
+│   │   ├── notification.routes.ts
+│   │   └── upload.routes.ts
 │   ├── schemas/                    # Validation schemas
-│   │   ├── index.js
-│   │   ├── user.schema.js
-│   │   └── notification.schema.js
+│   │   ├── index.ts
+│   │   ├── user.schema.ts
+│   │   └── notification.schema.ts
+│   ├── types/                      # Express/Socket augmentation
 │   ├── utils/
-│   │   ├── base-service.js         # CRUD generic service
-│   │   ├── base-controller.js      # Generic controller wrapper
-│   │   ├── api-error.js            # Custom error class
-│   │   ├── helpers.js              # JWT, password helpers
-│   │   └── swagger.js              # Swagger auto-generation
+│   │   ├── base-service.ts         # CRUD generic service
+│   │   ├── base-controller.ts      # Generic controller wrapper
+│   │   ├── api-error.ts            # Custom error class
+│   │   ├── helpers.ts              # JWT, password helpers
+│   │   └── swagger.ts              # Swagger auto-generation
 │   └── database/                   # JSON DB storage & uploads
 ```
 

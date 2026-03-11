@@ -1,7 +1,7 @@
 {
-  "watch": ["index.js", "src/"],
+  "watch": ["index.ts", "src/"],
   "ignore": ["src/database/*.json", "src/database/uploads/*", "test-fetch.js", "*.log", "node_modules/"],
-  "ext": "js,json",
+  "ext": "ts,json",
   "legacyWatch": true,
   "polling": true
 }

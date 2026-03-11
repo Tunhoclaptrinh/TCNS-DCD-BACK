@@ -5,7 +5,7 @@
     "dockerfilePath": "Docker/Production/Dockerfile"
   },
   "deploy": {
-    "startCommand": "node server.js",
+    "startCommand": "npm start",
     "healthcheckPath": "/api",
     "healthcheckTimeout": 100,
     "restartPolicyType": "ON_FAILURE",

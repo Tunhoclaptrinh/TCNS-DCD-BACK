@@ -95,46 +95,46 @@
 base-backend/
 │
 ├── 📁 config/                      # Configuration Files
-│   └── database.js                 # Database abstraction & CRUD
+│   └── database.ts                 # Database abstraction & CRUD
 │
 ├── 📁 controllers/                 # HTTP Request Handlers
-│   ├── auth.controller.js          # Authentication (Login, Register)
-│   ├── user.controller.js          # User management
-│   ├── notification.controller.js  # Notifications
-│   ├── upload.controller.js        # File uploads
-│   └── importExport.controller.js  # Data Import/Export
+│   ├── auth.controller.ts          # Authentication (Login, Register)
+│   ├── user.controller.ts          # User management
+│   ├── notification.controller.ts  # Notifications
+│   ├── upload.controller.ts        # File uploads
+│   └── importExport.controller.ts  # Data Import/Export
 │
 ├── 📁 middleware/                  # Express Middleware
-│   ├── auth.middleware.js          # JWT validation
-│   ├── rbac.middleware.js          # Permission-based control
-│   ├── query.middleware.js         # Query parsing
-│   └── validation.middleware.js    # Schema validation
+│   ├── auth.middleware.ts          # JWT validation
+│   ├── rbac.middleware.ts          # Permission-based control
+│   ├── query.middleware.ts         # Query parsing
+│   └── validation.middleware.ts    # Schema validation
 │
 ├── 📁 routes/                      # Express Routes
-│   ├── index.js                    # Route aggregator
-│   ├── auth.routes.js              # Auth endpoints
-│   ├── user.routes.js              # User endpoints
-│   ├── notification.routes.js      # Notifications
-│   └── upload.routes.js            # Upload endpoints
+│   ├── index.ts                    # Route aggregator
+│   ├── auth.routes.ts              # Auth endpoints
+│   ├── user.routes.ts              # User endpoints
+│   ├── notification.routes.ts      # Notifications
+│   └── upload.routes.ts            # Upload endpoints
 │
 ├── 📁 services/                    # Business Logic Layer
-│   ├── user.service.js             # User logic
-│   ├── notification.service.js     # Notification logic
-│   ├── upload.service.js           # File logic
-│   └── importExport.service.js     # Data logic
+│   ├── user.service.ts             # User logic
+│   ├── notification.service.ts     # Notification logic
+│   ├── upload.service.ts           # File logic
+│   └── importExport.service.ts     # Data logic
 │
 ├── 📁 schemas/                     # Data Validation Schemas
-│   ├── user.schema.js              # User validation
-│   └── notification.schema.js      # Notification validation
+│   ├── user.schema.ts              # User validation
+│   └── notification.schema.ts      # Notification validation
 │
 ├── 📁 utils/                       # Utility Functions
-│   └── helpers.js                  # JWT, password helpers
+│   └── helpers.ts                  # JWT, password helpers
 │
 ├── 📁 database/                    # Data Storage
 │   ├── db.json                     # Main database (Dev)
 │   └── uploads/                    # Physical files
 │
-└── 📄 server.js                    # Entry point
+└── 📄 server.ts                    # Entry point
 ```
 
 ---
@@ -154,7 +154,9 @@ base-backend/
 ## 🔐 Authentication & Authorization
 
 ### Dynamic Permission System
+
 Unlike static role-based systems, this backend uses a granular permission model:
+
 - **Keys**: Format `resource:action` (e.g., `users:create`).
 - **Middleware**: `checkPermission('resource:action')` validates current user permissions.
 - **Admin**: Automatically bypasses all checks with a wildcard `*` permission.
