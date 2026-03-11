@@ -8,7 +8,7 @@ import importExportController from '@controllers/importExport.controller';
 const router = express.Router();
 
 // === USER PROFILE ROUTES (Must be before :id routes) ===
-router.put('/profile', protect, userController.updateProfile);
+router.put('/profile', protect, userController.getAvatarUploadMiddleware(), userController.updateProfile);
 
 // === BASE & SEARCH ROUTES ===
 router.get('/search', protect, userController.search);
@@ -20,7 +20,13 @@ router.post('/validate', protect, userController.validate);
 // Quản lý user, stats, status
 router.post('/', protect, checkPermission('users:create'), validateSchema('user'), userController.create);
 
-router.put('/:id', protect, checkPermission('users:update'), userController.update);
+router.put(
+  '/:id',
+  protect,
+  checkPermission('users:update'),
+  userController.getAvatarUploadMiddleware(),
+  userController.update,
+);
 
 router.delete('/:id', protect, checkPermission('users:delete'), userController.delete);
 

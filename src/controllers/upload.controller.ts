@@ -31,7 +31,9 @@ class UploadController {
 
   deleteFile = async (req, res, next) => {
     try {
-      const data = await uploadService.deleteFile(req.body.url || req.query.url);
+      const data = await uploadService.deleteFile(
+        req.body.publicId || req.body.url || req.query.publicId || req.query.url,
+      );
       res.json(data);
     } catch (error) {
       next(error);
@@ -40,7 +42,7 @@ class UploadController {
 
   getFileInfo = async (req, res, next) => {
     try {
-      const data = await uploadService.getFileInfo(req.query.url);
+      const data = await uploadService.getFileInfo(req.query.publicId || req.query.url);
       res.json(data);
     } catch (error) {
       next(error);
@@ -58,7 +60,7 @@ class UploadController {
 
   cleanupOldFiles = async (req, res, next) => {
     try {
-      const days = parseInt(req.query.days) || 30;
+      const days = parseInt(req.body.days || req.query.days) || 30;
       const data = await uploadService.cleanupOldFiles(days);
       res.json(data);
     } catch (error) {

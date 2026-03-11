@@ -1,13 +1,16 @@
-import multer from 'multer';
+import crypto from 'crypto';
 import path from 'path';
-import fs from 'fs';
+import multer from 'multer';
 import sharp from 'sharp';
+import axios from 'axios';
+import FormData from 'form-data';
 import ApiError from '@utils/api-error';
 import type { AnyRecord } from '@app-types/common';
 
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']);
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const FOLDERS = ['avatars', 'general', 'temp'];
+const CLOUDINARY_API_BASE = 'https://api.cloudinary.com/v1_1';
 
 const FORMAT_MAP = {
   jpeg: (instance, quality) => instance.jpeg({ quality }),
@@ -19,46 +22,40 @@ type ProcessImageOptions = {
   width?: number | null;
   height?: number | null;
   quality?: number;
-  format?: keyof typeof FORMAT_MAP | 'gif';
+  format?: keyof typeof FORMAT_MAP;
   fit?: keyof sharp.FitEnum;
 };
 
-function resolveFromUrl(uploadDir: string, url: string) {
-  const parts = url.split('/');
-  const filename = parts.pop();
-  const folder = parts.pop();
-  return path.join(uploadDir, folder || '', filename || '');
-}
-
 class UploadService {
-  uploadDir: string;
+  cloudName: string | null;
+  apiKey: string | null;
+  apiSecret: string | null;
+  rootFolder: string;
 
   constructor() {
-    this.uploadDir = process.env.UPLOAD_DIR || path.resolve(process.cwd(), 'src/database/uploads');
-    this.ensureDir(this.uploadDir);
-    FOLDERS.forEach((f) => this.ensureDir(path.join(this.uploadDir, f)));
+    this.cloudName = process.env.CLOUDINARY_CLOUD_NAME || null;
+    this.apiKey = process.env.CLOUDINARY_API_KEY || null;
+    this.apiSecret = process.env.CLOUDINARY_API_SECRET || null;
+    this.rootFolder = String(process.env.CLOUDINARY_FOLDER || 'tcns')
+      .trim()
+      .replace(/^\/+|\/+$/g, '');
   }
 
-  ensureDir(dir: string) {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+  assertConfigured() {
+    if (this.cloudName && this.apiKey && this.apiSecret) {
+      return;
     }
+
+    throw new ApiError(
+      500,
+      'Cloudinary is not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET.',
+    );
   }
 
-  getMulterConfig(folder = 'temp') {
+  getMulterConfig() {
     return {
-      storage: multer.diskStorage({
-        destination: (req, file, cb) => {
-          const uploadPath = path.join(this.uploadDir, folder);
-          this.ensureDir(uploadPath);
-          cb(null, uploadPath);
-        },
-        filename: (req, file, cb) => {
-          const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-          cb(null, `${file.fieldname}-${uniqueSuffix}${path.extname(file.originalname)}`);
-        },
-      }),
-      fileFilter: (req, file, cb) => {
+      storage: multer.memoryStorage(),
+      fileFilter: (_req, file, cb) => {
         if (ALLOWED_IMAGE_TYPES.has(file.mimetype)) {
           cb(null, true);
         } else {
@@ -69,19 +66,74 @@ class UploadService {
     };
   }
 
-  getSingleUpload(fieldName = 'image', folder = 'temp') {
-    return multer(this.getMulterConfig(folder)).single(fieldName);
+  getSingleUpload(fieldName = 'image', _folder = 'temp') {
+    return multer(this.getMulterConfig()).single(fieldName);
   }
 
-  getMultipleUpload(fieldName = 'images', maxCount = 5, folder = 'temp') {
-    return multer(this.getMulterConfig(folder)).array(fieldName, maxCount);
+  getMultipleUpload(fieldName = 'images', maxCount = 5, _folder = 'temp') {
+    return multer(this.getMulterConfig()).array(fieldName, maxCount);
   }
 
-  async processImage(filePath: string, options: ProcessImageOptions = {}) {
+  sanitizePublicIdSegment(value: string) {
+    return String(value || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 120);
+  }
+
+  getFolderPath(folder: string) {
+    const normalizedFolder = String(folder || 'temp')
+      .trim()
+      .replace(/^\/+|\/+$/g, '');
+
+    return [this.rootFolder, normalizedFolder].filter(Boolean).join('/');
+  }
+
+  buildPublicId(folder: string, baseName: string) {
+    const safeName = this.sanitizePublicIdSegment(baseName) || `file-${Date.now()}`;
+    return {
+      folder: this.getFolderPath(folder),
+      publicId: safeName,
+      fullPublicId: [this.getFolderPath(folder), safeName].filter(Boolean).join('/'),
+    };
+  }
+
+  createSignature(params: Record<string, string | number | boolean>) {
+    this.assertConfigured();
+
+    const payload = Object.entries(params)
+      .filter(([, value]) => value !== undefined && value !== null && value !== '')
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, value]) => `${key}=${value}`)
+      .join('&');
+
+    return crypto.createHash('sha1').update(`${payload}${this.apiSecret}`).digest('hex');
+  }
+
+  getUploadUrl(resourceType = 'image') {
+    this.assertConfigured();
+    return `${CLOUDINARY_API_BASE}/${this.cloudName}/${resourceType}/upload`;
+  }
+
+  getDestroyUrl(resourceType = 'image') {
+    this.assertConfigured();
+    return `${CLOUDINARY_API_BASE}/${this.cloudName}/${resourceType}/destroy`;
+  }
+
+  getAdminUrl(pathname: string) {
+    this.assertConfigured();
+    return `${CLOUDINARY_API_BASE}/${this.cloudName}/${pathname}`;
+  }
+
+  async processImageBuffer(file: AnyRecord, options: ProcessImageOptions = {}) {
+    if (!file?.buffer) {
+      throw ApiError.badRequest('No file data received');
+    }
+
     const { width = null, height = null, quality = 80, format = 'jpeg', fit = 'cover' } = options;
-    const processedPath = filePath.replace(path.extname(filePath), `-processed.${format}`);
-
-    let instance = sharp(filePath);
+    let instance = sharp(file.buffer, { animated: false });
 
     if (width || height) {
       instance = instance.resize(width, height, { fit });
@@ -92,32 +144,86 @@ class UploadService {
       instance = applyFormat(instance, quality);
     }
 
-    await instance.toFile(processedPath);
-    fs.unlinkSync(filePath);
+    const { data, info } = await instance.toBuffer({ resolveWithObject: true });
 
-    return { filePath: processedPath, filename: path.basename(processedPath) };
+    return {
+      buffer: data,
+      format: info.format,
+      width: info.width,
+      height: info.height,
+      bytes: info.size,
+    };
   }
 
-  async uploadAndProcess(file: AnyRecord, folder: string, filename: string, imageOptions: ProcessImageOptions) {
+  async uploadToCloudinary(buffer: Buffer, options: { folder: string; publicId: string; mimeType?: string }) {
+    this.assertConfigured();
+
+    const timestamp = Math.floor(Date.now() / 1000);
+    const params = {
+      asset_folder: options.folder,
+      overwrite: true,
+      public_id: options.publicId,
+      public_id_prefix: options.folder,
+      timestamp,
+    };
+    const signature = this.createSignature(params);
+    const form = new FormData();
+
+    form.append('file', buffer, {
+      filename: `${options.publicId}.jpg`,
+      contentType: options.mimeType || 'image/jpeg',
+    });
+    form.append('api_key', this.apiKey as string);
+    form.append('timestamp', String(timestamp));
+    form.append('asset_folder', options.folder);
+    form.append('public_id', options.publicId);
+    form.append('public_id_prefix', options.folder);
+    form.append('overwrite', 'true');
+    form.append('signature', signature);
+
     try {
-      const result = await this.processImage(file.path, imageOptions);
+      const response = await axios.post(this.getUploadUrl('image'), form, {
+        headers: form.getHeaders(),
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      });
 
-      const newPath = path.join(this.uploadDir, folder, filename);
-      fs.renameSync(result.filePath, newPath);
-
-      return {
-        url: `/uploads/${folder}/${path.basename(newPath)}`,
-        filename: path.basename(newPath),
-        path: newPath,
-      };
-    } catch (error) {
-      if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
-      throw error;
+      return response.data;
+    } catch (error: any) {
+      throw ApiError.badRequest(error.response?.data?.error?.message || error.message || 'Cloudinary upload failed');
     }
   }
 
+  mapCloudinaryAsset(asset: AnyRecord) {
+    return {
+      url: asset.secure_url,
+      secureUrl: asset.secure_url,
+      publicId: asset.public_id,
+      filename: asset.original_filename || path.basename(String(asset.public_id || '')),
+      format: asset.format,
+      width: asset.width,
+      height: asset.height,
+      bytes: asset.bytes,
+      createdAt: asset.created_at,
+      folder: asset.asset_folder || asset.folder || path.dirname(String(asset.public_id || '')),
+      provider: 'cloudinary',
+    };
+  }
+
+  async uploadAndProcess(file: AnyRecord, folder: string, baseName: string, imageOptions: ProcessImageOptions) {
+    const processed = await this.processImageBuffer(file, imageOptions);
+    const { folder: folderPath, publicId } = this.buildPublicId(folder, baseName);
+    const uploaded = await this.uploadToCloudinary(processed.buffer, {
+      folder: folderPath,
+      publicId,
+      mimeType: `image/${processed.format}`,
+    });
+
+    return this.mapCloudinaryAsset(uploaded);
+  }
+
   async uploadAvatar(file: AnyRecord, userId: string | number) {
-    return this.uploadAndProcess(file, 'avatars', `user-${userId}-${Date.now()}.jpeg`, {
+    return this.uploadAndProcess(file, 'avatars', `user-${userId}-${Date.now()}`, {
       width: 200,
       height: 200,
       quality: 85,
@@ -127,7 +233,9 @@ class UploadService {
   }
 
   async uploadGeneralFile(file: AnyRecord) {
-    return this.uploadAndProcess(file, 'general', `file-${Date.now()}.jpeg`, {
+    const originalBaseName = path.parse(String(file?.originalname || `file-${Date.now()}`)).name;
+
+    return this.uploadAndProcess(file, 'general', `${originalBaseName}-${Date.now()}`, {
       width: 1200,
       height: 1200,
       fit: 'inside',
@@ -136,80 +244,166 @@ class UploadService {
     });
   }
 
-  async deleteFile(url: string) {
-    const filePath = resolveFromUrl(this.uploadDir, url);
+  resolvePublicId(input: string) {
+    const raw = String(input || '').trim();
 
-    if (!fs.existsSync(filePath)) {
-      throw ApiError.notFound('File not found');
+    if (!raw) {
+      throw ApiError.badRequest('url or publicId is required');
     }
 
-    fs.unlinkSync(filePath);
-    return { message: 'File deleted successfully' };
+    if (!/^https?:\/\//i.test(raw)) {
+      return raw;
+    }
+
+    try {
+      const parsed = new URL(raw);
+      const uploadIndex = parsed.pathname.indexOf('/upload/');
+
+      if (uploadIndex === -1) {
+        throw new Error('Invalid Cloudinary URL');
+      }
+
+      const afterUpload = parsed.pathname.slice(uploadIndex + '/upload/'.length);
+      const segments = afterUpload.split('/').filter(Boolean);
+      const versionIndex = segments.findIndex((segment) => /^v\d+$/.test(segment));
+      const pathSegments = versionIndex >= 0 ? segments.slice(versionIndex + 1) : segments;
+
+      if (pathSegments.length === 0) {
+        throw new Error('Invalid Cloudinary URL');
+      }
+
+      const lastSegment = pathSegments[pathSegments.length - 1];
+      pathSegments[pathSegments.length - 1] = lastSegment.replace(/\.[^.]+$/, '');
+
+      return pathSegments.join('/');
+    } catch {
+      throw ApiError.badRequest('Invalid Cloudinary URL');
+    }
   }
 
-  async getFileInfo(url: string) {
-    const filePath = resolveFromUrl(this.uploadDir, url);
+  async adminRequest(pathname: string, params: Record<string, any> = {}) {
+    this.assertConfigured();
 
-    if (!fs.existsSync(filePath)) {
-      throw ApiError.notFound('File not found');
+    try {
+      const response = await axios.get(this.getAdminUrl(pathname), {
+        params,
+        auth: {
+          username: this.apiKey as string,
+          password: this.apiSecret as string,
+        },
+      });
+
+      return response.data;
+    } catch (error: any) {
+      throw ApiError.badRequest(error.response?.data?.error?.message || error.message || 'Cloudinary request failed');
     }
+  }
 
-    const stats = fs.statSync(filePath);
-    return {
-      filename: path.basename(filePath),
-      size: stats.size,
-      created: stats.birthtime,
-      modified: stats.mtime,
-      path: filePath,
+  async destroyResource(publicId: string) {
+    this.assertConfigured();
+
+    const timestamp = Math.floor(Date.now() / 1000);
+    const params = {
+      invalidate: true,
+      public_id: publicId,
+      timestamp,
     };
+    const signature = this.createSignature(params);
+    const body = new URLSearchParams();
+
+    body.set('api_key', this.apiKey as string);
+    body.set('timestamp', String(timestamp));
+    body.set('public_id', publicId);
+    body.set('invalidate', 'true');
+    body.set('signature', signature);
+
+    try {
+      const response = await axios.post(this.getDestroyUrl('image'), body.toString(), {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      });
+
+      return response.data;
+    } catch (error: any) {
+      throw ApiError.badRequest(error.response?.data?.error?.message || error.message || 'Cloudinary delete failed');
+    }
   }
 
-  getFolderStats(folderPath: string) {
-    if (!fs.existsSync(folderPath)) return { files: [], totalSize: 0 };
+  async listResourcesByFolder(folder: string) {
+    const prefix = `${this.getFolderPath(folder)}/`;
+    let nextCursor: string | undefined;
+    const resources: AnyRecord[] = [];
 
-    const files = fs.readdirSync(folderPath);
-    let totalSize = 0;
+    do {
+      const response = await this.adminRequest('resources/image/upload', {
+        max_results: 500,
+        next_cursor: nextCursor,
+        prefix,
+      });
 
-    const fileEntries = files.map((file) => {
-      const stats = fs.statSync(path.join(folderPath, file));
-      totalSize += stats.size;
-      return { file, mtimeMs: stats.mtimeMs, size: stats.size };
-    });
+      resources.push(...(response.resources || []));
+      nextCursor = response.next_cursor;
+    } while (nextCursor);
 
-    return { files: fileEntries, totalSize };
+    return resources;
+  }
+
+  async deleteFile(input: string) {
+    const publicId = this.resolvePublicId(input);
+    const result = await this.destroyResource(publicId);
+
+    if (result.result === 'not found') {
+      throw ApiError.notFound('File not found');
+    }
+
+    return { message: 'File deleted successfully', publicId, provider: 'cloudinary' };
+  }
+
+  async getFileInfo(input: string) {
+    const publicId = this.resolvePublicId(input);
+    const encodedPublicId = publicId
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+    const resource = await this.adminRequest(`resources/image/upload/${encodedPublicId}`);
+
+    return this.mapCloudinaryAsset(resource);
   }
 
   async cleanupOldFiles(days = 30) {
-    const maxAge = days * 24 * 60 * 60 * 1000;
-    const now = Date.now();
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
     let deletedCount = 0;
 
     for (const folder of FOLDERS) {
-      const { files } = this.getFolderStats(path.join(this.uploadDir, folder));
-      for (const { file, mtimeMs } of files) {
-        if (now - mtimeMs > maxAge) {
-          fs.unlinkSync(path.join(this.uploadDir, folder, file));
+      const resources = await this.listResourcesByFolder(folder);
+      const oldResources = resources.filter((item) => new Date(String(item.created_at || 0)).getTime() < cutoff);
+
+      for (const item of oldResources) {
+        const result = await this.destroyResource(item.public_id);
+        if (result.result === 'ok') {
           deletedCount++;
         }
       }
     }
 
-    return { message: `Deleted ${deletedCount} old files`, deletedCount };
+    return { message: `Deleted ${deletedCount} old files`, deletedCount, provider: 'cloudinary' };
   }
 
   async getStorageStats() {
-    const stats: AnyRecord = { totalSize: 0, totalFiles: 0, byFolder: {} };
+    const stats: AnyRecord = { totalSize: 0, totalFiles: 0, byFolder: {}, provider: 'cloudinary' };
 
     for (const folder of FOLDERS) {
-      const { files, totalSize } = this.getFolderStats(path.join(this.uploadDir, folder));
+      const resources = await this.listResourcesByFolder(folder);
+      const totalSize = resources.reduce((sum, item) => sum + (Number(item.bytes) || 0), 0);
 
       stats.byFolder[folder] = {
-        files: files.length,
+        files: resources.length,
         size: totalSize,
         sizeFormatted: this.formatBytes(totalSize),
       };
 
-      stats.totalFiles += files.length;
+      stats.totalFiles += resources.length;
       stats.totalSize += totalSize;
     }
 

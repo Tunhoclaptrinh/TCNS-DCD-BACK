@@ -3,11 +3,57 @@ import userService from '@services/user.service';
 import BaseController from '@utils/base-controller';
 import ApiError from '@utils/api-error';
 import type { AnyRecord } from '@app-types/common';
+import uploadService from '@services/common/upload.service';
 
 class UserController extends BaseController {
   constructor() {
     super(userService);
   }
+
+  getAvatarUploadMiddleware() {
+    return uploadService.getSingleUpload('avatar', 'avatars');
+  }
+
+  safelyDeleteAvatar = async (avatarUrl?: string | null) => {
+    if (!avatarUrl) return;
+
+    try {
+      await uploadService.deleteFile(avatarUrl);
+    } catch (_error) {
+      // Ignore non-Cloudinary or already-deleted avatars.
+    }
+  };
+
+  updateUserWithUploadedAvatar = async (targetUserId: string | number, payload: AnyRecord, file?: any) => {
+    const existingUserResult = await this.service.findById(targetUserId);
+    if (!existingUserResult?.success || !existingUserResult.data) {
+      throw ApiError.notFound('User not found');
+    }
+
+    if (!file) {
+      return await this.service.update(targetUserId, payload);
+    }
+
+    const previousAvatar = existingUserResult.data.avatar;
+    const uploadedAvatar = await uploadService.uploadAvatar(file, targetUserId);
+    const nextPayload = {
+      ...payload,
+      avatar: uploadedAvatar.secureUrl || uploadedAvatar.url,
+    };
+
+    try {
+      const updatedUser = await this.service.update(targetUserId, nextPayload);
+
+      if (previousAvatar && previousAvatar !== nextPayload.avatar) {
+        await this.safelyDeleteAvatar(previousAvatar);
+      }
+
+      return updatedUser;
+    } catch (error) {
+      await this.safelyDeleteAvatar(uploadedAvatar.secureUrl || uploadedAvatar.url);
+      throw error;
+    }
+  };
 
   getAll = async (req, res, next) => {
     try {
@@ -46,7 +92,7 @@ class UserController extends BaseController {
 
   update = async (req, res, next) => {
     try {
-      const data = await this.service.update(req.params.id, req.body);
+      const data = await this.updateUserWithUploadedAvatar(req.params.id, req.body, req.file);
       res.json(sanitizeUser(data));
     } catch (error) {
       next(error);
@@ -181,11 +227,11 @@ class UserController extends BaseController {
       if (avatar) updateData.avatar = avatar;
       if (bio !== undefined) updateData.bio = bio;
 
-      if (Object.keys(updateData).length === 0) {
+      if (Object.keys(updateData).length === 0 && !req.file) {
         throw ApiError.badRequest('No fields to update');
       }
 
-      const data = await this.service.update(req.user.id, updateData);
+      const data = await this.updateUserWithUploadedAvatar(req.user.id, updateData, req.file);
       res.json(sanitizeUser(data));
     } catch (error) {
       next(error);
