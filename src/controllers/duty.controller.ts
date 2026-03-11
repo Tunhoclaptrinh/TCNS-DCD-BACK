@@ -5,7 +5,7 @@ class DutyController {
     try {
       const data = await dutyService.getWeeklySchedule({
         ...req.parsedQuery,
-        week_start: req.query.week_start || req.query.weekStart,
+        weekStart: req.query.weekStart || req.query.week_start,
       });
       res.json(data);
     } catch (error) {

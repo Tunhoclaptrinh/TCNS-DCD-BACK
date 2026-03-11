@@ -31,7 +31,7 @@ class ReportService {
     let totalAssigned = 0;
     for (const slot of dutySlots) {
       totalCapacity += Math.max(1, Number(slot.capacity) || 1);
-      totalAssigned += normalizeIdList(slot.assigned_user_ids || []).length;
+      totalAssigned += normalizeIdList(slot.assignedUserIds || []).length;
     }
 
     let totalReward = 0;
@@ -43,14 +43,14 @@ class ReportService {
     }
 
     const pendingSwapRequests = swapRequests.filter((item) => item.status === 'pending').length;
-    const unreadNotifications = notifications.filter((item) => item.is_read === false).length;
+    const unreadNotifications = notifications.filter((item) => item.isRead === false).length;
 
     const recentNotifications = [...notifications]
       .sort((a, b) => new Date(String(b.createdAt || 0)).getTime() - new Date(String(a.createdAt || 0)).getTime())
       .slice(0, 10)
       .map((item) => ({
         id: item.id,
-        user_id: item.user_id,
+        userId: item.userId,
         title: item.title,
         type: item.type,
         category: item.category,

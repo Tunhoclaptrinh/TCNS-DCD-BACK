@@ -12,6 +12,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import loggerMiddleware from './middleware/logger.middleware';
 import { responseInterceptor, errorHandler, notFoundHandler } from './middleware/response.middleware';
 import { parseQuery, formatResponse, validateQuery, logQuery } from './middleware/query.middleware';
+import { normalizeRequestBodyCase } from './middleware/request-case.middleware';
 import { setupSwagger } from './utils/swagger';
 import routes from './routes';
 import { initSocket } from './socket';
@@ -68,6 +69,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(UPLOAD_DIR));
 
 // ==================== APP MIDDLEWARE ====================
+app.use(normalizeRequestBodyCase);
 app.use(loggerMiddleware);
 app.use(responseInterceptor);
 app.use(parseQuery);

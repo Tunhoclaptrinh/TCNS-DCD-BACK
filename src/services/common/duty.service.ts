@@ -71,19 +71,19 @@ class DutyService extends BaseService {
 
   buildSlotPayload(data: GenericRecord = {}, createdBy: Identifier | null = null) {
     const now = new Date().toISOString();
-    const shiftDate = new Date(data.shift_date || now).toISOString();
-    const weekStart = getWeekStartISO(data.week_start || shiftDate);
+    const shiftDate = new Date(data.shiftDate || now).toISOString();
+    const weekStart = getWeekStartISO(data.weekStart || shiftDate);
 
     return {
-      week_start: weekStart,
-      shift_date: shiftDate,
-      shift_label: data.shift_label,
-      start_time: data.start_time || null,
-      end_time: data.end_time || null,
+      weekStart,
+      shiftDate,
+      shiftLabel: data.shiftLabel,
+      startTime: data.startTime || null,
+      endTime: data.endTime || null,
       capacity: Math.max(1, Number(data.capacity) || 1),
-      assigned_user_ids: normalizeIdList(data.assigned_user_ids || []),
+      assignedUserIds: normalizeIdList(data.assignedUserIds || []),
       status: data.status || 'open',
-      created_by: normalizeId(data.created_by || createdBy),
+      createdBy: normalizeId(data.createdBy || createdBy),
       note: data.note || '',
       createdAt: data.createdAt || now,
       updatedAt: now,
@@ -91,17 +91,17 @@ class DutyService extends BaseService {
   }
 
   async getWeeklySchedule(options: GenericRecord = {}) {
-    const weekStart = getWeekStartISO(options.week_start || options.weekStart || new Date().toISOString());
+    const weekStart = getWeekStartISO(options.weekStart || new Date().toISOString());
     const weekEnd = getWeekEndISO(weekStart);
 
     const result = await db.findAllAdvanced('duty_slots', {
       ...options,
       filter: {
         ...(options.filter || {}),
-        shift_date_gte: weekStart,
-        shift_date_lte: weekEnd,
+        shiftDate_gte: weekStart,
+        shiftDate_lte: weekEnd,
       },
-      sort: options.sort || 'shift_date,start_time',
+      sort: options.sort || 'shiftDate,startTime',
       order: options.order || 'asc',
     });
 
@@ -111,25 +111,25 @@ class DutyService extends BaseService {
     );
 
     const data = result.data.map((slot) => {
-      const assignedUserIds = normalizeIdList(slot.assigned_user_ids || []);
+      const assignedUserIds = normalizeIdList(slot.assignedUserIds || []);
       return {
         ...slot,
-        assigned_user_ids: assignedUserIds,
-        assigned_users: assignedUserIds.map((id) => userMap.get(id)).filter(Boolean),
+        assignedUserIds,
+        assignedUsers: assignedUserIds.map((id) => userMap.get(id)).filter(Boolean),
       };
     });
 
     return {
       data,
-      week_start: weekStart,
-      week_end: weekEnd,
+      weekStart,
+      weekEnd,
       pagination: result.pagination,
     };
   }
 
   async createSlot(payload: GenericRecord, actorId: Identifier) {
-    if (!payload?.shift_label || !payload?.shift_date) {
-      throw ApiError.badRequest('shift_label and shift_date are required');
+    if (!payload?.shiftLabel || !payload?.shiftDate) {
+      throw ApiError.badRequest('shiftLabel and shiftDate are required');
     }
 
     const slotPayload = this.buildSlotPayload(payload, actorId);
@@ -143,14 +143,14 @@ class DutyService extends BaseService {
 
     const patch: GenericRecord = { ...payload, updatedAt: new Date().toISOString() };
 
-    if (payload.shift_date || payload.week_start) {
-      const shiftDate = payload.shift_date ? new Date(payload.shift_date).toISOString() : slot.shift_date;
-      patch.shift_date = shiftDate;
-      patch.week_start = getWeekStartISO(payload.week_start || shiftDate);
+    if (payload.shiftDate || payload.weekStart) {
+      const shiftDate = payload.shiftDate ? new Date(payload.shiftDate).toISOString() : slot.shiftDate;
+      patch.shiftDate = shiftDate;
+      patch.weekStart = getWeekStartISO(payload.weekStart || shiftDate);
     }
 
-    if (payload.assigned_user_ids) {
-      patch.assigned_user_ids = normalizeIdList(payload.assigned_user_ids);
+    if (payload.assignedUserIds) {
+      patch.assignedUserIds = normalizeIdList(payload.assignedUserIds);
     }
 
     if (payload.capacity !== undefined) {
@@ -166,7 +166,7 @@ class DutyService extends BaseService {
     if (slot.status === 'locked') throw ApiError.badRequest('Duty slot is locked');
 
     const userId = getActorId(user);
-    const assigned = normalizeIdList(slot.assigned_user_ids || []);
+    const assigned = normalizeIdList(slot.assignedUserIds || []);
 
     if (assigned.includes(userId)) {
       throw ApiError.badRequest('You have already registered this duty slot');
@@ -177,12 +177,12 @@ class DutyService extends BaseService {
       throw ApiError.badRequest('Duty slot is full');
     }
 
-    const sameDateSlots = await db.findMany('duty_slots', { shift_date: slot.shift_date });
+    const sameDateSlots = await db.findMany('duty_slots', { shiftDate: slot.shiftDate });
     const hasConflict = sameDateSlots.some((item) => {
       if (normalizeId(item.id) === normalizeId(slot.id)) return false;
-      const itemAssigned = normalizeIdList(item.assigned_user_ids || []);
+      const itemAssigned = normalizeIdList(item.assignedUserIds || []);
       if (!itemAssigned.includes(userId)) return false;
-      return (item.start_time || '') === (slot.start_time || '') && (item.end_time || '') === (slot.end_time || '');
+      return (item.startTime || '') === (slot.startTime || '') && (item.endTime || '') === (slot.endTime || '');
     });
 
     if (hasConflict) {
@@ -190,16 +190,16 @@ class DutyService extends BaseService {
     }
 
     const updated = await db.update('duty_slots', slot.id, {
-      assigned_user_ids: [...assigned, userId],
+      assignedUserIds: [...assigned, userId],
       updatedAt: new Date().toISOString(),
     });
 
     await notificationService.notifyUser(userId, {
       title: 'Đăng ký ca trực thành công',
-      message: `Bạn đã đăng ký ca '${slot.shift_label}' ngày ${new Date(slot.shift_date).toLocaleDateString('vi-VN')}.`,
+      message: `Bạn đã đăng ký ca '${slot.shiftLabel}' ngày ${new Date(slot.shiftDate).toLocaleDateString('vi-VN')}.`,
       category: 'shift',
       type: 'shift',
-      ref_id: slot.id,
+      refId: slot.id,
       metadata: { action: 'register' },
     });
 
@@ -211,23 +211,23 @@ class DutyService extends BaseService {
     if (!slot) throw ApiError.notFound('Duty slot not found');
 
     const userId = getActorId(user);
-    const assigned = normalizeIdList(slot.assigned_user_ids || []);
+    const assigned = normalizeIdList(slot.assignedUserIds || []);
 
     if (!assigned.includes(userId)) {
       throw ApiError.badRequest('You have not registered this duty slot');
     }
 
     const updated = await db.update('duty_slots', slot.id, {
-      assigned_user_ids: assigned.filter((id) => id !== userId),
+      assignedUserIds: assigned.filter((id) => id !== userId),
       updatedAt: new Date().toISOString(),
     });
 
     await notificationService.notifyUser(userId, {
       title: 'Hủy ca trực thành công',
-      message: `Bạn đã hủy ca '${slot.shift_label}' ngày ${new Date(slot.shift_date).toLocaleDateString('vi-VN')}.`,
+      message: `Bạn đã hủy ca '${slot.shiftLabel}' ngày ${new Date(slot.shiftDate).toLocaleDateString('vi-VN')}.`,
       category: 'shift',
       type: 'shift',
-      ref_id: slot.id,
+      refId: slot.id,
       metadata: { action: 'cancel' },
     });
 
@@ -235,12 +235,12 @@ class DutyService extends BaseService {
   }
 
   async requestSwap(payload: GenericRecord, requesterUser: GenericRecord) {
-    const slotId = payload?.duty_slot_id || payload?.slotId;
-    const targetUserIdRaw = payload?.target_user_id || payload?.targetUserId;
+    const slotId = payload?.dutySlotId || payload?.slotId;
+    const targetUserIdRaw = payload?.targetUserId;
     const reason = String(payload?.reason || '').trim();
 
     if (!slotId || !targetUserIdRaw || !reason) {
-      throw ApiError.badRequest('duty_slot_id, target_user_id and reason are required');
+      throw ApiError.badRequest('dutySlotId, targetUserId and reason are required');
     }
 
     const requesterId = normalizeId(requesterUser.id);
@@ -253,7 +253,7 @@ class DutyService extends BaseService {
     const slot = await db.findById('duty_slots', slotId);
     if (!slot) throw ApiError.notFound('Duty slot not found');
 
-    const assigned = normalizeIdList(slot.assigned_user_ids || []);
+    const assigned = normalizeIdList(slot.assignedUserIds || []);
     if (!assigned.includes(requesterId)) {
       throw ApiError.badRequest('You are not assigned to this duty slot');
     }
@@ -268,9 +268,9 @@ class DutyService extends BaseService {
     }
 
     const existingPending = await db.findOne('duty_swap_requests', {
-      duty_slot_id: normalizeId(slot.id),
-      requester_id: requesterId,
-      target_user_id: targetUserId,
+      dutySlotId: normalizeId(slot.id),
+      requesterId,
+      targetUserId,
       status: 'pending',
     });
 
@@ -280,9 +280,9 @@ class DutyService extends BaseService {
 
     const now = new Date().toISOString();
     const created = await db.create('duty_swap_requests', {
-      duty_slot_id: normalizeId(slot.id),
-      requester_id: requesterId,
-      target_user_id: targetUserId,
+      dutySlotId: normalizeId(slot.id),
+      requesterId,
+      targetUserId,
       reason,
       status: 'pending',
       createdAt: now,
@@ -296,28 +296,28 @@ class DutyService extends BaseService {
 
     await notificationService.notifyUser(requesterId, {
       title: 'Yêu cầu đổi ca đã gửi',
-      message: `Yêu cầu đổi ca '${slot.shift_label}' của bạn đang chờ duyệt.`,
+      message: `Yêu cầu đổi ca '${slot.shiftLabel}' của bạn đang chờ duyệt.`,
       category: 'approval',
       type: 'approval',
-      ref_id: created.id,
+      refId: created.id,
       metadata: { action: 'swap_request_created' },
     });
 
     await notificationService.notifyUser(targetUserId, {
       title: 'Bạn có yêu cầu nhận ca trực',
-      message: `Bạn vừa nhận được yêu cầu đổi ca '${slot.shift_label}'.`,
+      message: `Bạn vừa nhận được yêu cầu đổi ca '${slot.shiftLabel}'.`,
       category: 'approval',
       type: 'approval',
-      ref_id: created.id,
+      refId: created.id,
       metadata: { action: 'swap_requested_to_you' },
     });
 
     await notificationService.notifyUsers(approverIds, {
       title: 'Yêu cầu duyệt đổi ca',
-      message: `Có yêu cầu đổi ca mới cần duyệt cho ca '${slot.shift_label}'.`,
+      message: `Có yêu cầu đổi ca mới cần duyệt cho ca '${slot.shiftLabel}'.`,
       category: 'approval',
       type: 'approval',
-      ref_id: created.id,
+      refId: created.id,
       metadata: { action: 'swap_pending_review' },
     });
 
@@ -336,8 +336,8 @@ class DutyService extends BaseService {
       });
     }
 
-    const requesterItems = await db.findMany('duty_swap_requests', { requester_id: userId });
-    const targetItems = await db.findMany('duty_swap_requests', { target_user_id: userId });
+    const requesterItems = await db.findMany('duty_swap_requests', { requesterId: userId });
+    const targetItems = await db.findMany('duty_swap_requests', { targetUserId: userId });
 
     const map = new Map<Identifier, GenericRecord>();
     for (const item of [...requesterItems, ...targetItems]) {
@@ -364,7 +364,7 @@ class DutyService extends BaseService {
     }
 
     const decision = String(payload.decision || payload.status || '').toLowerCase();
-    const note = String(payload.note || payload.reason || payload.decision_note || '').trim();
+    const note = String(payload.note || payload.reason || payload.decisionNote || '').trim();
 
     if (!['approved', 'rejected'].includes(decision)) {
       throw ApiError.badRequest("decision must be 'approved' or 'rejected'");
@@ -373,12 +373,12 @@ class DutyService extends BaseService {
     const now = new Date().toISOString();
 
     if (decision === 'approved') {
-      const slot = await db.findById('duty_slots', swapRequest.duty_slot_id);
+      const slot = await db.findById('duty_slots', swapRequest.dutySlotId);
       if (!slot) throw ApiError.notFound('Duty slot not found');
 
-      const requesterId = normalizeId(swapRequest.requester_id);
-      const targetUserId = normalizeId(swapRequest.target_user_id);
-      const assigned = normalizeIdList(slot.assigned_user_ids || []);
+      const requesterId = normalizeId(swapRequest.requesterId);
+      const targetUserId = normalizeId(swapRequest.targetUserId);
+      const assigned = normalizeIdList(slot.assignedUserIds || []);
 
       if (!assigned.includes(requesterId)) {
         throw ApiError.badRequest('Requester is no longer assigned to this duty slot');
@@ -390,44 +390,44 @@ class DutyService extends BaseService {
 
       const nextAssigned = [...assigned.filter((id) => id !== requesterId), targetUserId];
       await db.update('duty_slots', slot.id, {
-        assigned_user_ids: nextAssigned,
+        assignedUserIds: nextAssigned,
         updatedAt: now,
       });
     }
 
     const updatedRequest = await db.update('duty_swap_requests', requestId, {
       status: decision,
-      decision_note: note,
-      approved_by: normalizeId(approverUser.id),
-      approved_at: now,
+      decisionNote: note,
+      approvedBy: normalizeId(approverUser.id),
+      approvedAt: now,
       updatedAt: now,
     });
 
     if (decision === 'approved') {
-      await notificationService.notifyUser(swapRequest.requester_id, {
+      await notificationService.notifyUser(swapRequest.requesterId, {
         title: 'Yêu cầu đổi ca đã được duyệt',
         message: 'Yêu cầu đổi ca của bạn đã được chấp thuận.',
         category: 'approval',
         type: 'approval',
-        ref_id: swapRequest.id,
+        refId: swapRequest.id,
         metadata: { decision: 'approved' },
       });
 
-      await notificationService.notifyUser(swapRequest.target_user_id, {
+      await notificationService.notifyUser(swapRequest.targetUserId, {
         title: 'Bạn đã được phân ca mới',
         message: 'Yêu cầu đổi ca đã được duyệt và ca trực đã được cập nhật cho bạn.',
         category: 'approval',
         type: 'approval',
-        ref_id: swapRequest.id,
+        refId: swapRequest.id,
         metadata: { decision: 'approved' },
       });
     } else {
-      await notificationService.notifyUser(swapRequest.requester_id, {
+      await notificationService.notifyUser(swapRequest.requesterId, {
         title: 'Yêu cầu đổi ca bị từ chối',
         message: note || 'Yêu cầu đổi ca của bạn đã bị từ chối.',
         category: 'approval',
         type: 'approval',
-        ref_id: swapRequest.id,
+        refId: swapRequest.id,
         metadata: { decision: 'rejected' },
       });
     }
@@ -441,7 +441,7 @@ class DutyService extends BaseService {
       total: slots.length,
       open: slots.filter((s) => s.status === 'open').length,
       locked: slots.filter((s) => s.status === 'locked').length,
-      totalAssigned: slots.reduce((acc, s) => acc + (s.assigned_user_ids?.length || 0), 0),
+      totalAssigned: slots.reduce((acc, s) => acc + (s.assignedUserIds?.length || 0), 0),
     };
 
     return {

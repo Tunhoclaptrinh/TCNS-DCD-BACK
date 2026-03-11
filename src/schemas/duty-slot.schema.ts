@@ -1,29 +1,29 @@
 import { defineSchema } from '@app-types/schema';
 
 export default defineSchema({
-  week_start: {
+  weekStart: {
     type: 'date',
     required: true,
     description: 'Ngày bắt đầu tuần (ISO)',
   },
-  shift_date: {
+  shiftDate: {
     type: 'date',
     required: true,
     description: 'Ngày diễn ra ca trực (ISO)',
   },
-  shift_label: {
+  shiftLabel: {
     type: 'string',
     required: true,
     minLength: 1,
     maxLength: 100,
     description: 'Tên ca trực',
   },
-  start_time: {
+  startTime: {
     type: 'string',
     required: false,
     description: 'Giờ bắt đầu (HH:mm)',
   },
-  end_time: {
+  endTime: {
     type: 'string',
     required: false,
     description: 'Giờ kết thúc (HH:mm)',
@@ -35,7 +35,7 @@ export default defineSchema({
     min: 1,
     description: 'Số lượng thành viên tối đa',
   },
-  assigned_user_ids: {
+  assignedUserIds: {
     type: 'array',
     required: false,
     default: [],
@@ -48,7 +48,7 @@ export default defineSchema({
     default: 'open',
     description: 'Trạng thái ca',
   },
-  created_by: {
+  createdBy: {
     type: 'number',
     required: true,
     foreignKey: 'users',

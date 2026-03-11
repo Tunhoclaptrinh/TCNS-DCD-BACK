@@ -2,9 +2,34 @@ import fs from 'fs';
 import path from 'path';
 import type { AnyRecord, Identifier } from '@app-types/common';
 import type { CollectionStore, DatabaseAdapter, FindAllResult, QueryOptions } from '@app-types/database';
+import { camelizeObjectKeys, splitKeyBySuffix, toCamelCase } from '@utils/case';
 
 const DATA_DIR = path.resolve(process.cwd(), 'src/database');
 const DB_FILE = process.env.DB_FILE || path.join(DATA_DIR, 'db.json');
+const FILTER_SUFFIXES = ['_not_like', '_ilike', '_like', '_gte', '_lte', '_gt', '_lt', '_ne', '_in', '_nin'];
+
+const RELATION_MAP = {
+  users: {
+    notifications: { collection: 'notifications', foreignField: 'userId' },
+    notificationSettings: { collection: 'notification_settings', foreignField: 'userId' },
+  },
+  notifications: {
+    user: { collection: 'users', localField: 'userId', justOne: true },
+  },
+  notification_settings: {
+    user: { collection: 'users', localField: 'userId', justOne: true },
+  },
+  reward_penalties: {
+    user: { collection: 'users', localField: 'userId', justOne: true },
+    creator: { collection: 'users', localField: 'createdBy', justOne: true },
+  },
+  duty_swap_requests: {
+    requester: { collection: 'users', localField: 'requesterId', justOne: true },
+    targetUser: { collection: 'users', localField: 'targetUserId', justOne: true },
+    approver: { collection: 'users', localField: 'approvedBy', justOne: true },
+    dutySlot: { collection: 'duty_slots', localField: 'dutySlotId', justOne: true },
+  },
+};
 
 class JsonAdapter implements DatabaseAdapter {
   data: CollectionStore;
@@ -17,7 +42,7 @@ class JsonAdapter implements DatabaseAdapter {
   loadData(): CollectionStore {
     try {
       const rawData = fs.readFileSync(DB_FILE, 'utf8');
-      return JSON.parse(rawData);
+      return this.normalizeStore(JSON.parse(rawData));
     } catch (error) {
       console.error('Error loading database:', error);
       return this.getDefaultData();
@@ -35,6 +60,17 @@ class JsonAdapter implements DatabaseAdapter {
     }
   }
 
+  normalizeStore(store: CollectionStore | Record<string, any>) {
+    const normalized = { ...this.getDefaultData(), ...(store || {}) };
+
+    for (const [collection, items] of Object.entries(normalized)) {
+      if (!Array.isArray(items)) continue;
+      normalized[collection] = items.map((item) => camelizeObjectKeys(item));
+    }
+
+    return normalized as CollectionStore;
+  }
+
   getDefaultData(): CollectionStore {
     return {
       users: [],
@@ -48,22 +84,17 @@ class JsonAdapter implements DatabaseAdapter {
 
   // ==================== RELATION HELPERS ====================
 
+  getRelationConfig(collection: string, relation: string) {
+    return RELATION_MAP[collection]?.[relation];
+  }
+
   getRelatedCollection(collection: string, relation: string) {
-    const relationMap = {
-      users: {
-        notifications: 'notifications',
-      },
-    };
-    return relationMap[collection]?.[relation];
+    return this.getRelationConfig(collection, relation)?.collection;
   }
 
   getForeignKey(collection: string, relation: string) {
-    const keyMap = {
-      users: {
-        notifications: 'user_id',
-      },
-    };
-    return keyMap[collection]?.[relation];
+    const relationConfig = this.getRelationConfig(collection, relation);
+    return relationConfig?.foreignField || relationConfig?.localField;
   }
 
   // ==================== ENHANCED QUERY METHODS ====================
@@ -105,44 +136,37 @@ class JsonAdapter implements DatabaseAdapter {
   applyFilters(items: AnyRecord[], filters: AnyRecord) {
     return items.filter((item) => {
       return Object.keys(filters).every((key) => {
-        if (key.endsWith('_gte')) {
-          const field = key.replace('_gte', '');
+        const { field, suffix } = splitKeyBySuffix(key, FILTER_SUFFIXES);
+
+        if (suffix === '_gte') {
           return item[field] >= filters[key];
         }
-        if (key.endsWith('_lte')) {
-          const field = key.replace('_lte', '');
+        if (suffix === '_lte') {
           return item[field] <= filters[key];
         }
-        if (key.endsWith('_gt')) {
-          const field = key.replace('_gt', '');
+        if (suffix === '_gt') {
           return item[field] > filters[key];
         }
-        if (key.endsWith('_lt')) {
-          const field = key.replace('_lt', '');
+        if (suffix === '_lt') {
           return item[field] < filters[key];
         }
-        if (key.endsWith('_ne')) {
-          const field = key.replace('_ne', '');
+        if (suffix === '_ne') {
           return item[field] !== filters[key];
         }
-        if (key.endsWith('_like') || key.endsWith('_ilike')) {
-          const field = key.replace('_like', '').replace('_ilike', '');
+        if (suffix === '_like' || suffix === '_ilike') {
           // Escape special regex characters to prevent ReDoS
           const escaped = String(filters[key]).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           return new RegExp(escaped, 'i').test(item[field]);
         }
-        if (key.endsWith('_not_like')) {
-          const field = key.replace('_not_like', '');
+        if (suffix === '_not_like') {
           const escaped = String(filters[key]).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           return !new RegExp(escaped, 'i').test(item[field]);
         }
-        if (key.endsWith('_in')) {
-          const field = key.replace('_in', '');
+        if (suffix === '_in') {
           const values = Array.isArray(filters[key]) ? filters[key] : String(filters[key]).split(',');
           return values.includes(String(item[field]));
         }
-        if (key.endsWith('_nin')) {
-          const field = key.replace('_nin', '');
+        if (suffix === '_nin') {
           const values = Array.isArray(filters[key]) ? filters[key] : String(filters[key]).split(',');
           return !values.includes(String(item[field]));
         }
@@ -187,10 +211,11 @@ class JsonAdapter implements DatabaseAdapter {
       if (options.expand) {
         const relations = options.expand.split(',');
         relations.forEach((relation) => {
-          // Check both camelCase and snake_case foreign key formats
-          const foreignKey = item[`${relation}Id`] !== undefined ? `${relation}Id` : `${relation}_id`;
+          const relationConfig = this.getRelationConfig(collection, relation);
+          const foreignKey =
+            relationConfig?.localField || (item[`${relation}Id`] !== undefined ? `${relation}Id` : `${relation}_id`);
           if (item[foreignKey]) {
-            const targetCollection = relation + 's';
+            const targetCollection = relationConfig?.collection || relation + 's';
             enriched[relation] = this.findById(targetCollection, item[foreignKey]);
           }
         });
@@ -259,18 +284,20 @@ class JsonAdapter implements DatabaseAdapter {
   }
 
   findOne(collection: string, query: AnyRecord) {
+    const normalizedQuery = camelizeObjectKeys(query);
     return this.data[collection]?.find((item) => {
-      return Object.keys(query).every((key) => item[key] === query[key]);
+      return Object.keys(normalizedQuery).every((key) => item[key] === normalizedQuery[key]);
     });
   }
 
   findMany(collection: string, query: AnyRecord = {}) {
+    const normalizedQuery = camelizeObjectKeys(query);
     if (!query || Object.keys(query).length === 0) {
       return this.data[collection] || [];
     }
     return (
       this.data[collection]?.filter((item) => {
-        return Object.keys(query).every((key) => item[key] === query[key]);
+        return Object.keys(normalizedQuery).every((key) => item[key] === normalizedQuery[key]);
       }) || []
     );
   }
@@ -280,7 +307,7 @@ class JsonAdapter implements DatabaseAdapter {
       this.data[collection] = [];
     }
     const id = this.getNextId(collection);
-    const newItem = { id, ...data };
+    const newItem = { id, ...camelizeObjectKeys(data) };
     this.data[collection].push(newItem);
     this.saveData();
     return newItem;
@@ -293,7 +320,7 @@ class JsonAdapter implements DatabaseAdapter {
 
     this.data[collection][index] = {
       ...this.data[collection][index],
-      ...data,
+      ...camelizeObjectKeys(data),
       id: parseInt(String(id), 10),
     };
     this.saveData();
@@ -319,25 +346,30 @@ class JsonAdapter implements DatabaseAdapter {
   // ==================== UTILITY METHODS ====================
 
   exists(collection: string, query: AnyRecord) {
+    const normalizedQuery = camelizeObjectKeys(query);
     if (!this.data[collection]) return false;
     return this.data[collection].some((item) => {
-      return Object.keys(query).every((key) => item[key] === query[key]);
+      return Object.keys(normalizedQuery).every((key) => item[key] === normalizedQuery[key]);
     });
   }
 
   distinct(collection: string, field: string) {
     if (!this.data[collection]) return [];
-    const values = this.data[collection].map((item) => item[field]).filter((v) => v !== undefined && v !== null);
+    const normalizedField = toCamelCase(field);
+    const values = this.data[collection]
+      .map((item) => item[normalizedField])
+      .filter((v) => v !== undefined && v !== null);
     return [...new Set(values)];
   }
 
   count(collection: string, query: AnyRecord | null = null) {
+    const normalizedQuery = query ? camelizeObjectKeys(query) : null;
     if (!this.data[collection]) return 0;
-    if (!query || Object.keys(query).length === 0) {
+    if (!normalizedQuery || Object.keys(normalizedQuery).length === 0) {
       return this.data[collection].length;
     }
     return this.data[collection].filter((item) => {
-      return Object.keys(query).every((key) => item[key] === query[key]);
+      return Object.keys(normalizedQuery).every((key) => item[key] === normalizedQuery[key]);
     }).length;
   }
 
@@ -348,7 +380,7 @@ class JsonAdapter implements DatabaseAdapter {
 
     const created = records.map((data) => {
       const id = this.getNextId(collection);
-      const newItem = { id, ...data };
+      const newItem = { id, ...camelizeObjectKeys(data) };
       this.data[collection].push(newItem);
       return newItem;
     });

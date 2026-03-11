@@ -23,8 +23,8 @@ class RewardPenaltyService extends BaseService {
   }
 
   async createEntry(payload: AnyRecord = {}, actorId: Identifier) {
-    const userId = normalizeId(payload.user_id || payload.userId);
-    if (!userId) throw ApiError.badRequest('user_id is required');
+    const userId = normalizeId(payload.userId);
+    if (!userId) throw ApiError.badRequest('userId is required');
 
     const user = await db.findById('users', userId);
     if (!user) throw ApiError.notFound('User not found');
@@ -46,12 +46,12 @@ class RewardPenaltyService extends BaseService {
 
     const now = new Date().toISOString();
     const created = await db.create('reward_penalties', {
-      user_id: userId,
+      userId,
       type,
       amount,
       reason,
-      event_date: toIsoDate(payload.event_date || payload.eventDate, now),
-      created_by: normalizeId(actorId),
+      eventDate: toIsoDate(payload.eventDate, now),
+      createdBy: normalizeId(actorId),
       note: payload.note || '',
       createdAt: now,
       updatedAt: now,
@@ -65,7 +65,7 @@ class RewardPenaltyService extends BaseService {
           : `Bạn vừa nhận mức phạt ${amount.toLocaleString('vi-VN')} VNĐ.`,
       category: 'system',
       type: 'system',
-      ref_id: created.id,
+      refId: created.id,
       metadata: { type, amount, reason },
     });
 
@@ -78,13 +78,13 @@ class RewardPenaltyService extends BaseService {
 
     const filter: AnyRecord = { ...(options.filter || {}) };
     if (!isManager) {
-      filter.user_id = userId;
+      filter.userId = userId;
     }
 
     return await db.findAllAdvanced('reward_penalties', {
       ...options,
       filter,
-      sort: options.sort || 'event_date,createdAt',
+      sort: options.sort || 'eventDate,createdAt',
       order: options.order || 'desc',
     });
   }
@@ -92,11 +92,11 @@ class RewardPenaltyService extends BaseService {
   async getFinancialStats(options: AnyRecord = {}) {
     const all = await db.findAll('reward_penalties');
 
-    const fromDate = toIsoDate(options.from || options.date_from || options?.filter?.event_date_gte);
-    const toDate = toIsoDate(options.to || options.date_to || options?.filter?.event_date_lte);
+    const fromDate = toIsoDate(options.from || options.dateFrom || options?.filter?.eventDate_gte);
+    const toDate = toIsoDate(options.to || options.dateTo || options?.filter?.eventDate_lte);
 
     const items = all.filter((item) => {
-      const eventDate = toIsoDate(item.event_date || item.createdAt, item.createdAt);
+      const eventDate = toIsoDate(item.eventDate || item.createdAt, item.createdAt);
       if (!eventDate) return false;
       if (fromDate && eventDate < fromDate) return false;
       if (toDate && eventDate > toDate) return false;
@@ -109,7 +109,7 @@ class RewardPenaltyService extends BaseService {
 
     for (const item of items) {
       const amount = Number(item.amount) || 0;
-      const monthKey = String(item.event_date || item.createdAt || '').slice(0, 7);
+      const monthKey = String(item.eventDate || item.createdAt || '').slice(0, 7);
 
       if (!byMonth[monthKey]) {
         byMonth[monthKey] = { reward: 0, penalty: 0, net: 0 };

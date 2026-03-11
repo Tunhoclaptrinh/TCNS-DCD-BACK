@@ -5,6 +5,7 @@ import { pathToFileURL } from 'url';
 import type { AnyRecord, Identifier } from '@app-types/common';
 import type { DatabaseAdapter, QueryOptions } from '@app-types/database';
 import type { SchemaDefinition, SchemaRule } from '@app-types/schema';
+import { camelizeObjectKeys, splitKeyBySuffix, toCamelCase } from '@utils/case';
 
 const SCHEMA_MODEL_MAP = {
   'user.schema': 'users',
@@ -14,6 +15,7 @@ const SCHEMA_MODEL_MAP = {
   'duty-swap-request.schema': 'duty_swap_requests',
   'reward-penalty.schema': 'reward_penalties',
 };
+const FILTER_SUFFIXES = ['_not_like', '_ilike', '_like', '_gte', '_lte', '_gt', '_lt', '_ne', '_in', '_nin'];
 
 function stripModuleExtension(fileName: string) {
   return fileName.replace(/\.(ts|js)$/, '');
@@ -34,24 +36,24 @@ class MongoConnect implements DatabaseAdapter {
     this.models = {};
     this.relations = {
       users: {
-        notifications: { ref: 'notifications', localField: 'id', foreignField: 'user_id' },
-        notification_settings: { ref: 'notification_settings', localField: 'id', foreignField: 'user_id' },
+        notifications: { ref: 'notifications', localField: 'id', foreignField: 'userId' },
+        notificationSettings: { ref: 'notification_settings', localField: 'id', foreignField: 'userId' },
       },
       notifications: {
-        user: { ref: 'users', localField: 'user_id', foreignField: 'id', justOne: true },
+        user: { ref: 'users', localField: 'userId', foreignField: 'id', justOne: true },
       },
       notification_settings: {
-        user: { ref: 'users', localField: 'user_id', foreignField: 'id', justOne: true },
+        user: { ref: 'users', localField: 'userId', foreignField: 'id', justOne: true },
       },
       reward_penalties: {
-        user: { ref: 'users', localField: 'user_id', foreignField: 'id', justOne: true },
-        creator: { ref: 'users', localField: 'created_by', foreignField: 'id', justOne: true },
+        user: { ref: 'users', localField: 'userId', foreignField: 'id', justOne: true },
+        creator: { ref: 'users', localField: 'createdBy', foreignField: 'id', justOne: true },
       },
       duty_swap_requests: {
-        requester: { ref: 'users', localField: 'requester_id', foreignField: 'id', justOne: true },
-        target_user: { ref: 'users', localField: 'target_user_id', foreignField: 'id', justOne: true },
-        approver: { ref: 'users', localField: 'approved_by', foreignField: 'id', justOne: true },
-        duty_slot: { ref: 'duty_slots', localField: 'duty_slot_id', foreignField: 'id', justOne: true },
+        requester: { ref: 'users', localField: 'requesterId', foreignField: 'id', justOne: true },
+        targetUser: { ref: 'users', localField: 'targetUserId', foreignField: 'id', justOne: true },
+        approver: { ref: 'users', localField: 'approvedBy', foreignField: 'id', justOne: true },
+        dutySlot: { ref: 'duty_slots', localField: 'dutySlotId', foreignField: 'id', justOne: true },
       },
     };
   }
@@ -212,30 +214,31 @@ class MongoConnect implements DatabaseAdapter {
 
     if (options.filter) {
       for (const [key, val] of Object.entries(options.filter)) {
-        if (key.endsWith('_gte')) {
-          const field = key.replace('_gte', '');
+        const { field: rawField, suffix } = splitKeyBySuffix(key, FILTER_SUFFIXES);
+        const field = toCamelCase(rawField);
+
+        if (suffix === '_gte') {
           query[field] = { ...query[field], $gte: this.castQueryValue(val) };
-        } else if (key.endsWith('_lte')) {
-          const field = key.replace('_lte', '');
+        } else if (suffix === '_lte') {
           query[field] = { ...query[field], $lte: this.castQueryValue(val) };
-        } else if (key.endsWith('_gt')) {
-          const field = key.replace('_gt', '');
+        } else if (suffix === '_gt') {
           query[field] = { ...query[field], $gt: this.castQueryValue(val) };
-        } else if (key.endsWith('_lt')) {
-          const field = key.replace('_lt', '');
+        } else if (suffix === '_lt') {
           query[field] = { ...query[field], $lt: this.castQueryValue(val) };
-        } else if (key.endsWith('_ne')) {
-          const field = key.replace('_ne', '');
+        } else if (suffix === '_ne') {
           query[field] = { $ne: this.castQueryValue(val) };
-        } else if (key.endsWith('_like')) {
-          const field = key.replace('_like', '');
+        } else if (suffix === '_like' || suffix === '_ilike') {
           query[field] = { $regex: val, $options: 'i' };
-        } else if (key.endsWith('_in')) {
-          const field = key.replace('_in', '');
+        } else if (suffix === '_not_like') {
+          query[field] = { $not: { $regex: val, $options: 'i' } };
+        } else if (suffix === '_in') {
           const values = Array.isArray(val) ? val : String(val).split(',');
           query[field] = { $in: values.map((item) => this.castQueryValue(item)) };
+        } else if (suffix === '_nin') {
+          const values = Array.isArray(val) ? val : String(val).split(',');
+          query[field] = { $nin: values.map((item) => this.castQueryValue(item)) };
         } else {
-          query[key] = this.castQueryValue(val);
+          query[toCamelCase(key)] = this.castQueryValue(val);
         }
       }
     }
@@ -252,7 +255,7 @@ class MongoConnect implements DatabaseAdapter {
       const orders = options.order ? options.order.split(',') : [];
       const sortObj: Record<string, number> = {};
       sortFields.forEach((field, index) => {
-        sortObj[field] = orders[index] === 'desc' ? -1 : 1;
+        sortObj[toCamelCase(field)] = orders[index] === 'desc' ? -1 : 1;
       });
       queryBuilder = queryBuilder.sort(sortObj);
     } else {
@@ -261,8 +264,8 @@ class MongoConnect implements DatabaseAdapter {
 
     // Populate
     const populateFields: string[] = [];
-    if (options.embed) populateFields.push(...options.embed.split(','));
-    if (options.expand) populateFields.push(...options.expand.split(','));
+    if (options.embed) populateFields.push(...options.embed.split(',').map((field) => toCamelCase(field)));
+    if (options.expand) populateFields.push(...options.expand.split(',').map((field) => toCamelCase(field)));
 
     for (const field of populateFields) {
       try {
@@ -305,26 +308,28 @@ class MongoConnect implements DatabaseAdapter {
   async findOne(collection: string, query: AnyRecord) {
     const Model = this.getModel(collection);
     if (!Model) return null;
-    return await Model.findOne(query);
+    return await Model.findOne(camelizeObjectKeys(query));
   }
 
   async findMany(collection: string, query: AnyRecord = {}) {
     const Model = this.getModel(collection);
     if (!Model) return [];
-    return await Model.find(query);
+    return await Model.find(camelizeObjectKeys(query));
   }
 
   async create(collection: string, data: AnyRecord) {
     const Model = this.getModel(collection);
     if (!Model) throw new Error(`Model not found: ${collection}`);
 
-    if (!data.id) {
-      data.id = await this.getNextId(collection);
+    const normalizedData = camelizeObjectKeys(data);
+
+    if (!normalizedData.id) {
+      normalizedData.id = await this.getNextId(collection);
     }
 
-    delete data._id;
+    delete normalizedData._id;
 
-    const created = await Model.create(data);
+    const created = await Model.create(normalizedData);
     return created;
   }
 
@@ -332,7 +337,7 @@ class MongoConnect implements DatabaseAdapter {
     const Model = this.getModel(collection);
     if (!Model) return null;
 
-    const updated = await Model.findOneAndUpdate({ id: parseInt(String(id), 10) }, data, {
+    const updated = await Model.findOneAndUpdate({ id: parseInt(String(id), 10) }, camelizeObjectKeys(data), {
       new: true,
       runValidators: true,
     });
@@ -356,7 +361,7 @@ class MongoConnect implements DatabaseAdapter {
     // Auto-generate numeric IDs for records that don't have one
     let nextId = await this.getNextId(collection);
     const prepared = records.map((record) => {
-      const item = { ...record };
+      const item = camelizeObjectKeys(record);
       delete item._id;
       if (!item.id) {
         item.id = nextId++;
@@ -380,7 +385,7 @@ class MongoConnect implements DatabaseAdapter {
     const Model = this.getModel(collection);
     if (!Model) return false;
 
-    const doc = await Model.exists(query);
+    const doc = await Model.exists(camelizeObjectKeys(query));
     return !!doc;
   }
 
@@ -388,14 +393,14 @@ class MongoConnect implements DatabaseAdapter {
     const Model = this.getModel(collection);
     if (!Model) return [];
 
-    return await Model.distinct(field, query);
+    return await Model.distinct(toCamelCase(field), camelizeObjectKeys(query));
   }
 
   async count(collection: string, query: AnyRecord = {}) {
     const Model = this.getModel(collection);
     if (!Model) return 0;
 
-    return await Model.countDocuments(query);
+    return await Model.countDocuments(camelizeObjectKeys(query));
   }
 
   async getNextId(collection: string) {

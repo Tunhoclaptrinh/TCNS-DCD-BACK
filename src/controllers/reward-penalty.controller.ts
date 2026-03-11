@@ -22,8 +22,11 @@ class RewardPenaltyController {
   getFinancialStats = async (req, res, next) => {
     try {
       const data = await rewardPenaltyService.getFinancialStats({
-        ...req.query,
         ...(req.parsedQuery || {}),
+        from: req.query.from,
+        to: req.query.to,
+        dateFrom: req.query.dateFrom || req.query.date_from,
+        dateTo: req.query.dateTo || req.query.date_to,
       });
       res.json(data);
     } catch (error) {

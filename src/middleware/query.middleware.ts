@@ -1,3 +1,5 @@
+import { normalizeCommaList, normalizeKeyWithSuffix } from '@utils/case';
+
 const SPECIAL_PARAMS = new Set([
   '_page',
   '_limit',
@@ -18,7 +20,7 @@ const SPECIAL_PARAMS = new Set([
   'includeRelations',
 ]);
 
-const OPERATOR_SUFFIXES = ['_gte', '_lte', '_gt', '_lt', '_ne', '_like', '_not_like', '_ilike', '_in', '_nin'];
+const OPERATOR_SUFFIXES = ['_not_like', '_ilike', '_like', '_gte', '_lte', '_gt', '_lt', '_ne', '_in', '_nin'];
 
 function hasOperator(key) {
   return OPERATOR_SUFFIXES.some((suffix) => key.endsWith(suffix));
@@ -44,11 +46,11 @@ export const parseQuery = (req, res, next) => {
     filter: {},
     page,
     limit,
-    sort: query._sort || query.sort,
+    sort: normalizeCommaList(query._sort || query.sort, (field) => normalizeKeyWithSuffix(field, [])),
     order: order === 'desc' ? 'desc' : 'asc',
     q: query.q || query._q,
-    embed: query._embed || query.embed,
-    expand: query._expand || query.expand,
+    embed: normalizeCommaList(query._embed || query.embed, (field) => normalizeKeyWithSuffix(field, [])),
+    expand: normalizeCommaList(query._expand || query.expand, (field) => normalizeKeyWithSuffix(field, [])),
   };
 
   // Extract filter parameters
@@ -56,11 +58,11 @@ export const parseQuery = (req, res, next) => {
     if (SPECIAL_PARAMS.has(key)) continue;
 
     if (hasOperator(key)) {
-      parsedQuery.filter[key] = query[key];
+      parsedQuery.filter[normalizeKeyWithSuffix(key, OPERATOR_SUFFIXES)] = query[key];
     } else if (key === 'ids') {
       parsedQuery.filter['id_in'] = query[key];
     } else {
-      parsedQuery.filter[key] = castValue(query[key]);
+      parsedQuery.filter[normalizeKeyWithSuffix(key, OPERATOR_SUFFIXES)] = castValue(query[key]);
     }
   }
 

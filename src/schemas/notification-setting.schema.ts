@@ -1,38 +1,38 @@
 import { defineSchema } from '@app-types/schema';
 
 export default defineSchema({
-  user_id: {
+  userId: {
     type: 'number',
     required: true,
     unique: true,
     foreignKey: 'users',
     description: 'User sở hữu cài đặt',
   },
-  shift_notifications: {
+  shiftNotifications: {
     type: 'boolean',
     required: false,
     default: true,
     description: 'Bật/tắt thông báo ca trực',
   },
-  approval_notifications: {
+  approvalNotifications: {
     type: 'boolean',
     required: false,
     default: true,
     description: 'Bật/tắt thông báo phê duyệt',
   },
-  system_notifications: {
+  systemNotifications: {
     type: 'boolean',
     required: false,
     default: true,
     description: 'Bật/tắt thông báo hệ thống',
   },
-  email_notifications: {
+  emailNotifications: {
     type: 'boolean',
     required: false,
     default: false,
     description: 'Bật/tắt kênh email',
   },
-  sms_notifications: {
+  smsNotifications: {
     type: 'boolean',
     required: false,
     default: false,

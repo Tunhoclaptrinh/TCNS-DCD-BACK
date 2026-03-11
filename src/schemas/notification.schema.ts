@@ -1,7 +1,7 @@
 import { defineSchema } from '@app-types/schema';
 
 export default defineSchema({
-  user_id: {
+  userId: {
     type: 'number',
     required: true,
     foreignKey: 'users',
@@ -41,7 +41,7 @@ export default defineSchema({
     default: 'in_app',
     description: 'Kênh gửi thông báo',
   },
-  ref_id: {
+  refId: {
     type: 'number',
     required: false,
     description: 'ID bản ghi liên quan',
@@ -51,7 +51,7 @@ export default defineSchema({
     required: false,
     description: 'Dữ liệu đính kèm cho UI',
   },
-  is_read: {
+  isRead: {
     type: 'boolean',
     required: false,
     default: false,

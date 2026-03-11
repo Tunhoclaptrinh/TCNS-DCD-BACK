@@ -1,7 +1,7 @@
 import { defineSchema } from '@app-types/schema';
 
 export default defineSchema({
-  user_id: {
+  userId: {
     type: 'number',
     required: true,
     foreignKey: 'users',
@@ -26,12 +26,12 @@ export default defineSchema({
     maxLength: 500,
     description: 'Lý do thưởng/phạt',
   },
-  event_date: {
+  eventDate: {
     type: 'date',
     required: false,
     description: 'Ngày phát sinh (ISO)',
   },
-  created_by: {
+  createdBy: {
     type: 'number',
     required: true,
     foreignKey: 'users',

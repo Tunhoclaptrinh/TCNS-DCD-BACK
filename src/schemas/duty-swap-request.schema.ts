@@ -1,18 +1,18 @@
 import { defineSchema } from '@app-types/schema';
 
 export default defineSchema({
-  duty_slot_id: {
+  dutySlotId: {
     type: 'number',
     required: true,
     description: 'ID ca trực cần đổi',
   },
-  requester_id: {
+  requesterId: {
     type: 'number',
     required: true,
     foreignKey: 'users',
     description: 'Người yêu cầu đổi ca',
   },
-  target_user_id: {
+  targetUserId: {
     type: 'number',
     required: true,
     foreignKey: 'users',
@@ -32,19 +32,19 @@ export default defineSchema({
     default: 'pending',
     description: 'Trạng thái duyệt',
   },
-  decision_note: {
+  decisionNote: {
     type: 'string',
     required: false,
     maxLength: 500,
     description: 'Lý do phê duyệt/từ chối',
   },
-  approved_by: {
+  approvedBy: {
     type: 'number',
     required: false,
     foreignKey: 'users',
     description: 'Người duyệt',
   },
-  approved_at: {
+  approvedAt: {
     type: 'date',
     required: false,
     description: 'Thời điểm duyệt',

@@ -3,11 +3,11 @@ import db from '@config/database';
 import ApiError from '@utils/api-error';
 
 const DEFAULT_SETTINGS = {
-  shift_notifications: true,
-  approval_notifications: true,
-  system_notifications: true,
-  email_notifications: false,
-  sms_notifications: false,
+  shiftNotifications: true,
+  approvalNotifications: true,
+  systemNotifications: true,
+  emailNotifications: false,
+  smsNotifications: false,
 };
 
 type Identifier = number | string;
@@ -28,11 +28,11 @@ class NotificationService extends BaseService {
 
   async getSettings(userId: Identifier) {
     const normalizedUserId = normalizeId(userId);
-    let settings = await db.findOne('notification_settings', { user_id: normalizedUserId });
+    let settings = await db.findOne('notification_settings', { userId: normalizedUserId });
 
     if (!settings) {
       settings = await db.create('notification_settings', {
-        user_id: normalizedUserId,
+        userId: normalizedUserId,
         ...DEFAULT_SETTINGS,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -65,9 +65,9 @@ class NotificationService extends BaseService {
 
   isCategoryEnabled(settings: Record<string, any>, category: string) {
     if (!settings) return true;
-    if (category === 'shift') return settings.shift_notifications !== false;
-    if (category === 'approval') return settings.approval_notifications !== false;
-    return settings.system_notifications !== false;
+    if (category === 'shift') return settings.shiftNotifications !== false;
+    if (category === 'approval') return settings.approvalNotifications !== false;
+    return settings.systemNotifications !== false;
   }
 
   async notifyUser(userId: Identifier, payload: NotificationPayload = {}, options: NotificationOptions = {}) {
@@ -83,15 +83,15 @@ class NotificationService extends BaseService {
     }
 
     return await db.create('notifications', {
-      user_id: normalizedUserId,
+      userId: normalizedUserId,
       title: payload.title || 'Thông báo',
       message: payload.message || '',
       type: payload.type || (category === 'approval' ? 'approval' : category === 'shift' ? 'shift' : 'system'),
       category,
       channel: payload.channel || 'in_app',
-      ref_id: payload.ref_id || null,
+      refId: payload.refId || null,
       metadata: payload.metadata || null,
-      is_read: false,
+      isRead: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
@@ -117,15 +117,15 @@ class NotificationService extends BaseService {
       ...options,
       filter: {
         ...options.filter,
-        user_id: normalizedUserId,
+        userId: normalizedUserId,
       },
       sort: 'createdAt',
       order: 'desc',
     });
 
     const unreadCount = await db.count('notifications', {
-      user_id: normalizedUserId,
-      is_read: false,
+      userId: normalizedUserId,
+      isRead: false,
     });
 
     return {
@@ -139,21 +139,21 @@ class NotificationService extends BaseService {
     const notification = await db.findById('notifications', notificationId);
     const normalizedUserId = normalizeId(userId);
 
-    if (!notification || normalizeId(notification.user_id) !== normalizedUserId) {
+    if (!notification || normalizeId(notification.userId) !== normalizedUserId) {
       throw ApiError.notFound('Notification not found');
     }
 
-    return await db.update('notifications', notificationId, { is_read: true });
+    return await db.update('notifications', notificationId, { isRead: true });
   }
 
   async markAllAsRead(userId: Identifier) {
     const normalizedUserId = normalizeId(userId);
     const unreadNotifications = await db.findMany('notifications', {
-      user_id: normalizedUserId,
-      is_read: false,
+      userId: normalizedUserId,
+      isRead: false,
     });
 
-    await Promise.all(unreadNotifications.map((n) => db.update('notifications', n.id, { is_read: true })));
+    await Promise.all(unreadNotifications.map((n) => db.update('notifications', n.id, { isRead: true })));
 
     return { message: 'All notifications marked as read', count: unreadNotifications.length };
   }
@@ -162,7 +162,7 @@ class NotificationService extends BaseService {
     const notification = await db.findById('notifications', notificationId);
     const normalizedUserId = normalizeId(userId);
 
-    if (!notification || normalizeId(notification.user_id) !== normalizedUserId) {
+    if (!notification || normalizeId(notification.userId) !== normalizedUserId) {
       throw ApiError.notFound('Notification not found');
     }
 
@@ -171,7 +171,7 @@ class NotificationService extends BaseService {
 
   async deleteAll(userId: Identifier) {
     const normalizedUserId = normalizeId(userId);
-    const userNotifications = await db.findMany('notifications', { user_id: normalizedUserId });
+    const userNotifications = await db.findMany('notifications', { userId: normalizedUserId });
 
     await Promise.all(userNotifications.map((n) => db.delete('notifications', n.id)));
 

@@ -2,6 +2,7 @@ import schemas from '@schemas';
 import type { NextFunction, Request, Response } from 'express';
 import type { AnyRecord } from '@app-types/common';
 import type { SchemaDefinition, SchemaRule } from '@app-types/schema';
+import { camelizeObjectKeys } from '@utils/case';
 
 const BOOL_VALUES = new Set(['true', 'false', '1', '0', 'yes', 'no']);
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -102,6 +103,7 @@ export const validateSchema = (entity: string) => {
     const schema = resolveSchema(entity);
     if (!schema) return next();
 
+    req.body = camelizeObjectKeys(req.body);
     const errors = collectErrors(schema, req.body);
     if (respondErrors(res, errors)) return;
 
@@ -114,6 +116,7 @@ export const validateFields = (entity: string, fields: string | string[]) => {
     const schema = resolveSchema(entity);
     if (!schema) return next();
 
+    req.body = camelizeObjectKeys(req.body);
     const fieldFilter = Array.isArray(fields) ? fields : [fields];
     const errors = collectErrors(schema, req.body, fieldFilter);
     if (respondErrors(res, errors)) return;

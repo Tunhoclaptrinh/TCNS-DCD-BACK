@@ -249,13 +249,13 @@ class UserService extends BaseService {
     const parsedUserId = Number(userId);
     const normalizedUserId = Number.isNaN(parsedUserId) ? userId : parsedUserId;
 
-    const notifications = await db.findMany('notifications', { user_id: normalizedUserId });
-    const notificationSettings = await db.findMany('notification_settings', { user_id: normalizedUserId });
-    const rewardPenaltiesByUser = await db.findMany('reward_penalties', { user_id: normalizedUserId });
-    const rewardPenaltiesByCreator = await db.findMany('reward_penalties', { created_by: normalizedUserId });
-    const swapByRequester = await db.findMany('duty_swap_requests', { requester_id: normalizedUserId });
-    const swapByTarget = await db.findMany('duty_swap_requests', { target_user_id: normalizedUserId });
-    const swapByApprover = await db.findMany('duty_swap_requests', { approved_by: normalizedUserId });
+    const notifications = await db.findMany('notifications', { userId: normalizedUserId });
+    const notificationSettings = await db.findMany('notification_settings', { userId: normalizedUserId });
+    const rewardPenaltiesByUser = await db.findMany('reward_penalties', { userId: normalizedUserId });
+    const rewardPenaltiesByCreator = await db.findMany('reward_penalties', { createdBy: normalizedUserId });
+    const swapByRequester = await db.findMany('duty_swap_requests', { requesterId: normalizedUserId });
+    const swapByTarget = await db.findMany('duty_swap_requests', { targetUserId: normalizedUserId });
+    const swapByApprover = await db.findMany('duty_swap_requests', { approvedBy: normalizedUserId });
     const dutySlots = await db.findAll('duty_slots');
 
     await Promise.all(notifications.map((n) => db.delete('notifications', n.id)));
@@ -275,13 +275,13 @@ class UserService extends BaseService {
 
     const slotUpdates = dutySlots
       .map((slot) => {
-        const assignedUserIds = Array.isArray(slot.assigned_user_ids) ? slot.assigned_user_ids : [];
+        const assignedUserIds = Array.isArray(slot.assignedUserIds) ? slot.assignedUserIds : [];
         const filtered = assignedUserIds.filter((id) => Number(id) !== Number(normalizedUserId));
         if (filtered.length === assignedUserIds.length) {
           return null;
         }
         return db.update('duty_slots', slot.id, {
-          assigned_user_ids: filtered,
+          assignedUserIds: filtered,
           updatedAt: new Date().toISOString(),
         });
       })
