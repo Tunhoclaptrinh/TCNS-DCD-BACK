@@ -590,11 +590,16 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
     requestBody: {
       required: false,
       content: {
-        'application/json': {
-          schema: { $ref: '#/components/schemas/UserProfileUpdateRequest' },
-        },
         'multipart/form-data': {
           schema: { $ref: '#/components/schemas/UserProfileMultipartRequest' },
+          encoding: {
+            avatar: {
+              contentType: 'image/*',
+            },
+          },
+        },
+        'application/json': {
+          schema: { $ref: '#/components/schemas/UserProfileUpdateRequest' },
         },
       },
     },
@@ -644,11 +649,16 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
     requestBody: {
       required: false,
       content: {
-        'application/json': {
-          schema: { $ref: '#/components/schemas/UserUpdateRequest' },
-        },
         'multipart/form-data': {
           schema: { $ref: '#/components/schemas/UserUpdateMultipartRequest' },
+          encoding: {
+            avatar: {
+              contentType: 'image/*',
+            },
+          },
+        },
+        'application/json': {
+          schema: { $ref: '#/components/schemas/UserUpdateRequest' },
         },
       },
     },

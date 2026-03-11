@@ -24,6 +24,12 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const KEEPALIVE_INTERVAL = 14 * 60 * 1000;
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.resolve(process.cwd(), 'src/database/uploads');
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const AUTH_RATE_LIMIT_ENABLED = process.env.AUTH_RATE_LIMIT_ENABLED
+  ? process.env.AUTH_RATE_LIMIT_ENABLED === 'true'
+  : IS_PRODUCTION;
+const AUTH_RATE_LIMIT_WINDOW_MS = Math.max(1000, Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000));
+const AUTH_RATE_LIMIT_MAX = Math.max(1, Number(process.env.AUTH_RATE_LIMIT_MAX || 5));
 
 // ==================== SECURITY ====================
 app.use(
@@ -79,12 +85,14 @@ app.use(logQuery);
 
 // ==================== RATE LIMITING ====================
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5,
+  windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
+  max: AUTH_RATE_LIMIT_MAX,
   message: 'Too many login attempts, please try again later',
 });
-app.use('/api/auth/login', authLimiter);
-app.use('/api/auth/register', authLimiter);
+if (AUTH_RATE_LIMIT_ENABLED) {
+  app.use('/api/auth/login', authLimiter);
+  app.use('/api/auth/register', authLimiter);
+}
 
 // ==================== ROUTES ====================
 setupSwagger(app);
