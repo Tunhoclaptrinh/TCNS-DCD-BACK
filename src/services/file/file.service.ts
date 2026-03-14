@@ -28,6 +28,26 @@ function normalizeNumericId(value: Identifier | null | undefined) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function toPlainRecord(item: AnyRecord) {
+  if (!item || typeof item !== 'object') {
+    return item;
+  }
+
+  if (typeof item.toJSON === 'function') {
+    return item.toJSON();
+  }
+
+  if (typeof item.toObject === 'function') {
+    return item.toObject();
+  }
+
+  if (item._doc && typeof item._doc === 'object') {
+    return item._doc;
+  }
+
+  return item;
+}
+
 class FileService extends BaseService {
   constructor() {
     super('files');
@@ -92,7 +112,9 @@ class FileService extends BaseService {
       return item;
     }
 
-    const sanitized = { ...item };
+    const sanitized = { ...toPlainRecord(item) };
+    delete sanitized._id;
+    delete sanitized.__v;
     sanitized.hasData = Boolean(sanitized.data);
 
     if (!includeData) {
