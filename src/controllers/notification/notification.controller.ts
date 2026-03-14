@@ -1,5 +1,5 @@
 import BaseController from '@utils/base-controller';
-import notificationService from '@services/common/notification.service';
+import notificationService from '@services/notification/notification.service';
 
 class NotificationController extends BaseController {
   constructor() {

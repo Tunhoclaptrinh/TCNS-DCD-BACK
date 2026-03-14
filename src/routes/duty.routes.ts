@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import dutyController from '@controllers/duty.controller';
+import dutyController from '@controllers/duty/duty.controller';
 import { protect } from '@middleware/auth.middleware';
 import { checkPermission } from '@middleware/rbac.middleware';
 

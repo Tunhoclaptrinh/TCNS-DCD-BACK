@@ -1,4 +1,4 @@
-import reportService from '@services/common/report.service';
+import reportService from '@services/report/report.service';
 
 class ReportController {
   getOverview = async (req, res, next) => {

@@ -9,6 +9,23 @@ function normalizeIdList(values: any[] = []) {
 }
 
 class ReportService {
+  buildOverviewSummaryRow(overview: AnyRecord) {
+    return {
+      generatedAt: overview.generatedAt,
+      totalUsers: overview.users.totalUsers,
+      activeUsers: overview.users.activeUsers,
+      expelledUsers: overview.users.expelledUsers,
+      totalSlots: overview.duty.totalSlots,
+      coverageRate: overview.duty.coverageRate,
+      pendingSwapRequests: overview.duty.pendingSwapRequests,
+      totalReward: overview.finance.totalReward,
+      totalPenalty: overview.finance.totalPenalty,
+      netBalance: overview.finance.netBalance,
+      totalNotifications: overview.notifications.totalNotifications,
+      unreadNotifications: overview.notifications.unreadNotifications,
+    };
+  }
+
   async getOverview() {
     const [users, dutySlots, swapRequests, rewardPenalties, notifications] = await Promise.all([
       db.findAll('users'),
@@ -88,45 +105,14 @@ class ReportService {
   }
 
   buildCsvBuffer(overview: AnyRecord) {
-    const summaryRow = {
-      generatedAt: overview.generatedAt,
-      totalUsers: overview.users.totalUsers,
-      activeUsers: overview.users.activeUsers,
-      expelledUsers: overview.users.expelledUsers,
-      totalSlots: overview.duty.totalSlots,
-      coverageRate: overview.duty.coverageRate,
-      pendingSwapRequests: overview.duty.pendingSwapRequests,
-      totalReward: overview.finance.totalReward,
-      totalPenalty: overview.finance.totalPenalty,
-      netBalance: overview.finance.netBalance,
-      totalNotifications: overview.notifications.totalNotifications,
-      unreadNotifications: overview.notifications.unreadNotifications,
-    };
-
     const parser = new Parser();
-    return Buffer.from(parser.parse([summaryRow]));
+    return Buffer.from(parser.parse([this.buildOverviewSummaryRow(overview)]));
   }
 
   buildExcelBuffer(overview: AnyRecord) {
     const workbook = XLSX.utils.book_new();
 
-    const summaryRows = [
-      {
-        generatedAt: overview.generatedAt,
-        totalUsers: overview.users.totalUsers,
-        activeUsers: overview.users.activeUsers,
-        expelledUsers: overview.users.expelledUsers,
-        totalSlots: overview.duty.totalSlots,
-        coverageRate: overview.duty.coverageRate,
-        pendingSwapRequests: overview.duty.pendingSwapRequests,
-        totalReward: overview.finance.totalReward,
-        totalPenalty: overview.finance.totalPenalty,
-        netBalance: overview.finance.netBalance,
-        totalNotifications: overview.notifications.totalNotifications,
-        unreadNotifications: overview.notifications.unreadNotifications,
-      },
-    ];
-
+    const summaryRows = [this.buildOverviewSummaryRow(overview)];
     const roleRows = Object.entries(overview.users.usersByRole).map(([role, count]) => ({ role, count }));
 
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Summary');

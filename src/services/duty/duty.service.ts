@@ -1,7 +1,7 @@
 import BaseService from '@utils/base-service';
 import db from '@config/database';
 import ApiError from '@utils/api-error';
-import notificationService from '@services/common/notification.service';
+import notificationService from '@services/notification/notification.service';
 
 type Identifier = number | string;
 type GenericRecord = Record<string, any>;

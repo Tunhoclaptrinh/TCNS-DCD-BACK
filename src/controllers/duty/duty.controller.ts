@@ -1,4 +1,4 @@
-import dutyService from '@services/common/duty.service';
+import dutyService from '@services/duty/duty.service';
 
 class DutyController {
   getWeeklySchedule = async (req, res, next) => {

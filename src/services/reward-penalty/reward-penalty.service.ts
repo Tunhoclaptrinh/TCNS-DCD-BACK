@@ -1,7 +1,7 @@
 import BaseService from '@utils/base-service';
 import db from '@config/database';
 import ApiError from '@utils/api-error';
-import notificationService from '@services/common/notification.service';
+import notificationService from '@services/notification/notification.service';
 import type { AnyRecord, Identifier } from '@app-types/common';
 
 function normalizeId(id: any): Identifier {

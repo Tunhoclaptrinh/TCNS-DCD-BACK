@@ -1,6 +1,6 @@
 import XLSX from 'xlsx';
 import { Parser } from 'json2csv';
-import userService from '@services/user.service';
+import userService from '@services/user/user.service';
 import ApiError from '@utils/api-error';
 import type { AnyRecord } from '@app-types/common';
 import type { SchemaDefinition, SchemaRule } from '@app-types/schema';

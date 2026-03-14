@@ -1,5 +1,5 @@
 import express from 'express';
-import uploadController from '@controllers/upload.controller';
+import uploadController from '@controllers/upload/upload.controller';
 import { protect, authorize } from '@middleware/auth.middleware';
 
 const router = express.Router();

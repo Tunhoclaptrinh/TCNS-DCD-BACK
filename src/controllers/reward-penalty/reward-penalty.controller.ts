@@ -1,4 +1,4 @@
-import rewardPenaltyService from '@services/common/reward-penalty.service';
+import rewardPenaltyService from '@services/reward-penalty/reward-penalty.service';
 
 class RewardPenaltyController {
   createEntry = async (req, res, next) => {

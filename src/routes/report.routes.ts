@@ -1,5 +1,5 @@
 import express from 'express';
-import reportController from '@controllers/report.controller';
+import reportController from '@controllers/report/report.controller';
 import { protect } from '@middleware/auth.middleware';
 import { checkPermission } from '@middleware/rbac.middleware';
 

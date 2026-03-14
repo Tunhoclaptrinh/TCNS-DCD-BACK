@@ -1,5 +1,5 @@
 import express from 'express';
-import fileController from '@controllers/file.controller';
+import fileController from '@controllers/file/file.controller';
 import { protect } from '@middleware/auth.middleware';
 
 const router = express.Router();

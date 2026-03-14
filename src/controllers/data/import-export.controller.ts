@@ -1,5 +1,5 @@
 import multer from 'multer';
-import importExportService from '@services/common/importExport.service';
+import importExportService from '@services/data/import-export.service';
 
 class ImportExportController {
   getUploadMiddleware() {

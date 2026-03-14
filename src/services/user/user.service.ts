@@ -3,7 +3,7 @@ import db from '@config/database';
 import { sanitizeUser, hashPassword } from '@utils/helpers';
 import ApiError from '@utils/api-error';
 import userSchema from '@schemas/user.schema';
-import notificationService from '@services/common/notification.service';
+import notificationService from '@services/notification/notification.service';
 
 function generateAvatarUrl(name) {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
@@ -33,44 +33,51 @@ class UserService extends BaseService {
   }
 
   async beforeCreate(data) {
-    if (data.password) {
-      data.password = await hashPassword(data.password);
+    const transformed = this.transformBySchema(data);
+
+    if (transformed.password) {
+      transformed.password = await hashPassword(transformed.password);
     }
 
-    if (data.firstName || data.lastName) {
-      data.name = `${data.lastName || ''} ${data.firstName || ''}`.trim();
+    if (transformed.firstName || transformed.lastName) {
+      transformed.name = `${transformed.lastName || ''} ${transformed.firstName || ''}`.trim();
     }
 
-    if (!data.avatar && data.name) {
-      data.avatar = generateAvatarUrl(data.name);
+    if (!transformed.avatar && transformed.name) {
+      transformed.avatar = generateAvatarUrl(transformed.name);
     }
 
     return {
-      ...data,
-      isActive: data.isActive !== undefined ? data.isActive : true,
-      status: data.status || 'active',
+      ...transformed,
+      isActive: transformed.isActive !== undefined ? transformed.isActive : true,
+      status: transformed.status || 'active',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
   }
 
   async beforeUpdate(id, data) {
-    if (data.newPassword) {
-      data.password = await hashPassword(data.newPassword);
-      delete data.newPassword;
-    } else if (data.password) {
-      data.password = await hashPassword(data.password);
+    const payload = { ...data };
+
+    if (payload.newPassword) {
+      payload.password = await hashPassword(payload.newPassword);
+      delete payload.newPassword;
+    } else if (payload.password) {
+      payload.password = await hashPassword(payload.password);
     }
 
-    if (data.firstName || data.lastName) {
+    if (payload.firstName || payload.lastName) {
       const current = await db.findById('users', id);
-      const lastName = data.lastName !== undefined ? data.lastName : current.lastName;
-      const firstName = data.firstName !== undefined ? data.firstName : current.firstName;
-      data.name = `${lastName || ''} ${firstName || ''}`.trim();
+      const lastName = payload.lastName !== undefined ? payload.lastName : current.lastName;
+      const firstName = payload.firstName !== undefined ? payload.firstName : current.firstName;
+      payload.name = `${lastName || ''} ${firstName || ''}`.trim();
     }
+
+    // Luon whitelist theo schema de field noi bo tu controller khong bi luu nham vao user.
+    const transformed = this.transformBySchema(payload);
 
     return {
-      ...data,
+      ...transformed,
       updatedAt: new Date().toISOString(),
     };
   }

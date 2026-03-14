@@ -194,6 +194,10 @@ const TAG_METADATA: Record<string, { name: string; description: string }> = {
     name: 'Tải tệp',
     description: 'Tải ảnh lên Cloudinary và quản lý tài nguyên media.',
   },
+  files: {
+    name: 'Kho tệp',
+    description: 'Tra cứu metadata tệp đã lưu và đọc nội dung base64 khi cần.',
+  },
   notifications: {
     name: 'Thông báo',
     description: 'Lấy danh sách thông báo, đánh dấu đã đọc và cập nhật cài đặt thông báo.',
@@ -269,8 +273,10 @@ const EXTRA_SCHEMAS: AnyRecord = {
     [],
     'Yêu cầu gửi OTP quên mật khẩu.',
   ),
-  AuthResetPasswordRequest: buildObjectSchema(
-    {
+  AuthResetPasswordRequest: {
+    type: 'object',
+    description: 'Đặt lại mật khẩu bằng OTP. Có thể truyền mã qua field `otp` hoặc alias `token`.',
+    properties: {
       email: {
         type: 'string',
         format: 'email',
@@ -284,15 +290,19 @@ const EXTRA_SCHEMAS: AnyRecord = {
         type: 'string',
         description: 'Mã OTP đã nhận.',
       },
+      token: {
+        type: 'string',
+        description: 'Alias của field `otp`.',
+      },
       newPassword: {
         type: 'string',
         format: 'password',
         description: 'Mật khẩu mới.',
       },
     },
-    ['otp', 'newPassword'],
-    'Đặt lại mật khẩu bằng OTP.',
-  ),
+    required: ['newPassword'],
+    oneOf: [{ required: ['otp'] }, { required: ['token'] }],
+  },
   AuthChangePasswordRequest: buildObjectSchema(
     {
       currentPassword: {
@@ -309,16 +319,21 @@ const EXTRA_SCHEMAS: AnyRecord = {
     ['currentPassword', 'newPassword'],
     'Đổi mật khẩu của tài khoản đang đăng nhập.',
   ),
-  AuthRefreshTokenRequest: buildObjectSchema(
-    {
+  AuthRefreshTokenRequest: {
+    type: 'object',
+    description: 'Lấy access token mới từ refresh token. Có thể truyền qua field `refreshToken` hoặc alias `token`.',
+    properties: {
       refreshToken: {
         type: 'string',
         description: 'Refresh token hợp lệ.',
       },
+      token: {
+        type: 'string',
+        description: 'Alias của field `refreshToken`.',
+      },
     },
-    ['refreshToken'],
-    'Lấy access token mới từ refresh token.',
-  ),
+    oneOf: [{ required: ['refreshToken'] }, { required: ['token'] }],
+  },
   UserBulkRequest: buildObjectSchema(
     {
       operation: {
@@ -436,16 +451,47 @@ const EXTRA_SCHEMAS: AnyRecord = {
     ['userId', 'type', 'amount', 'reason', 'createdBy'],
     'Tạo bản ghi thưởng hoặc phạt.',
   ),
-  UploadImageRequest: {
+  UploadAvatarRequest: {
     type: 'object',
+    description: 'Payload upload avatar. Có thể dùng field `avatar` hoặc `image`.',
     properties: {
+      avatar: {
+        type: 'string',
+        format: 'binary',
+        description: 'Tệp ảnh avatar. Có thể dùng field `avatar` hoặc `image`.',
+      },
       image: {
         type: 'string',
         format: 'binary',
-        description: 'Tệp ảnh cần tải lên.',
+        description: 'Alias của field `avatar`.',
+      },
+      storeData: {
+        type: 'boolean',
+        description: 'Nếu bật, metadata file sẽ lưu thêm chuỗi base64 vào DB.',
       },
     },
-    required: ['image'],
+    oneOf: [{ required: ['avatar'] }, { required: ['image'] }],
+  },
+  UploadGeneralFileRequest: {
+    type: 'object',
+    description: 'Payload upload file chung. Có thể dùng field `file` hoặc `image`.',
+    properties: {
+      file: {
+        type: 'string',
+        format: 'binary',
+        description: 'Tệp cần tải lên. Có thể là ảnh hoặc tài liệu thông thường.',
+      },
+      image: {
+        type: 'string',
+        format: 'binary',
+        description: 'Alias tương thích ngược cho field `file` khi tải ảnh.',
+      },
+      storeData: {
+        type: 'boolean',
+        description: 'Nếu bật, metadata file sẽ lưu thêm chuỗi base64 vào DB.',
+      },
+    },
+    oneOf: [{ required: ['file'] }, { required: ['image'] }],
   },
   UserProfileUpdateRequest: buildObjectSchema(
     buildPropertiesFromSchemaFields(userProfileJsonFields),
@@ -458,11 +504,20 @@ const EXTRA_SCHEMAS: AnyRecord = {
       avatar: {
         type: 'string',
         format: 'binary',
-        description: 'Ảnh avatar mới.',
+        description: 'Ảnh avatar mới. Có thể dùng field `avatar` hoặc `image`.',
+      },
+      image: {
+        type: 'string',
+        format: 'binary',
+        description: 'Alias của field `avatar`.',
+      },
+      storeData: {
+        type: 'boolean',
+        description: 'Nếu bật, metadata file sẽ lưu thêm chuỗi base64 vào DB.',
       },
     },
     [],
-    'Cập nhật hồ sơ cá nhân qua `multipart/form-data`. Dùng field `avatar` để upload file ảnh.',
+    'Cập nhật hồ sơ cá nhân qua `multipart/form-data`. Có thể dùng field `avatar` hoặc `image` để upload file ảnh.',
   ),
   UserUpdateRequest: buildObjectSchema(
     {
@@ -471,6 +526,11 @@ const EXTRA_SCHEMAS: AnyRecord = {
         type: 'string',
         format: 'password',
         description: userSchema.password.description || 'Mật khẩu mới.',
+      },
+      newPassword: {
+        type: 'string',
+        format: 'password',
+        description: 'Alias của field `password` khi cập nhật người dùng.',
       },
     },
     [],
@@ -484,14 +544,28 @@ const EXTRA_SCHEMAS: AnyRecord = {
         format: 'password',
         description: userSchema.password.description || 'Mật khẩu mới.',
       },
+      newPassword: {
+        type: 'string',
+        format: 'password',
+        description: 'Alias của field `password` khi cập nhật người dùng.',
+      },
       avatar: {
         type: 'string',
         format: 'binary',
-        description: 'Ảnh avatar mới.',
+        description: 'Ảnh avatar mới. Có thể dùng field `avatar` hoặc `image`.',
+      },
+      image: {
+        type: 'string',
+        format: 'binary',
+        description: 'Alias của field `avatar`.',
+      },
+      storeData: {
+        type: 'boolean',
+        description: 'Nếu bật, metadata file sẽ lưu thêm chuỗi base64 vào DB.',
       },
     },
     [],
-    'Cập nhật người dùng qua `multipart/form-data`. Dùng field `avatar` để upload file ảnh.',
+    'Cập nhật người dùng qua `multipart/form-data`. Có thể dùng field `avatar` hoặc `image` để upload file ảnh.',
   ),
   ImportFileRequest: {
     type: 'object',
@@ -543,6 +617,7 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
     requestBody: buildSchemaRefBody('AuthForgotPasswordRequest'),
     responses: {
       200: { description: 'Yêu cầu gửi OTP đã được tiếp nhận' },
+      400: { description: 'Thiếu email và phone' },
       429: { description: 'Yêu cầu OTP quá nhiều lần trong thời gian ngắn' },
     },
   },
@@ -586,7 +661,7 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
   'PUT /users/profile': {
     summary: 'Cập nhật hồ sơ cá nhân',
     description:
-      'Cập nhật thông tin hồ sơ của chính bạn. Dùng `application/json` khi cập nhật text hoặc URL avatar, và dùng `multipart/form-data` khi upload file avatar.',
+      'Cập nhật thông tin hồ sơ của chính bạn. Dùng `application/json` khi cập nhật text hoặc URL avatar, và dùng `multipart/form-data` khi upload file avatar qua field `avatar` hoặc `image`.',
     requestBody: {
       required: false,
       content: {
@@ -594,6 +669,9 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
           schema: { $ref: '#/components/schemas/UserProfileMultipartRequest' },
           encoding: {
             avatar: {
+              contentType: 'image/*',
+            },
+            image: {
               contentType: 'image/*',
             },
           },
@@ -645,7 +723,7 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
   'PUT /users/{id}': {
     summary: 'Cập nhật người dùng',
     description:
-      'Cập nhật thông tin người dùng theo ID. Dùng `application/json` khi cập nhật dữ liệu text/URL, và dùng `multipart/form-data` khi upload file avatar.',
+      'Cập nhật thông tin người dùng theo ID. Dùng `application/json` khi cập nhật dữ liệu text/URL, và dùng `multipart/form-data` khi upload file avatar qua field `avatar` hoặc `image`.',
     requestBody: {
       required: false,
       content: {
@@ -653,6 +731,9 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
           schema: { $ref: '#/components/schemas/UserUpdateMultipartRequest' },
           encoding: {
             avatar: {
+              contentType: 'image/*',
+            },
+            image: {
               contentType: 'image/*',
             },
           },
@@ -749,24 +830,26 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
   },
   'POST /upload/avatar': {
     summary: 'Tải ảnh avatar lên Cloudinary',
-    description: 'Tải một ảnh avatar mới. Field file phải có tên `image`.',
+    description:
+      'Tải một ảnh avatar mới. API chấp nhận field file tên `avatar` hoặc `image`. Có thể truyền thêm `storeData` để lưu base64 vào metadata.',
     requestBody: {
       required: true,
       content: {
         'multipart/form-data': {
-          schema: { $ref: '#/components/schemas/UploadImageRequest' },
+          schema: { $ref: '#/components/schemas/UploadAvatarRequest' },
         },
       },
     },
   },
   'POST /upload/general': {
-    summary: 'Tải ảnh chung lên Cloudinary',
-    description: 'Tải một ảnh dùng chung lên Cloudinary. Field file phải có tên `image`.',
+    summary: 'Tải tệp chung lên Cloudinary',
+    description:
+      'Tải tệp dùng chung lên Cloudinary. API chấp nhận field file tên `file` hoặc `image`, hỗ trợ ảnh và các tài liệu phổ biến. Có thể truyền thêm `storeData` để lưu base64 vào metadata.',
     requestBody: {
       required: true,
       content: {
         'multipart/form-data': {
-          schema: { $ref: '#/components/schemas/UploadImageRequest' },
+          schema: { $ref: '#/components/schemas/UploadGeneralFileRequest' },
         },
       },
     },
@@ -794,8 +877,40 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
   },
   'POST /upload/cleanup': {
     summary: 'Dọn dẹp tệp cũ trên Cloudinary',
+    parameters: [
+      {
+        name: 'days',
+        in: 'query',
+        schema: { type: 'number', default: 30 },
+        description: 'Có thể truyền qua query, tương đương với body.',
+      },
+    ],
     requestBody: buildSchemaRefBody('UploadCleanupRequest', false),
     internal: true,
+  },
+  'GET /files': {
+    summary: 'Lấy danh sách metadata tệp',
+    description: 'Trả về danh sách metadata tệp mà người dùng hiện tại được phép xem.',
+    parameters: [
+      {
+        name: 'includeData',
+        in: 'query',
+        schema: { type: 'boolean', default: false },
+        description: 'Nếu bật, response sẽ trả thêm field `data` base64.',
+      },
+    ],
+  },
+  'GET /files/{id}': {
+    summary: 'Lấy chi tiết metadata tệp',
+    description: 'Trả về chi tiết một bản ghi file theo ID nếu người dùng có quyền truy cập.',
+    parameters: [
+      {
+        name: 'includeData',
+        in: 'query',
+        schema: { type: 'boolean', default: false },
+        description: 'Nếu bật, response sẽ trả thêm field `data` base64.',
+      },
+    ],
   },
   'GET /duty/week': {
     summary: 'Lấy lịch trực theo tuần',
@@ -1262,7 +1377,13 @@ function buildPathParameters(routePath: string) {
 }
 
 function buildDefaultListParameters(routeKey: string) {
-  const listRouteKeys = new Set(['GET /users', 'GET /notifications', 'GET /reward-penalties', 'GET /duty/swaps']);
+  const listRouteKeys = new Set([
+    'GET /users',
+    'GET /files',
+    'GET /notifications',
+    'GET /reward-penalties',
+    'GET /duty/swaps',
+  ]);
 
   if (!listRouteKeys.has(routeKey)) return [];
 

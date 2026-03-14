@@ -17,6 +17,8 @@ type SaveFileRecordOptions = {
   storeData?: unknown;
 };
 
+const PRIVILEGED_ROLES = new Set(['admin', 'staff', 'researcher']);
+
 function normalizeNumericId(value: Identifier | null | undefined) {
   if (value === null || value === undefined || value === '') {
     return null;
@@ -31,7 +33,7 @@ class FileService extends BaseService {
     super('files');
   }
 
-  toBoolean(value: unknown, defaultValue = true) {
+  toBoolean(value: unknown, defaultValue = false) {
     if (value === undefined || value === null || value === '') {
       return defaultValue;
     }
@@ -69,6 +71,22 @@ class FileService extends BaseService {
     return `data:${mimeType};base64,${buffer.toString('base64')}`;
   }
 
+  canReadAllFiles(user: AnyRecord) {
+    return PRIVILEGED_ROLES.has(String(user?.role || ''));
+  }
+
+  buildAccessFilter(user: AnyRecord, baseFilter: AnyRecord = {}) {
+    const filter = { ...baseFilter };
+    const uploadedBy = normalizeNumericId(user?.id);
+
+    if (!this.canReadAllFiles(user) && uploadedBy !== null) {
+      filter.uploadedBy = uploadedBy;
+    }
+
+    return filter;
+  }
+
+  // Khong tra base64 mac dinh de response gon hon va tranh phinh payload khong can thiet.
   sanitizeRecord(item: AnyRecord | null | undefined, includeData = false) {
     if (!item) {
       return item;
@@ -84,10 +102,11 @@ class FileService extends BaseService {
     return sanitized;
   }
 
-  async saveFileRecord(options: SaveFileRecordOptions) {
+  buildPayload(options: SaveFileRecordOptions) {
     const mimeType = String(options.mimeType || 'application/octet-stream');
     const filename = String(options.filename || options.idFile || '');
-    const payload: AnyRecord = {
+
+    return {
       idFile: options.idFile,
       urlFile: options.urlFile,
       uploadedBy: normalizeNumericId(options.uploadedBy),
@@ -97,18 +116,23 @@ class FileService extends BaseService {
       filename,
       extension: path.extname(filename).replace('.', '').toLowerCase() || null,
       bytes: options.bytes ?? null,
-      data: this.toBoolean(options.storeData, true) ? this.buildBase64Data(options.dataBuffer, mimeType) : null,
+      data: this.toBoolean(options.storeData, false) ? this.buildBase64Data(options.dataBuffer, mimeType) : null,
     };
+  }
 
-    const existing = await db.findOne(this.collection, { idFile: payload.idFile });
+  async findRecordByStorageId(idFile: string) {
+    return await db.findOne(this.collection, { idFile });
+  }
+
+  async saveFileRecord(options: SaveFileRecordOptions) {
+    const payload = this.buildPayload(options);
+    const existing = await this.findRecordByStorageId(payload.idFile);
 
     if (existing) {
-      const updated = await db.update(this.collection, existing.id, {
+      return await db.update(this.collection, existing.id, {
         ...payload,
         updatedAt: new Date().toISOString(),
       });
-
-      return updated;
     }
 
     const created = await this.create(payload);
@@ -130,17 +154,9 @@ class FileService extends BaseService {
   }
 
   async getAccessibleFiles(user: AnyRecord, options: QueryOptions = {}, includeData = false) {
-    const canReadAll = ['admin', 'staff', 'researcher'].includes(String(user?.role || ''));
-    const uploadedBy = normalizeNumericId(user?.id);
-    const filter: AnyRecord = { ...(options.filter || {}) };
-
-    if (!canReadAll && uploadedBy !== null) {
-      filter.uploadedBy = uploadedBy;
-    }
-
     const result = await db.findAllAdvanced(this.collection, {
       ...options,
-      filter,
+      filter: this.buildAccessFilter(user, options.filter || {}),
       sort: options.sort || 'createdAt',
       order: options.order || 'desc',
     });
@@ -158,11 +174,10 @@ class FileService extends BaseService {
       throw ApiError.notFound('File record not found');
     }
 
-    const canReadAll = ['admin', 'staff', 'researcher'].includes(String(user?.role || ''));
     const uploadedBy = normalizeNumericId(user?.id);
     const itemUploader = normalizeNumericId(item.uploadedBy);
 
-    if (!canReadAll && uploadedBy !== itemUploader) {
+    if (!this.canReadAllFiles(user) && uploadedBy !== itemUploader) {
       throw ApiError.forbidden('Not authorized to view this file');
     }
 

@@ -1,9 +1,9 @@
 import express from 'express';
-import userController from '@controllers/user.controller';
+import userController from '@controllers/user/user.controller';
 import { protect } from '@middleware/auth.middleware';
 import { checkPermission } from '@middleware/rbac.middleware';
 import { getSchemaDoc, validateSchema } from '@middleware/validation.middleware';
-import importExportController from '@controllers/importExport.controller';
+import importExportController from '@controllers/data/import-export.controller';
 
 const router = express.Router();
 

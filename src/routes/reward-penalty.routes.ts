@@ -1,5 +1,5 @@
 import express from 'express';
-import rewardPenaltyController from '@controllers/reward-penalty.controller';
+import rewardPenaltyController from '@controllers/reward-penalty/reward-penalty.controller';
 import { protect } from '@middleware/auth.middleware';
 import { checkPermission } from '@middleware/rbac.middleware';
 
