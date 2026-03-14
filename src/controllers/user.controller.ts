@@ -24,7 +24,12 @@ class UserController extends BaseController {
     }
   };
 
-  updateUserWithUploadedAvatar = async (targetUserId: string | number, payload: AnyRecord, file?: any) => {
+  updateUserWithUploadedAvatar = async (
+    targetUserId: string | number,
+    payload: AnyRecord,
+    file?: any,
+    actorId?: string | number,
+  ) => {
     const existingUserResult = await this.service.findById(targetUserId);
     if (!existingUserResult?.success || !existingUserResult.data) {
       throw ApiError.notFound('User not found');
@@ -35,7 +40,10 @@ class UserController extends BaseController {
     }
 
     const previousAvatar = existingUserResult.data.avatar;
-    const uploadedAvatar = await uploadService.uploadAvatar(file, targetUserId);
+    const uploadedAvatar = await uploadService.uploadAvatar(file, targetUserId, {
+      uploadedBy: actorId ?? targetUserId,
+      storeData: payload.storeData,
+    });
     const nextPayload = {
       ...payload,
       avatar: uploadedAvatar.secureUrl || uploadedAvatar.url,
@@ -92,7 +100,7 @@ class UserController extends BaseController {
 
   update = async (req, res, next) => {
     try {
-      const data = await this.updateUserWithUploadedAvatar(req.params.id, req.body, req.file);
+      const data = await this.updateUserWithUploadedAvatar(req.params.id, req.body, req.file, req.user.id);
       res.json(sanitizeUser(data));
     } catch (error) {
       next(error);
@@ -231,7 +239,9 @@ class UserController extends BaseController {
         throw ApiError.badRequest('No fields to update');
       }
 
-      const data = await this.updateUserWithUploadedAvatar(req.user.id, updateData, req.file);
+      updateData.storeData = req.body.storeData;
+
+      const data = await this.updateUserWithUploadedAvatar(req.user.id, updateData, req.file, req.user.id);
       res.json(sanitizeUser(data));
     } catch (error) {
       next(error);

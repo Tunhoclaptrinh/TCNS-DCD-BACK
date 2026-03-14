@@ -11,6 +11,7 @@ const SCHEMA_MODEL_MAP = {
   'user.schema': 'users',
   'notification.schema': 'notifications',
   'notification-setting.schema': 'notification_settings',
+  'file.schema': 'files',
   'duty-slot.schema': 'duty_slots',
   'duty-swap-request.schema': 'duty_swap_requests',
   'reward-penalty.schema': 'reward_penalties',
@@ -38,6 +39,10 @@ class MongoConnect implements DatabaseAdapter {
       users: {
         notifications: { ref: 'notifications', localField: 'id', foreignField: 'userId' },
         notificationSettings: { ref: 'notification_settings', localField: 'id', foreignField: 'userId' },
+        files: { ref: 'files', localField: 'id', foreignField: 'uploadedBy' },
+      },
+      files: {
+        uploader: { ref: 'users', localField: 'uploadedBy', foreignField: 'id', justOne: true },
       },
       notifications: {
         user: { ref: 'users', localField: 'userId', foreignField: 'id', justOne: true },

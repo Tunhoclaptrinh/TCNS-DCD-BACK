@@ -5,6 +5,7 @@ import sharp from 'sharp';
 import axios from 'axios';
 import FormData from 'form-data';
 import ApiError from '@utils/api-error';
+import fileService from '@services/common/file.service';
 import type { AnyRecord } from '@app-types/common';
 
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']);
@@ -24,6 +25,11 @@ type ProcessImageOptions = {
   quality?: number;
   format?: keyof typeof FORMAT_MAP;
   fit?: keyof sharp.FitEnum;
+};
+
+type UploadRecordOptions = {
+  uploadedBy?: string | number | null;
+  storeData?: unknown;
 };
 
 class UploadService {
@@ -210,7 +216,13 @@ class UploadService {
     };
   }
 
-  async uploadAndProcess(file: AnyRecord, folder: string, baseName: string, imageOptions: ProcessImageOptions) {
+  async uploadAndProcess(
+    file: AnyRecord,
+    folder: string,
+    baseName: string,
+    imageOptions: ProcessImageOptions,
+    recordOptions: UploadRecordOptions = {},
+  ) {
     const processed = await this.processImageBuffer(file, imageOptions);
     const { folder: folderPath, publicId } = this.buildPublicId(folder, baseName);
     const uploaded = await this.uploadToCloudinary(processed.buffer, {
@@ -218,30 +230,69 @@ class UploadService {
       publicId,
       mimeType: `image/${processed.format}`,
     });
+    const asset = this.mapCloudinaryAsset(uploaded);
 
-    return this.mapCloudinaryAsset(uploaded);
+    try {
+      const fileRecord = await fileService.saveFileRecord({
+        idFile: asset.publicId,
+        urlFile: asset.secureUrl || asset.url,
+        uploadedBy: recordOptions.uploadedBy,
+        mimeType: file?.mimetype || `image/${processed.format}`,
+        filename: file?.originalname || `${publicId}.${processed.format || 'jpg'}`,
+        bytes: processed.bytes,
+        provider: asset.provider,
+        dataBuffer: processed.buffer,
+        storeData: recordOptions.storeData,
+      });
+
+      return {
+        ...asset,
+        fileRecord: fileService.sanitizeRecord(fileRecord),
+      };
+    } catch (error) {
+      await this.destroyResource(asset.publicId).catch(() => null);
+      throw error;
+    }
   }
 
-  async uploadAvatar(file: AnyRecord, userId: string | number) {
-    return this.uploadAndProcess(file, 'avatars', `user-${userId}-${Date.now()}`, {
-      width: 200,
-      height: 200,
-      quality: 85,
-      format: 'jpeg',
-      fit: 'cover',
-    });
+  async uploadAvatar(file: AnyRecord, userId: string | number, options: UploadRecordOptions = {}) {
+    return this.uploadAndProcess(
+      file,
+      'avatars',
+      `user-${userId}-${Date.now()}`,
+      {
+        width: 200,
+        height: 200,
+        quality: 85,
+        format: 'jpeg',
+        fit: 'cover',
+      },
+      {
+        uploadedBy: options.uploadedBy ?? userId,
+        storeData: options.storeData,
+      },
+    );
   }
 
-  async uploadGeneralFile(file: AnyRecord) {
+  async uploadGeneralFile(file: AnyRecord, options: UploadRecordOptions = {}) {
     const originalBaseName = path.parse(String(file?.originalname || `file-${Date.now()}`)).name;
 
-    return this.uploadAndProcess(file, 'general', `${originalBaseName}-${Date.now()}`, {
-      width: 1200,
-      height: 1200,
-      fit: 'inside',
-      quality: 85,
-      format: 'jpeg',
-    });
+    return this.uploadAndProcess(
+      file,
+      'general',
+      `${originalBaseName}-${Date.now()}`,
+      {
+        width: 1200,
+        height: 1200,
+        fit: 'inside',
+        quality: 85,
+        format: 'jpeg',
+      },
+      {
+        uploadedBy: options.uploadedBy,
+        storeData: options.storeData,
+      },
+    );
   }
 
   resolvePublicId(input: string) {
@@ -357,7 +408,14 @@ class UploadService {
       throw ApiError.notFound('File not found');
     }
 
-    return { message: 'File deleted successfully', publicId, provider: 'cloudinary' };
+    const deletedRecords = await fileService.deleteByIdFile(publicId);
+
+    return {
+      message: 'File deleted successfully',
+      publicId,
+      deletedRecords,
+      provider: 'cloudinary',
+    };
   }
 
   async getFileInfo(input: string) {
@@ -382,6 +440,7 @@ class UploadService {
       for (const item of oldResources) {
         const result = await this.destroyResource(item.public_id);
         if (result.result === 'ok') {
+          await fileService.deleteByIdFile(item.public_id);
           deletedCount++;
         }
       }

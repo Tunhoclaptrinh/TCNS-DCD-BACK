@@ -10,7 +10,10 @@ class UploadController {
       if (!req.file) {
         return res.status(400).json({ message: 'No file uploaded' });
       }
-      const data = await uploadService.uploadAvatar(req.file, req.user.id);
+      const data = await uploadService.uploadAvatar(req.file, req.user.id, {
+        uploadedBy: req.user.id,
+        storeData: req.body.storeData,
+      });
       res.json(data);
     } catch (error) {
       next(error);
@@ -22,7 +25,10 @@ class UploadController {
       if (!req.file) {
         return res.status(400).json({ message: 'No file uploaded' });
       }
-      const data = await uploadService.uploadGeneralFile(req.file);
+      const data = await uploadService.uploadGeneralFile(req.file, {
+        uploadedBy: req.user.id,
+        storeData: req.body.storeData,
+      });
       res.json(data);
     } catch (error) {
       next(error);
