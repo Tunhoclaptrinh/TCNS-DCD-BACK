@@ -71,6 +71,38 @@ const TYPE_MAP = {
   object: { type: 'object', additionalProperties: true },
 };
 
+const SCHEMA_RULE_KEYS = new Set([
+  'type',
+  'required',
+  'unique',
+  'default',
+  'enum',
+  'min',
+  'max',
+  'minLength',
+  'maxLength',
+  'foreignKey',
+  'description',
+  'values',
+  'custom',
+]);
+
+function isSchemaRule(value: unknown): value is SchemaRule {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as AnyRecord;
+  const ruleType = candidate.type;
+  const keys = Object.keys(candidate);
+
+  if (keys.length === 0 || keys.some((key) => !SCHEMA_RULE_KEYS.has(key))) {
+    return false;
+  }
+
+  return typeof ruleType === 'string' && Object.prototype.hasOwnProperty.call(TYPE_MAP, ruleType);
+}
+
 function ruleToProperty(rule: SchemaRule) {
   const base = TYPE_MAP[rule.type];
   const prop: AnyRecord = {
@@ -87,10 +119,16 @@ function ruleToProperty(rule: SchemaRule) {
   return prop;
 }
 
+function normalizeOpenApiProperties(properties: AnyRecord = {}) {
+  return Object.fromEntries(
+    Object.entries(properties).map(([field, value]) => [field, isSchemaRule(value) ? ruleToProperty(value) : value]),
+  );
+}
+
 function buildObjectSchema(properties: AnyRecord, required: string[] = [], description?: string) {
   const schema: AnyRecord = {
     type: 'object',
-    properties,
+    properties: normalizeOpenApiProperties(properties),
   };
 
   if (required.length > 0) schema.required = required;
@@ -242,7 +280,7 @@ function buildSchemaRefBody(schemaName: string, required = true, contentType = '
 
 const EXTRA_SCHEMAS: AnyRecord = {
   AuthRegisterRequest: buildObjectSchema(
-    pickFields(userSchema, ['email', 'password', 'name', 'phone', 'address']),
+    buildPropertiesFromSchemaFields(pickFields(userSchema, ['email', 'password', 'name', 'phone', 'address'])),
     ['email', 'password', 'name'],
     'Dữ liệu đăng ký tài khoản mới.',
   ),
@@ -258,51 +296,62 @@ const EXTRA_SCHEMAS: AnyRecord = {
     ['email', 'password'],
     'Thông tin đăng nhập bằng email và mật khẩu.',
   ),
-  AuthForgotPasswordRequest: buildObjectSchema(
+  AuthForgotPasswordRequest: Object.assign(
+    buildObjectSchema(
+      {
+        email: {
+          type: 'string',
+          format: 'email',
+          description: 'Email tài khoản. Cần truyền email hoặc phone.',
+        },
+        phone: {
+          type: 'string',
+          description: 'Số điện thoại tài khoản. Cần truyền email hoặc phone.',
+        },
+      },
+      [],
+      'Yêu cầu gửi OTP quên mật khẩu.',
+    ),
     {
-      email: {
-        type: 'string',
-        format: 'email',
-        description: 'Email tài khoản. Cần truyền email hoặc phone.',
-      },
-      phone: {
-        type: 'string',
-        description: 'Số điện thoại tài khoản. Cần truyền email hoặc phone.',
-      },
+      anyOf: [{ required: ['email'] }, { required: ['phone'] }],
     },
-    [],
-    'Yêu cầu gửi OTP quên mật khẩu.',
   ),
-  AuthResetPasswordRequest: {
-    type: 'object',
-    description: 'Đặt lại mật khẩu bằng OTP. Có thể truyền mã qua field `otp` hoặc alias `token`.',
-    properties: {
-      email: {
-        type: 'string',
-        format: 'email',
-        description: 'Email tài khoản. Cần truyền email hoặc phone.',
+  AuthResetPasswordRequest: Object.assign(
+    buildObjectSchema(
+      {
+        email: {
+          type: 'string',
+          format: 'email',
+          description: 'Email tài khoản. Cần truyền email hoặc phone.',
+        },
+        phone: {
+          type: 'string',
+          description: 'Số điện thoại tài khoản. Cần truyền email hoặc phone.',
+        },
+        otp: {
+          type: 'string',
+          description: 'Mã OTP đã nhận.',
+        },
+        token: {
+          type: 'string',
+          description: 'Alias của field `otp`.',
+        },
+        newPassword: {
+          type: 'string',
+          format: 'password',
+          description: 'Mật khẩu mới.',
+        },
       },
-      phone: {
-        type: 'string',
-        description: 'Số điện thoại tài khoản. Cần truyền email hoặc phone.',
-      },
-      otp: {
-        type: 'string',
-        description: 'Mã OTP đã nhận.',
-      },
-      token: {
-        type: 'string',
-        description: 'Alias của field `otp`.',
-      },
-      newPassword: {
-        type: 'string',
-        format: 'password',
-        description: 'Mật khẩu mới.',
-      },
+      ['newPassword'],
+      'Đặt lại mật khẩu bằng OTP. Có thể truyền mã qua field `otp` hoặc alias `token`.',
+    ),
+    {
+      allOf: [
+        { anyOf: [{ required: ['email'] }, { required: ['phone'] }] },
+        { anyOf: [{ required: ['otp'] }, { required: ['token'] }] },
+      ],
     },
-    required: ['newPassword'],
-    oneOf: [{ required: ['otp'] }, { required: ['token'] }],
-  },
+  ),
   AuthChangePasswordRequest: buildObjectSchema(
     {
       currentPassword: {
@@ -319,21 +368,25 @@ const EXTRA_SCHEMAS: AnyRecord = {
     ['currentPassword', 'newPassword'],
     'Đổi mật khẩu của tài khoản đang đăng nhập.',
   ),
-  AuthRefreshTokenRequest: {
-    type: 'object',
-    description: 'Lấy access token mới từ refresh token. Có thể truyền qua field `refreshToken` hoặc alias `token`.',
-    properties: {
-      refreshToken: {
-        type: 'string',
-        description: 'Refresh token hợp lệ.',
+  AuthRefreshTokenRequest: Object.assign(
+    buildObjectSchema(
+      {
+        refreshToken: {
+          type: 'string',
+          description: 'Refresh token hợp lệ.',
+        },
+        token: {
+          type: 'string',
+          description: 'Alias của field `refreshToken`.',
+        },
       },
-      token: {
-        type: 'string',
-        description: 'Alias của field `refreshToken`.',
-      },
+      [],
+      'Lấy access token mới từ refresh token. Có thể truyền qua field `refreshToken` hoặc alias `token`.',
+    ),
+    {
+      anyOf: [{ required: ['refreshToken'] }, { required: ['token'] }],
     },
-    oneOf: [{ required: ['refreshToken'] }, { required: ['token'] }],
-  },
+  ),
   UserBulkRequest: buildObjectSchema(
     {
       operation: {
@@ -393,23 +446,25 @@ const EXTRA_SCHEMAS: AnyRecord = {
     'Dữ liệu khai trừ người dùng.',
   ),
   NotificationSettingsUpdateRequest: buildObjectSchema(
-    pickFields(notificationSettingsSchema, [
-      'shiftNotifications',
-      'approvalNotifications',
-      'systemNotifications',
-      'emailNotifications',
-      'smsNotifications',
-    ]),
+    buildPropertiesFromSchemaFields(
+      pickFields(notificationSettingsSchema, [
+        'shiftNotifications',
+        'approvalNotifications',
+        'systemNotifications',
+        'emailNotifications',
+        'smsNotifications',
+      ]),
+    ),
     [],
     'Cập nhật cài đặt thông báo của người dùng hiện tại.',
   ),
   DutySlotRequest: buildObjectSchema(
-    dutySlotSchema,
-    ['weekStart', 'shiftDate', 'shiftLabel', 'createdBy'],
-    'Thông tin ca trực.',
+    buildPropertiesFromSchemaFields(omitFields(dutySlotSchema, ['createdBy'])),
+    ['shiftDate', 'shiftLabel'],
+    'Thông tin ca trực. `weekStart` sẽ được tự suy ra từ `shiftDate` nếu không truyền.',
   ),
   DutySlotUpdateRequest: buildObjectSchema(
-    dutySlotSchema,
+    buildPropertiesFromSchemaFields(omitFields(dutySlotSchema, ['createdBy'])),
     [],
     'Dữ liệu cập nhật ca trực. Chỉ cần truyền các trường muốn thay đổi.',
   ),
@@ -447,9 +502,9 @@ const EXTRA_SCHEMAS: AnyRecord = {
     'Duyệt hoặc từ chối yêu cầu đổi ca.',
   ),
   RewardPenaltyCreateRequest: buildObjectSchema(
-    rewardPenaltySchema,
-    ['userId', 'type', 'amount', 'reason', 'createdBy'],
-    'Tạo bản ghi thưởng hoặc phạt.',
+    buildPropertiesFromSchemaFields(omitFields(rewardPenaltySchema, ['createdBy'])),
+    ['userId', 'type', 'amount', 'reason'],
+    'Tạo bản ghi thưởng hoặc phạt. `createdBy` được xác định từ người dùng đang đăng nhập.',
   ),
   UploadAvatarRequest: {
     type: 'object',
@@ -470,7 +525,7 @@ const EXTRA_SCHEMAS: AnyRecord = {
         description: 'Nếu bật, metadata file sẽ lưu thêm chuỗi base64 vào DB.',
       },
     },
-    oneOf: [{ required: ['avatar'] }, { required: ['image'] }],
+    anyOf: [{ required: ['avatar'] }, { required: ['image'] }],
   },
   UploadGeneralFileRequest: {
     type: 'object',
@@ -491,7 +546,7 @@ const EXTRA_SCHEMAS: AnyRecord = {
         description: 'Nếu bật, metadata file sẽ lưu thêm chuỗi base64 vào DB.',
       },
     },
-    oneOf: [{ required: ['file'] }, { required: ['image'] }],
+    anyOf: [{ required: ['file'] }, { required: ['image'] }],
   },
   UserProfileUpdateRequest: buildObjectSchema(
     buildPropertiesFromSchemaFields(userProfileJsonFields),
@@ -504,12 +559,7 @@ const EXTRA_SCHEMAS: AnyRecord = {
       avatar: {
         type: 'string',
         format: 'binary',
-        description: 'Ảnh avatar mới. Có thể dùng field `avatar` hoặc `image`.',
-      },
-      image: {
-        type: 'string',
-        format: 'binary',
-        description: 'Alias của field `avatar`.',
+        description: 'Ảnh avatar mới.',
       },
       storeData: {
         type: 'boolean',
@@ -517,7 +567,7 @@ const EXTRA_SCHEMAS: AnyRecord = {
       },
     },
     [],
-    'Cập nhật hồ sơ cá nhân qua `multipart/form-data`. Có thể dùng field `avatar` hoặc `image` để upload file ảnh.',
+    'Cập nhật hồ sơ cá nhân qua `multipart/form-data`. Dùng field `avatar` để upload file ảnh.',
   ),
   UserUpdateRequest: buildObjectSchema(
     {
@@ -552,12 +602,7 @@ const EXTRA_SCHEMAS: AnyRecord = {
       avatar: {
         type: 'string',
         format: 'binary',
-        description: 'Ảnh avatar mới. Có thể dùng field `avatar` hoặc `image`.',
-      },
-      image: {
-        type: 'string',
-        format: 'binary',
-        description: 'Alias của field `avatar`.',
+        description: 'Ảnh avatar mới.',
       },
       storeData: {
         type: 'boolean',
@@ -565,7 +610,7 @@ const EXTRA_SCHEMAS: AnyRecord = {
       },
     },
     [],
-    'Cập nhật người dùng qua `multipart/form-data`. Có thể dùng field `avatar` hoặc `image` để upload file ảnh.',
+    'Cập nhật người dùng qua `multipart/form-data`. Dùng field `avatar` để upload file ảnh.',
   ),
   ImportFileRequest: {
     type: 'object',
@@ -573,7 +618,7 @@ const EXTRA_SCHEMAS: AnyRecord = {
       file: {
         type: 'string',
         format: 'binary',
-        description: 'Tệp CSV/XLSX cần import.',
+        description: 'Tệp CSV/XLS/XLSX cần import.',
       },
     },
     required: ['file'],
@@ -617,7 +662,7 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
     requestBody: buildSchemaRefBody('AuthForgotPasswordRequest'),
     responses: {
       200: { description: 'Yêu cầu gửi OTP đã được tiếp nhận' },
-      400: { description: 'Thiếu email và phone' },
+      400: { description: 'Thiếu email hoặc phone' },
       429: { description: 'Yêu cầu OTP quá nhiều lần trong thời gian ngắn' },
     },
   },
@@ -661,7 +706,7 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
   'PUT /users/profile': {
     summary: 'Cập nhật hồ sơ cá nhân',
     description:
-      'Cập nhật thông tin hồ sơ của chính bạn. Dùng `application/json` khi cập nhật text hoặc URL avatar, và dùng `multipart/form-data` khi upload file avatar qua field `avatar` hoặc `image`.',
+      'Cập nhật thông tin hồ sơ của chính bạn. Dùng `application/json` khi cập nhật text hoặc URL avatar, và dùng `multipart/form-data` khi upload file avatar qua field `avatar`.',
     requestBody: {
       required: false,
       content: {
@@ -669,9 +714,6 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
           schema: { $ref: '#/components/schemas/UserProfileMultipartRequest' },
           encoding: {
             avatar: {
-              contentType: 'image/*',
-            },
-            image: {
               contentType: 'image/*',
             },
           },
@@ -723,7 +765,7 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
   'PUT /users/{id}': {
     summary: 'Cập nhật người dùng',
     description:
-      'Cập nhật thông tin người dùng theo ID. Dùng `application/json` khi cập nhật dữ liệu text/URL, và dùng `multipart/form-data` khi upload file avatar qua field `avatar` hoặc `image`.',
+      'Cập nhật thông tin người dùng theo ID. Dùng `application/json` khi cập nhật dữ liệu text/URL, và dùng `multipart/form-data` khi upload file avatar qua field `avatar`.',
     requestBody: {
       required: false,
       content: {
@@ -731,9 +773,6 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
           schema: { $ref: '#/components/schemas/UserUpdateMultipartRequest' },
           encoding: {
             avatar: {
-              contentType: 'image/*',
-            },
-            image: {
               contentType: 'image/*',
             },
           },
@@ -781,7 +820,7 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
   },
   'POST /users/import': {
     summary: 'Import người dùng từ file',
-    description: 'Import dữ liệu người dùng từ tệp CSV hoặc XLSX.',
+    description: 'Import dữ liệu người dùng từ tệp CSV, XLS hoặc XLSX.',
     requestBody: {
       required: true,
       content: {
