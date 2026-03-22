@@ -33,6 +33,11 @@ const RELATION_MAP = {
     approver: { collection: 'users', localField: 'approvedBy', justOne: true },
     dutySlot: { collection: 'duty_slots', localField: 'dutySlotId', justOne: true },
   },
+  duty_slots: {
+    kip: { collection: 'duty_kips', localField: 'kipId', justOne: true },
+    shift: { collection: 'duty_shifts', localField: 'shiftId', justOne: true },
+    creator: { collection: 'users', localField: 'createdBy', justOne: true },
+  },
 };
 
 class JsonAdapter implements DatabaseAdapter {

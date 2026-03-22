@@ -19,6 +19,7 @@ async function seedDutyData() {
 
     // 0. Clear existing data
     const collections = [
+      'duty_templates',
       'duty_shifts',
       'duty_kips',
       'duty_slots',
@@ -31,12 +32,44 @@ async function seedDutyData() {
       await dbObj.collection(colName).deleteMany({});
     }
 
-    // 1. Create Shift Templates
+    // 1. Create Template Group
+    console.log('Creating Default Template Group...');
+    const templateGroups = [{ id: 1, name: 'Bản mẫu Mặc định', isDefault: true, description: 'Bản mẫu trực chuẩn' }];
+    await dbObj.collection('duty_templates').insertMany(templateGroups);
+
+    // 2. Create Shift Templates
     console.log('Creating Shift Templates...');
     const shifts = [
-      { id: 1, name: 'Ca Sáng', startTime: '06:30', endTime: '10:30', order: 1, description: 'Trực khung giờ sáng' },
-      { id: 2, name: 'Ca Chiều', startTime: '12:30', endTime: '16:30', order: 2, description: 'Trực khung giờ chiều' },
-      { id: 3, name: 'Ca Tối', startTime: '18:30', endTime: '22:30', order: 3, description: 'Trực khung giờ tối' },
+      {
+        id: 1,
+        templateId: 1,
+        name: 'Ca Sáng',
+        startTime: '06:30',
+        endTime: '10:30',
+        order: 1,
+        description: 'Trực khung giờ sáng',
+        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+      },
+      {
+        id: 2,
+        templateId: 1,
+        name: 'Ca Chiều',
+        startTime: '12:30',
+        endTime: '16:30',
+        order: 2,
+        description: 'Trực khung giờ chiều',
+        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+      },
+      {
+        id: 3,
+        templateId: 1,
+        name: 'Ca Tối',
+        startTime: '18:30',
+        endTime: '22:30',
+        order: 3,
+        description: 'Trực khung giờ tối',
+        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+      },
     ];
     await dbObj.collection('duty_shifts').insertMany(shifts);
 

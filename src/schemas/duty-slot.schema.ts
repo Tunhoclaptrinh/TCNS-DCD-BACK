@@ -15,7 +15,7 @@ export default defineSchema({
   shiftDate: {
     type: 'date',
     required: true,
-    description: 'Ngày diễn ra ca trực (ISO)',
+    description: 'Ngày diễn ra kíp trực (ISO)',
   },
   dayId: {
     type: 'number',
@@ -27,7 +27,7 @@ export default defineSchema({
     type: 'number',
     required: false,
     foreignKey: 'duty_kips',
-    description: 'ID Kíp trực (Template)',
+    description: 'ID Kíp (Template)',
   },
   shiftId: {
     type: 'number',
@@ -40,7 +40,7 @@ export default defineSchema({
     required: true,
     minLength: 1,
     maxLength: 100,
-    description: 'Tên ca trực',
+    description: 'Tên hiển thị (Kíp)',
   },
   startTime: {
     type: 'string',
@@ -51,13 +51,6 @@ export default defineSchema({
     type: 'string',
     required: false,
     description: 'Giờ kết thúc (HH:mm)',
-  },
-  capacity: {
-    type: 'number',
-    required: false,
-    default: 1,
-    min: 1,
-    description: 'Số lượng thành viên tối đa',
   },
   assignedUserIds: {
     type: 'array',
@@ -82,7 +75,7 @@ export default defineSchema({
     type: 'number',
     required: true,
     foreignKey: 'users',
-    description: 'Người tạo ca trực',
+    description: 'Người tạo',
   },
   note: {
     type: 'string',
@@ -99,5 +92,10 @@ export default defineSchema({
     type: 'number',
     required: false,
     description: 'Tiết kết thúc',
+  },
+  capacity: {
+    type: 'number',
+    required: false,
+    description: 'Sĩ số tối đa (Đè giá trị của kíp nếu có)',
   },
 });

@@ -82,13 +82,13 @@ class DutyService extends BaseService {
       shiftLabel: data.shiftLabel,
       startTime: data.startTime || null,
       endTime: data.endTime || null,
-      capacity: Math.max(1, Number(data.capacity) || 1),
       assignedUserIds: normalizeIdList(data.assignedUserIds || []),
       status: data.status || 'open',
       createdBy: normalizeId(data.createdBy || createdBy),
       order: Number(data.order) || 0,
       endPeriod: data.endPeriod ? Number(data.endPeriod) : null,
       note: data.note || '',
+      capacity: data.capacity ? Number(data.capacity) : null,
       createdAt: new Date(data.createdAt || now),
       updatedAt: new Date(now),
     };
@@ -213,7 +213,6 @@ class DutyService extends BaseService {
                 shiftLabel: `${shift.name} - ${kip.name}`,
                 startTime: kip.startTime || shift.startTime,
                 endTime: kip.endTime || shift.endTime,
-                capacity: kip.capacity,
                 order: kip.order,
                 endPeriod: kip.endPeriod,
                 note: kip.description || kip.duration || '',
@@ -254,7 +253,6 @@ class DutyService extends BaseService {
               shiftLabel: `${shift.name} - ${kip.name}`,
               startTime: kip.startTime || shift.startTime,
               endTime: kip.endTime || shift.endTime,
-              capacity: kip.capacity,
               order: kip.order,
               endPeriod: kip.endPeriod,
               note: kip.description || kip.duration || '',
@@ -301,7 +299,6 @@ class DutyService extends BaseService {
                 shiftLabel: `${shift.name} - ${kip.name}`,
                 startTime: kip.startTime || shift.startTime,
                 endTime: kip.endTime || shift.endTime,
-                capacity: kip.capacity,
                 order: kip.order,
                 endPeriod: kip.endPeriod,
                 note: kip.description || kip.duration || '',
@@ -359,7 +356,6 @@ class DutyService extends BaseService {
           shiftLabel: slot.shiftLabel,
           startTime: slot.startTime,
           endTime: slot.endTime,
-          capacity: slot.capacity,
           order: slot.order,
           endPeriod: slot.endPeriod,
           note: slot.note,
@@ -388,6 +384,7 @@ class DutyService extends BaseService {
         shiftDate_gte: weekStart,
         shiftDate_lte: weekEnd,
       },
+      expand: 'kip',
       sort: options.sort || 'shiftDate,startTime',
       order: options.order || 'asc',
     });
@@ -458,7 +455,15 @@ class DutyService extends BaseService {
     const userId = getActorId(user);
     const assigned = normalizeIdList(slot.assignedUserIds || []);
     if (assigned.includes(userId)) throw ApiError.badRequest('Already registered');
-    if (assigned.length >= (Number(slot.capacity) || 1)) throw ApiError.badRequest('Full');
+
+    // Get capacity: use slot override if present, otherwise associated Kip
+    let maxCapacity = Number(slot.capacity);
+    if (!maxCapacity || isNaN(maxCapacity)) {
+      const kip = await db.findById('duty_kips', slot.kipId);
+      maxCapacity = Number(kip?.capacity) || 1;
+    }
+
+    if (assigned.length >= maxCapacity) throw ApiError.badRequest('Full');
 
     const updated = await db.update('duty_slots', slot.id, {
       assignedUserIds: [...assigned, userId],
@@ -466,8 +471,8 @@ class DutyService extends BaseService {
     });
 
     await notificationService.notifyUser(userId, {
-      title: 'Đăng ký thành công',
-      message: `Ca '${slot.shiftLabel}' ${new Date(slot.shiftDate).toLocaleDateString()}`,
+      title: 'Đăng ký kíp trực thành công',
+      message: `Bạn đã đăng ký: ${slot.shiftLabel} ngày ${new Date(slot.shiftDate).toLocaleDateString('vi-VN')}`,
       category: 'shift',
       type: 'shift',
       refId: slot.id,

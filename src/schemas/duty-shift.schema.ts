@@ -12,7 +12,7 @@ export default defineSchema({
     required: true,
     minLength: 1,
     maxLength: 100,
-    description: 'Tên ca trực (e.g., Ca Sáng, Ca Chiều)',
+    description: 'Tên ca (e.g., Ca Sáng, Ca Chiều)',
   },
   startTime: {
     type: 'string',

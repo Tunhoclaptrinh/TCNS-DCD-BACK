@@ -12,7 +12,7 @@ export default defineSchema({
     type: 'boolean',
     required: false,
     default: true,
-    description: 'Bật/tắt thông báo ca trực',
+    description: 'Bật/tắt thông báo lịch trực',
   },
   approvalNotifications: {
     type: 'boolean',

@@ -5,7 +5,7 @@ export default defineSchema({
     type: 'number',
     required: true,
     foreignKey: 'duty_slots',
-    description: 'ID ca trực cần xin nghỉ',
+    description: 'ID kíp trực cần xin nghỉ',
   },
   userId: {
     type: 'number',

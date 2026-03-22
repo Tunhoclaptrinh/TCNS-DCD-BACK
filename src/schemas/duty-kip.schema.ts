@@ -11,7 +11,7 @@ export default defineSchema({
     type: 'number',
     required: true,
     foreignKey: 'duty_shifts',
-    description: 'ID Ca trực cha',
+    description: 'ID Ca cha',
   },
   name: {
     type: 'string',
