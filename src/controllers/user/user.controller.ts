@@ -35,6 +35,7 @@ class UserController extends BaseController {
       'hometown',
       'position',
       'department',
+      'gender',
       'phone',
       'address',
       'avatar',

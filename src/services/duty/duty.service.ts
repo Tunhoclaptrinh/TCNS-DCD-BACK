@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import BaseService from '@utils/base-service';
 import db from '@config/database';
 import ApiError from '@utils/api-error';
@@ -20,7 +21,6 @@ function getActorId(user: GenericRecord | Identifier): Identifier {
   if (typeof user === 'object' && user !== null) {
     return normalizeId(user.id);
   }
-
   return normalizeId(user);
 }
 
@@ -29,7 +29,6 @@ function getWeekStartISO(input?: string | number | Date) {
   if (Number.isNaN(date.getTime())) {
     throw ApiError.badRequest('Invalid date input');
   }
-
   const day = date.getUTCDay();
   const diff = day === 0 ? -6 : 1 - day;
   date.setUTCDate(date.getUTCDate() + diff);
@@ -64,6 +63,13 @@ function paginate(items: GenericRecord[], page = 1, limit = 10) {
   };
 }
 
+function toUTCMidnight(date: any): Date {
+  if (!date) return new Date();
+  const d = dayjs(date);
+  // Always extract YYYY-MM-DD part first to avoid timezone shifts
+  return new Date(d.format('YYYY-MM-DD') + 'T00:00:00Z');
+}
+
 class DutyService extends BaseService {
   constructor() {
     super('duty_slots');
@@ -71,12 +77,17 @@ class DutyService extends BaseService {
 
   buildSlotPayload(data: GenericRecord = {}, createdBy: Identifier | null = null) {
     const now = new Date().toISOString();
-    const shiftDate = new Date(data.shiftDate || now).toISOString();
+    const d = new Date(data.shiftDate || now);
+    d.setUTCHours(0, 0, 0, 0);
+    const shiftDate = d.toISOString();
     const weekStart = getWeekStartISO(data.weekStart || shiftDate);
 
     return {
-      weekStart,
-      shiftDate,
+      weekStart: new Date(weekStart),
+      shiftDate: new Date(shiftDate),
+      dayId: data.dayId ? normalizeId(data.dayId) : null,
+      kipId: data.kipId ? normalizeId(data.kipId) : null,
+      shiftId: data.shiftId ? normalizeId(data.shiftId) : null,
       shiftLabel: data.shiftLabel,
       startTime: data.startTime || null,
       endTime: data.endTime || null,
@@ -84,14 +95,298 @@ class DutyService extends BaseService {
       assignedUserIds: normalizeIdList(data.assignedUserIds || []),
       status: data.status || 'open',
       createdBy: normalizeId(data.createdBy || createdBy),
+      order: Number(data.order) || 0,
+      endPeriod: data.endPeriod ? Number(data.endPeriod) : null,
       note: data.note || '',
-      createdAt: data.createdAt || now,
-      updatedAt: now,
+      createdAt: new Date(data.createdAt || now),
+      updatedAt: new Date(now),
     };
   }
 
-  async getWeeklySchedule(options: GenericRecord = {}) {
-    const weekStart = getWeekStartISO(options.weekStart || new Date().toISOString());
+  async getShiftTemplates() {
+    const shifts = await db.findAll('duty_shifts');
+    const kips = await db.findAll('duty_kips');
+    return shifts
+      .map((shift: any) => ({
+        ...shift,
+        kips: kips
+          .filter((k: any) => normalizeId(k.shiftId) === normalizeId(shift.id))
+          .sort((a: any, b: any) => (a.order || 0) - (b.order || 0)),
+      }))
+      .sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
+  }
+
+  async createShiftTemplate(data: GenericRecord) {
+    return await db.create('duty_shifts', {
+      name: data.name,
+      startTime: data.startTime,
+      endTime: data.endTime,
+      order: Number(data.order) || 0,
+      description: data.description || '',
+    });
+  }
+
+  async updateShiftTemplate(id: Identifier, data: GenericRecord) {
+    return await db.update('duty_shifts', id, {
+      name: data.name,
+      startTime: data.startTime,
+      endTime: data.endTime,
+      order: Number(data.order) || 0,
+      description: data.description || '',
+    });
+  }
+
+  async deleteShiftTemplate(id: Identifier) {
+    await db.deleteMany('duty_kips', { shiftId: normalizeId(id) });
+    return await db.delete('duty_shifts', id);
+  }
+
+  async createKipTemplate(data: GenericRecord) {
+    return await db.create('duty_kips', {
+      shiftId: normalizeId(data.shiftId),
+      name: data.name,
+      coefficient: Number(data.coefficient) || 1,
+      capacity: Number(data.capacity) || 1,
+      startTime: data.startTime || null,
+      endTime: data.endTime || null,
+      order: Number(data.order) || 0,
+      endPeriod: data.endPeriod ? Number(data.endPeriod) : null,
+      daysOfWeek: Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : [0, 1, 2, 3, 4, 5, 6],
+      description: data.description || '',
+    });
+  }
+
+  async updateKipTemplate(id: Identifier, data: GenericRecord) {
+    return await db.update('duty_kips', id, {
+      name: data.name,
+      coefficient: Number(data.coefficient) || 1,
+      capacity: Number(data.capacity) || 1,
+      startTime: data.startTime || null,
+      endTime: data.endTime || null,
+      order: Number(data.order) || 0,
+      endPeriod: data.endPeriod ? Number(data.endPeriod) : null,
+      daysOfWeek: Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : [0, 1, 2, 3, 4, 5, 6],
+      description: data.description || '',
+    });
+  }
+
+  async deleteKipTemplate(id: Identifier) {
+    return await db.delete('duty_kips', id);
+  }
+
+  async findOrCreateDay(date: string, actorId: Identifier) {
+    const d = new Date(date);
+    d.setUTCHours(0, 0, 0, 0);
+    const isoDate = d.toISOString();
+
+    let dayRecord = await db.findOne('duty_days', { date: isoDate });
+    if (!dayRecord) {
+      dayRecord = await db.create('duty_days', {
+        date: isoDate,
+        dayOfWeek: (new Date(isoDate).getUTCDay() + 6) % 7,
+        status: 'open',
+        createdBy: normalizeId(actorId),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    return dayRecord;
+  }
+
+  async generateWeekSlots(weekStart: string, actorId: Identifier) {
+    const startIso = getWeekStartISO(weekStart);
+    const existing = await db.findOne('duty_slots', { weekStart: new Date(startIso) });
+    if (existing) throw ApiError.badRequest('Schedule already exists for this week');
+
+    const shifts = await this.getShiftTemplates();
+    const slots = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(startIso);
+      d.setUTCDate(d.getUTCDate() + i);
+      const isoDate = d.toISOString();
+      const dayRecord = await this.findOrCreateDay(isoDate, actorId);
+
+      for (const shift of shifts as any[]) {
+        for (const kip of shift.kips) {
+          const days = kip.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
+          if (!days.includes(i)) continue;
+
+          slots.push(
+            this.buildSlotPayload(
+              {
+                weekStart: startIso,
+                shiftDate: isoDate,
+                dayId: dayRecord.id,
+                shiftId: shift.id,
+                kipId: kip.id,
+                shiftLabel: `${shift.name} - ${kip.name}`,
+                startTime: kip.startTime || shift.startTime,
+                endTime: kip.endTime || shift.endTime,
+                capacity: kip.capacity,
+                order: kip.order,
+                endPeriod: kip.endPeriod,
+                note: kip.description || kip.duration || '',
+              },
+              actorId,
+            ),
+          );
+        }
+      }
+    }
+    return await db.insertMany('duty_slots', slots);
+  }
+
+  async generateDaySlots(date: string, actorId: Identifier) {
+    const d = new Date(date);
+    d.setUTCHours(0, 0, 0, 0);
+    const isoDate = d.toISOString();
+    const dayOfWeek = (d.getUTCDay() + 6) % 7;
+    const weekStartIso = getWeekStartISO(isoDate);
+
+    const dayRecord = await this.findOrCreateDay(isoDate, actorId);
+    const shifts = await this.getShiftTemplates();
+    const slots = [];
+
+    for (const shift of shifts as any[]) {
+      for (const kip of shift.kips) {
+        const days = kip.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
+        if (!days.includes(dayOfWeek)) continue;
+
+        slots.push(
+          this.buildSlotPayload(
+            {
+              weekStart: weekStartIso,
+              shiftDate: isoDate,
+              dayId: dayRecord.id,
+              shiftId: shift.id,
+              kipId: kip.id,
+              shiftLabel: `${shift.name} - ${kip.name}`,
+              startTime: kip.startTime || shift.startTime,
+              endTime: kip.endTime || shift.endTime,
+              capacity: kip.capacity,
+              order: kip.order,
+              endPeriod: kip.endPeriod,
+              note: kip.description || kip.duration || '',
+            },
+            actorId,
+          ),
+        );
+      }
+    }
+    if (slots.length === 0) return [];
+    return await db.insertMany('duty_slots', slots);
+  }
+
+  async generateRangeSlots(startDate: string, endDate: string, actorId: Identifier) {
+    const s = toUTCMidnight(startDate);
+    const e = toUTCMidnight(endDate);
+    e.setUTCHours(23, 59, 59, 999);
+
+    if (e < s) throw ApiError.badRequest('End date must be after start date');
+
+    const shifts = await this.getShiftTemplates();
+    const allSlots = [];
+
+    let curr = new Date(s);
+    while (curr <= e) {
+      const isoDate = curr.toISOString();
+      const dayOfWeek = (curr.getUTCDay() + 6) % 7;
+      const weekStartIso = getWeekStartISO(isoDate);
+      const dayRecord = await this.findOrCreateDay(isoDate, actorId);
+
+      for (const shift of shifts as any[]) {
+        for (const kip of shift.kips) {
+          const days = kip.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
+          if (!days.includes(dayOfWeek)) continue;
+
+          allSlots.push(
+            this.buildSlotPayload(
+              {
+                weekStart: weekStartIso,
+                shiftDate: isoDate,
+                dayId: dayRecord.id,
+                shiftId: shift.id,
+                kipId: kip.id,
+                shiftLabel: `${shift.name} - ${kip.name}`,
+                startTime: kip.startTime || shift.startTime,
+                endTime: kip.endTime || shift.endTime,
+                capacity: kip.capacity,
+                order: kip.order,
+                endPeriod: kip.endPeriod,
+                note: kip.description || kip.duration || '',
+              },
+              actorId,
+            ),
+          );
+        }
+      }
+      curr.setUTCDate(curr.getUTCDate() + 1);
+    }
+
+    if (allSlots.length === 0) return [];
+
+    await db.deleteMany('duty_slots', {
+      shiftDate_gte: s.toISOString(),
+      shiftDate_lte: e.toISOString(),
+    });
+
+    return await db.insertMany('duty_slots', allSlots);
+  }
+
+  async deleteRangeSlots(startDate: string, endDate: string) {
+    const s = toUTCMidnight(startDate);
+    const e = toUTCMidnight(endDate);
+    e.setUTCHours(23, 59, 59, 999);
+
+    return await db.deleteMany('duty_slots', {
+      shiftDate_gte: s.toISOString(),
+      shiftDate_lte: e.toISOString(),
+    });
+  }
+
+  async copyWeekSchedule(sourceWeekStart: string, targetWeekStart: string, actorId: Identifier) {
+    const srcIso = getWeekStartISO(sourceWeekStart);
+    const targetIso = getWeekStartISO(targetWeekStart);
+
+    const existingTarget = await db.findOne('duty_slots', { weekStart: new Date(targetIso) });
+    if (existingTarget) throw ApiError.badRequest('Target week already has slots');
+
+    const sourceSlots = await db.findMany('duty_slots', { weekStart: new Date(srcIso) });
+    if (!sourceSlots || sourceSlots.length === 0) throw ApiError.badRequest('Source week is empty');
+
+    const newSlots = sourceSlots.map((slot: any) => {
+      const d = new Date(slot.shiftDate);
+      const dayOffset = (d.getTime() - new Date(srcIso).getTime()) / (1000 * 60 * 60 * 24);
+      const t = new Date(targetIso);
+      t.setUTCDate(t.getUTCDate() + Math.round(dayOffset));
+
+      return this.buildSlotPayload(
+        {
+          weekStart: targetIso,
+          shiftDate: t.toISOString(),
+          kipId: slot.kipId,
+          shiftLabel: slot.shiftLabel,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          capacity: slot.capacity,
+          order: slot.order,
+          endPeriod: slot.endPeriod,
+          note: slot.note,
+        },
+        actorId,
+      );
+    });
+
+    return await db.insertMany('duty_slots', newSlots);
+  }
+
+  async deleteWeeklySlots(weekStart: string) {
+    const startIso = getWeekStartISO(weekStart);
+    return await db.deleteMany('duty_slots', { weekStart: new Date(startIso) });
+  }
+
+  async getWeeklySchedule(options: any = {}) {
+    const weekStart = getWeekStartISO(options.weekStart);
     const weekEnd = getWeekEndISO(weekStart);
 
     const result = await db.findAllAdvanced('duty_slots', {
@@ -111,16 +406,18 @@ class DutyService extends BaseService {
     );
 
     const data = result.data.map((slot) => {
-      const assignedUserIds = normalizeIdList(slot.assignedUserIds || []);
+      const assignedIds = normalizeIdList(slot.assignedUserIds || []);
       return {
         ...slot,
-        assignedUserIds,
-        assignedUsers: assignedUserIds.map((id) => userMap.get(id)).filter(Boolean),
+        assignedUserIds: assignedIds,
+        assignedUsers: assignedIds.map((id) => userMap.get(id)).filter(Boolean),
       };
     });
 
+    const days = await db.findMany('duty_days', { date_gte: weekStart, date_lte: weekEnd });
+
     return {
-      data,
+      data: { slots: data, days },
       weekStart,
       weekEnd,
       pagination: result.pagination,
@@ -128,66 +425,48 @@ class DutyService extends BaseService {
   }
 
   async createSlot(payload: GenericRecord, actorId: Identifier) {
-    if (!payload?.shiftLabel || !payload?.shiftDate) {
-      throw ApiError.badRequest('shiftLabel and shiftDate are required');
-    }
+    if (!payload?.shiftLabel || !payload?.shiftDate) throw ApiError.badRequest('shiftLabel and shiftDate required');
+    const dayRecord = await this.findOrCreateDay(payload.shiftDate, actorId);
+    return await db.create('duty_slots', this.buildSlotPayload({ ...payload, dayId: dayRecord.id }, actorId));
+  }
 
-    const slotPayload = this.buildSlotPayload(payload, actorId);
-    const created = await db.create('duty_slots', slotPayload);
-    return created;
+  async deleteSlot(id: Identifier) {
+    const slot = await db.findById('duty_slots', id);
+    if (!slot) throw ApiError.notFound('Slot not found');
+    await db.delete('duty_slots', id);
+    return { success: true };
+  }
+
+  async deleteShiftSlots(date: string, shiftId: number) {
+    const d = new Date(date);
+    d.setUTCHours(0, 0, 0, 0);
+    return await db.deleteMany('duty_slots', { shiftDate: d, shiftId: Number(shiftId) });
   }
 
   async updateSlot(slotId: Identifier, payload: GenericRecord = {}) {
     const slot = await db.findById('duty_slots', slotId);
-    if (!slot) throw ApiError.notFound('Duty slot not found');
+    if (!slot) throw ApiError.notFound('Slot not found');
 
     const patch: GenericRecord = { ...payload, updatedAt: new Date().toISOString() };
-
     if (payload.shiftDate || payload.weekStart) {
-      const shiftDate = payload.shiftDate ? new Date(payload.shiftDate).toISOString() : slot.shiftDate;
-      patch.shiftDate = shiftDate;
-      patch.weekStart = getWeekStartISO(payload.weekStart || shiftDate);
+      const sDate = payload.shiftDate ? new Date(payload.shiftDate) : new Date(slot.shiftDate);
+      sDate.setUTCHours(0, 0, 0, 0);
+      patch.shiftDate = sDate;
+      patch.weekStart = new Date(getWeekStartISO(payload.weekStart || sDate));
     }
-
-    if (payload.assignedUserIds) {
-      patch.assignedUserIds = normalizeIdList(payload.assignedUserIds);
-    }
-
-    if (payload.capacity !== undefined) {
-      patch.capacity = Math.max(1, Number(payload.capacity) || 1);
-    }
-
+    if (payload.assignedUserIds) patch.assignedUserIds = normalizeIdList(payload.assignedUserIds);
     return await db.update('duty_slots', slotId, patch);
   }
 
   async registerToSlot(slotId: Identifier, user: GenericRecord | Identifier) {
     const slot = await db.findById('duty_slots', slotId);
-    if (!slot) throw ApiError.notFound('Duty slot not found');
-    if (slot.status === 'locked') throw ApiError.badRequest('Duty slot is locked');
+    if (!slot) throw ApiError.notFound('Slot not found');
+    if (slot.status === 'locked') throw ApiError.badRequest('Locked');
 
     const userId = getActorId(user);
     const assigned = normalizeIdList(slot.assignedUserIds || []);
-
-    if (assigned.includes(userId)) {
-      throw ApiError.badRequest('You have already registered this duty slot');
-    }
-
-    const capacity = Math.max(1, Number(slot.capacity) || 1);
-    if (assigned.length >= capacity) {
-      throw ApiError.badRequest('Duty slot is full');
-    }
-
-    const sameDateSlots = await db.findMany('duty_slots', { shiftDate: slot.shiftDate });
-    const hasConflict = sameDateSlots.some((item) => {
-      if (normalizeId(item.id) === normalizeId(slot.id)) return false;
-      const itemAssigned = normalizeIdList(item.assignedUserIds || []);
-      if (!itemAssigned.includes(userId)) return false;
-      return (item.startTime || '') === (slot.startTime || '') && (item.endTime || '') === (slot.endTime || '');
-    });
-
-    if (hasConflict) {
-      throw ApiError.badRequest('You already have another duty slot at this time');
-    }
+    if (assigned.includes(userId)) throw ApiError.badRequest('Already registered');
+    if (assigned.length >= (Number(slot.capacity) || 1)) throw ApiError.badRequest('Full');
 
     const updated = await db.update('duty_slots', slot.id, {
       assignedUserIds: [...assigned, userId],
@@ -195,260 +474,141 @@ class DutyService extends BaseService {
     });
 
     await notificationService.notifyUser(userId, {
-      title: 'Đăng ký ca trực thành công',
-      message: `Bạn đã đăng ký ca '${slot.shiftLabel}' ngày ${new Date(slot.shiftDate).toLocaleDateString('vi-VN')}.`,
+      title: 'Đăng ký thành công',
+      message: `Ca '${slot.shiftLabel}' ${new Date(slot.shiftDate).toLocaleDateString()}`,
       category: 'shift',
       type: 'shift',
       refId: slot.id,
-      metadata: { action: 'register' },
     });
-
     return updated;
   }
 
   async cancelRegistration(slotId: Identifier, user: GenericRecord | Identifier) {
     const slot = await db.findById('duty_slots', slotId);
-    if (!slot) throw ApiError.notFound('Duty slot not found');
-
+    if (!slot) throw ApiError.notFound('Slot not found');
     const userId = getActorId(user);
     const assigned = normalizeIdList(slot.assignedUserIds || []);
-
-    if (!assigned.includes(userId)) {
-      throw ApiError.badRequest('You have not registered this duty slot');
-    }
+    if (!assigned.includes(userId)) throw ApiError.badRequest('Not registered');
 
     const updated = await db.update('duty_slots', slot.id, {
       assignedUserIds: assigned.filter((id) => id !== userId),
       updatedAt: new Date().toISOString(),
     });
-
-    await notificationService.notifyUser(userId, {
-      title: 'Hủy ca trực thành công',
-      message: `Bạn đã hủy ca '${slot.shiftLabel}' ngày ${new Date(slot.shiftDate).toLocaleDateString('vi-VN')}.`,
-      category: 'shift',
-      type: 'shift',
-      refId: slot.id,
-      metadata: { action: 'cancel' },
-    });
-
     return updated;
   }
 
   async requestSwap(payload: GenericRecord, requesterUser: GenericRecord) {
-    const slotId = payload?.dutySlotId || payload?.slotId;
-    const targetUserIdRaw = payload?.targetUserId;
-    const reason = String(payload?.reason || '').trim();
-
-    if (!slotId || !targetUserIdRaw || !reason) {
-      throw ApiError.badRequest('dutySlotId, targetUserId and reason are required');
-    }
-
-    const requesterId = normalizeId(requesterUser.id);
-    const targetUserId = normalizeId(targetUserIdRaw);
-
-    if (requesterId === targetUserId) {
-      throw ApiError.badRequest('Cannot swap duty slot with yourself');
-    }
-
+    const slotId = normalizeId(payload.slotId || payload.dutySlotId);
+    const targetUserId = normalizeId(payload.targetUserId);
     const slot = await db.findById('duty_slots', slotId);
-    if (!slot) throw ApiError.notFound('Duty slot not found');
+    if (!slot) throw ApiError.notFound('Slot not found');
 
-    const assigned = normalizeIdList(slot.assignedUserIds || []);
-    if (!assigned.includes(requesterId)) {
-      throw ApiError.badRequest('You are not assigned to this duty slot');
-    }
-
-    if (assigned.includes(targetUserId)) {
-      throw ApiError.badRequest('Target user is already assigned to this duty slot');
-    }
-
-    const targetUser = await db.findById('users', targetUserId);
-    if (!targetUser || !targetUser.isActive) {
-      throw ApiError.badRequest('Target user is invalid or inactive');
-    }
-
-    const existingPending = await db.findOne('duty_swap_requests', {
-      dutySlotId: normalizeId(slot.id),
-      requesterId,
-      targetUserId,
-      status: 'pending',
-    });
-
-    if (existingPending) {
-      throw ApiError.badRequest('A pending swap request already exists for this slot and target user');
-    }
-
-    const now = new Date().toISOString();
     const created = await db.create('duty_swap_requests', {
-      dutySlotId: normalizeId(slot.id),
-      requesterId,
+      dutySlotId: slotId,
+      requesterId: normalizeId(requesterUser.id),
       targetUserId,
-      reason,
+      reason: payload.reason,
       status: 'pending',
-      createdAt: now,
-      updatedAt: now,
+      createdAt: new Date().toISOString(),
     });
-
-    const allUsers = await db.findAll('users');
-    const approverIds = allUsers
-      .filter((u) => u.isActive && (u.role === 'admin' || u.role === 'staff'))
-      .map((u) => normalizeId(u.id));
-
-    await notificationService.notifyUser(requesterId, {
-      title: 'Yêu cầu đổi ca đã gửi',
-      message: `Yêu cầu đổi ca '${slot.shiftLabel}' của bạn đang chờ duyệt.`,
-      category: 'approval',
-      type: 'approval',
-      refId: created.id,
-      metadata: { action: 'swap_request_created' },
-    });
-
-    await notificationService.notifyUser(targetUserId, {
-      title: 'Bạn có yêu cầu nhận ca trực',
-      message: `Bạn vừa nhận được yêu cầu đổi ca '${slot.shiftLabel}'.`,
-      category: 'approval',
-      type: 'approval',
-      refId: created.id,
-      metadata: { action: 'swap_requested_to_you' },
-    });
-
-    await notificationService.notifyUsers(approverIds, {
-      title: 'Yêu cầu duyệt đổi ca',
-      message: `Có yêu cầu đổi ca mới cần duyệt cho ca '${slot.shiftLabel}'.`,
-      category: 'approval',
-      type: 'approval',
-      refId: created.id,
-      metadata: { action: 'swap_pending_review' },
-    });
-
     return created;
   }
 
   async getSwapRequests(user: GenericRecord, options: GenericRecord = {}) {
     const userId = normalizeId(user.id);
     const isApprover = user.role === 'admin' || user.role === 'staff';
-
-    if (isApprover) {
-      return await db.findAllAdvanced('duty_swap_requests', {
-        ...options,
-        sort: options.sort || 'createdAt',
-        order: options.order || 'desc',
-      });
-    }
-
-    const requesterItems = await db.findMany('duty_swap_requests', { requesterId: userId });
-    const targetItems = await db.findMany('duty_swap_requests', { targetUserId: userId });
-
-    const map = new Map<Identifier, GenericRecord>();
-    for (const item of [...requesterItems, ...targetItems]) {
-      map.set(item.id, item);
-    }
-
-    let merged = [...map.values()];
-
-    const statusFilter = options?.filter?.status;
-    if (statusFilter) {
-      merged = merged.filter((item) => item.status === statusFilter);
-    }
-
-    merged.sort((a, b) => new Date(String(b.createdAt || 0)).getTime() - new Date(String(a.createdAt || 0)).getTime());
-    return paginate(merged, options.page, options.limit);
+    const all = await db.findAll('duty_swap_requests');
+    let filtered = isApprover ? all : all.filter((r) => r.requesterId === userId || r.targetUserId === userId);
+    return paginate(filtered, options.page, options.limit);
   }
 
   async decideSwap(requestId: Identifier, payload: GenericRecord = {}, approverUser: GenericRecord) {
-    const swapRequest = await db.findById('duty_swap_requests', requestId);
-    if (!swapRequest) throw ApiError.notFound('Swap request not found');
-
-    if (swapRequest.status !== 'pending') {
-      throw ApiError.badRequest(`Swap request is already ${swapRequest.status}`);
+    const req = await db.findById('duty_swap_requests', requestId);
+    if (!req) throw ApiError.notFound('Request not found');
+    const status = payload.status || payload.decision;
+    if (status === 'approved') {
+      const slot = await db.findById('duty_slots', req.dutySlotId);
+      const assigned = normalizeIdList(slot.assignedUserIds);
+      const next = [...assigned.filter((id) => id !== req.requesterId), req.targetUserId];
+      await db.update('duty_slots', slot.id, { assignedUserIds: next });
     }
+    return await db.update('duty_swap_requests', requestId, { status, approvedBy: normalizeId(approverUser.id) });
+  }
 
-    const decision = String(payload.decision || payload.status || '').toLowerCase();
-    const note = String(payload.note || payload.reason || payload.decisionNote || '').trim();
+  async markAttendance(slotId: Identifier, userIds: Identifier[]) {
+    return await db.update('duty_slots', slotId, { attendedUserIds: userIds });
+  }
 
-    if (!['approved', 'rejected'].includes(decision)) {
-      throw ApiError.badRequest("decision must be 'approved' or 'rejected'");
-    }
+  async requestLeave(slotId: Identifier, userId: Identifier, reason: string) {
+    return await db.create('duty_leave_requests', {
+      slotId: normalizeId(slotId),
+      userId: normalizeId(userId),
+      reason,
+      status: 'pending',
+    });
+  }
+
+  async getLeaveRequests(options: GenericRecord = {}) {
+    const result = await db.findAllAdvanced('duty_leave_requests', {
+      ...options,
+      sort: options.sort || 'createdAt',
+      order: options.order || 'desc',
+    });
+
+    const users = await db.findAll('users');
+    const userMap = new Map(users.map((u) => [normalizeId(u.id), { id: u.id, name: u.name, avatar: u.avatar }]));
+
+    const slots = await db.findAll('duty_slots');
+    const slotMap = new Map(slots.map((s) => [normalizeId(s.id), s]));
+
+    const data = result.data.map((req: any) => ({
+      ...req,
+      user: userMap.get(normalizeId(req.userId)),
+      slot: slotMap.get(normalizeId(req.slotId)),
+    }));
+
+    return { ...result, data };
+  }
+
+  async resolveLeaveRequest(
+    requestId: Identifier,
+    status: string,
+    approverId: Identifier,
+    rejectionReason: string = '',
+  ) {
+    const request = await db.findById('duty_leave_requests', requestId);
+    if (!request) throw ApiError.notFound('Leave request not found');
 
     const now = new Date().toISOString();
-
-    if (decision === 'approved') {
-      const slot = await db.findById('duty_slots', swapRequest.dutySlotId);
-      if (!slot) throw ApiError.notFound('Duty slot not found');
-
-      const requesterId = normalizeId(swapRequest.requesterId);
-      const targetUserId = normalizeId(swapRequest.targetUserId);
-      const assigned = normalizeIdList(slot.assignedUserIds || []);
-
-      if (!assigned.includes(requesterId)) {
-        throw ApiError.badRequest('Requester is no longer assigned to this duty slot');
-      }
-
-      if (assigned.includes(targetUserId)) {
-        throw ApiError.badRequest('Target user is already assigned to this duty slot');
-      }
-
-      const nextAssigned = [...assigned.filter((id) => id !== requesterId), targetUserId];
-      await db.update('duty_slots', slot.id, {
-        assignedUserIds: nextAssigned,
-        updatedAt: now,
-      });
-    }
-
-    const updatedRequest = await db.update('duty_swap_requests', requestId, {
-      status: decision,
-      decisionNote: note,
-      approvedBy: normalizeId(approverUser.id),
-      approvedAt: now,
+    const updated = await db.update('duty_leave_requests', requestId, {
+      status,
+      approvedBy: normalizeId(approverId),
+      rejectionReason,
       updatedAt: now,
     });
 
-    if (decision === 'approved') {
-      await notificationService.notifyUser(swapRequest.requesterId, {
-        title: 'Yêu cầu đổi ca đã được duyệt',
-        message: 'Yêu cầu đổi ca của bạn đã được chấp thuận.',
-        category: 'approval',
-        type: 'approval',
-        refId: swapRequest.id,
-        metadata: { decision: 'approved' },
-      });
-
-      await notificationService.notifyUser(swapRequest.targetUserId, {
-        title: 'Bạn đã được phân ca mới',
-        message: 'Yêu cầu đổi ca đã được duyệt và ca trực đã được cập nhật cho bạn.',
-        category: 'approval',
-        type: 'approval',
-        refId: swapRequest.id,
-        metadata: { decision: 'approved' },
-      });
-    } else {
-      await notificationService.notifyUser(swapRequest.requesterId, {
-        title: 'Yêu cầu đổi ca bị từ chối',
-        message: note || 'Yêu cầu đổi ca của bạn đã bị từ chối.',
-        category: 'approval',
-        type: 'approval',
-        refId: swapRequest.id,
-        metadata: { decision: 'rejected' },
-      });
+    if (status === 'approved') {
+      const slot = await db.findById('duty_slots', request.slotId);
+      if (slot) {
+        const assigned = normalizeIdList(slot.assignedUserIds || []);
+        const nextAssigned = assigned.filter((id) => id !== normalizeId(request.userId));
+        await db.update('duty_slots', slot.id, { assignedUserIds: nextAssigned, updatedAt: now });
+      }
     }
-
-    return updatedRequest;
+    return updated;
   }
 
   async getStats() {
     const slots = await db.findAll('duty_slots');
-    const stats = {
-      total: slots.length,
-      open: slots.filter((s) => s.status === 'open').length,
-      locked: slots.filter((s) => s.status === 'locked').length,
-      totalAssigned: slots.reduce((acc, s) => acc + (s.assignedUserIds?.length || 0), 0),
-    };
-
     return {
       success: true,
       data: {
-        global: stats,
-        byDepartment: {}, // Add department breakdown if needed later
+        global: {
+          total: slots.length,
+          open: slots.filter((s) => s.status === 'open').length,
+          locked: slots.filter((s) => s.status === 'locked').length,
+          totalAssigned: slots.reduce((acc, s) => acc + (s.assignedUserIds?.length || 0), 0),
+        },
       },
     };
   }

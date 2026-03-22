@@ -13,8 +13,12 @@ const SCHEMA_MODEL_MAP = {
   'notification-setting.schema': 'notification_settings',
   'file.schema': 'files',
   'duty-slot.schema': 'duty_slots',
+  'duty-shift.schema': 'duty_shifts',
+  'duty-kip.schema': 'duty_kips',
   'duty-swap-request.schema': 'duty_swap_requests',
+  'duty-leave-request.schema': 'duty_leave_requests',
   'reward-penalty.schema': 'reward_penalties',
+  'duty-day.schema': 'duty_days',
 };
 const FILTER_SUFFIXES = ['_not_like', '_ilike', '_like', '_gte', '_lte', '_gt', '_lt', '_ne', '_in', '_nin'];
 
@@ -59,6 +63,17 @@ class MongoConnect implements DatabaseAdapter {
         targetUser: { ref: 'users', localField: 'targetUserId', foreignField: 'id', justOne: true },
         approver: { ref: 'users', localField: 'approvedBy', foreignField: 'id', justOne: true },
         dutySlot: { ref: 'duty_slots', localField: 'dutySlotId', foreignField: 'id', justOne: true },
+      },
+      duty_kips: {
+        shift: { ref: 'duty_shifts', localField: 'shiftId', foreignField: 'id', justOne: true },
+      },
+      duty_slots: {
+        kip: { ref: 'duty_kips', localField: 'kipId', foreignField: 'id', justOne: true },
+      },
+      duty_leave_requests: {
+        user: { ref: 'users', localField: 'userId', foreignField: 'id', justOne: true },
+        slot: { ref: 'duty_slots', localField: 'slotId', foreignField: 'id', justOne: true },
+        approver: { ref: 'users', localField: 'approvedBy', foreignField: 'id', justOne: true },
       },
     };
   }
@@ -280,7 +295,10 @@ class MongoConnect implements DatabaseAdapter {
       }
     }
 
-    const [data, total] = await Promise.all([queryBuilder.skip(skip).limit(limit).exec(), Model.countDocuments(query)]);
+    const [data, total] = await Promise.all([
+      queryBuilder.skip(skip).limit(limit).lean().exec(),
+      Model.countDocuments(query),
+    ]);
 
     return {
       success: true,
@@ -301,25 +319,25 @@ class MongoConnect implements DatabaseAdapter {
   async findAll(collection: string) {
     const Model = this.getModel(collection);
     if (!Model) return [];
-    return await Model.find();
+    return await Model.find().lean();
   }
 
   async findById(collection: string, id: Identifier) {
     const Model = this.getModel(collection);
     if (!Model) return null;
-    return await Model.findOne({ id: parseInt(String(id), 10) });
+    return await Model.findOne({ id: parseInt(String(id), 10) }).lean();
   }
 
   async findOne(collection: string, query: AnyRecord) {
     const Model = this.getModel(collection);
     if (!Model) return null;
-    return await Model.findOne(camelizeObjectKeys(query));
+    return await Model.findOne(camelizeObjectKeys(query)).lean();
   }
 
   async findMany(collection: string, query: AnyRecord = {}) {
     const Model = this.getModel(collection);
     if (!Model) return [];
-    return await Model.find(camelizeObjectKeys(query));
+    return await Model.find(camelizeObjectKeys(query)).lean();
   }
 
   async create(collection: string, data: AnyRecord) {

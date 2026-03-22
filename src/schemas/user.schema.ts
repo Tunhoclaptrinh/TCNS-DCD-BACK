@@ -1,6 +1,12 @@
 import { defineSchema } from '@app-types/schema';
 
 export default defineSchema({
+  id: {
+    type: 'number',
+    required: true,
+    unique: true,
+    description: 'ID định danh duy nhất (Numeric)',
+  },
   name: {
     type: 'string',
     required: true,
@@ -17,6 +23,12 @@ export default defineSchema({
     type: 'string',
     required: false,
     description: 'Tên',
+  },
+  gender: {
+    type: 'enum',
+    enum: ['male', 'female', 'other'],
+    required: false,
+    description: 'Giới tính',
   },
   dob: {
     type: 'date',

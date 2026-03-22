@@ -1,6 +1,12 @@
 import { defineSchema } from '@app-types/schema';
 
 export default defineSchema({
+  id: {
+    type: 'number',
+    required: true,
+    unique: true,
+    description: 'ID định danh duy nhất (Numeric)',
+  },
   weekStart: {
     type: 'date',
     required: true,
@@ -10,6 +16,24 @@ export default defineSchema({
     type: 'date',
     required: true,
     description: 'Ngày diễn ra ca trực (ISO)',
+  },
+  dayId: {
+    type: 'number',
+    required: false,
+    foreignKey: 'duty_days',
+    description: 'ID Ngày trực (Parent)',
+  },
+  kipId: {
+    type: 'number',
+    required: false,
+    foreignKey: 'duty_kips',
+    description: 'ID Kíp trực (Template)',
+  },
+  shiftId: {
+    type: 'number',
+    required: false,
+    foreignKey: 'duty_shifts',
+    description: 'ID Ca trực (Template)',
   },
   shiftLabel: {
     type: 'string',
@@ -41,6 +65,12 @@ export default defineSchema({
     default: [],
     description: 'Danh sách user id đã đăng ký',
   },
+  attendedUserIds: {
+    type: 'array',
+    required: false,
+    default: [],
+    description: 'Danh sách user id đã điểm danh',
+  },
   status: {
     type: 'enum',
     enum: ['open', 'locked'],
@@ -59,5 +89,15 @@ export default defineSchema({
     required: false,
     maxLength: 500,
     description: 'Ghi chú',
+  },
+  order: {
+    type: 'number',
+    required: false,
+    description: 'Tiết bắt đầu',
+  },
+  endPeriod: {
+    type: 'number',
+    required: false,
+    description: 'Tiết kết thúc',
   },
 });

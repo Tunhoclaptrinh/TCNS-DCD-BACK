@@ -4,8 +4,12 @@ import notifications from './notification.schema';
 import notificationSettings from './notification-setting.schema';
 import files from './file.schema';
 import dutySlots from './duty-slot.schema';
+import dutyShifts from './duty-shift.schema';
+import dutyKips from './duty-kip.schema';
 import dutySwapRequests from './duty-swap-request.schema';
 import rewardPenalties from './reward-penalty.schema';
+import dutyLeaveRequests from './duty-leave-request.schema';
+import dutyDays from './duty-day.schema';
 
 const schemas: SchemaMap = {
   // Auth & User
@@ -15,9 +19,13 @@ const schemas: SchemaMap = {
   notifications,
   notification_settings: notificationSettings,
   files,
+  duty_shifts: dutyShifts,
+  duty_kips: dutyKips,
   duty_slots: dutySlots,
   duty_swap_requests: dutySwapRequests,
+  duty_leave_requests: dutyLeaveRequests,
   reward_penalties: rewardPenalties,
+  duty_days: dutyDays,
 };
 
 export default schemas;
