@@ -1,8 +1,11 @@
 import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
 import BaseService from '@utils/base-service';
 import db from '@config/database';
 import ApiError from '@utils/api-error';
 import notificationService from '@services/notification/notification.service';
+
+dayjs.extend(utc);
 
 type Identifier = number | string;
 type GenericRecord = Record<string, any>;
@@ -18,28 +21,25 @@ function normalizeIdList(values: unknown[] = []): Identifier[] {
 }
 
 function getActorId(user: GenericRecord | Identifier): Identifier {
-  if (typeof user === 'object' && user !== null) {
-    return normalizeId(user.id);
-  }
+  if (typeof user === 'object' && user !== null) return normalizeId(user.id);
   return normalizeId(user);
 }
 
-function getWeekStartISO(input?: string | number | Date) {
-  const date = new Date(input || Date.now());
-  if (Number.isNaN(date.getTime())) {
-    throw ApiError.badRequest('Invalid date input');
-  }
-  const day = date.getUTCDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  date.setUTCDate(date.getUTCDate() + diff);
-  date.setUTCHours(0, 0, 0, 0);
-  return date.toISOString();
+function toUTCMidnight(dateInput?: string | number | Date): Date {
+  // Always parse as UTC to avoid local timezone shifts when formatting
+  // If dateInput is 'YYYY-MM-DD' or ISO, dayjs.utc will treat it as UTC midnight
+  const d = dayjs.utc(dateInput || new Date());
+  return d.startOf('day').toDate();
 }
 
-function getWeekEndISO(weekStartIso: string) {
-  const end = new Date(weekStartIso);
-  end.setUTCDate(end.getUTCDate() + 6);
-  end.setUTCHours(23, 59, 59, 999);
+function getWeekStartISO(input?: string | number | Date): string {
+  const d = dayjs.utc(input || new Date());
+  // dayjs.startOf('isoWeek') uses Monday as start
+  return d.startOf('isoWeek' as any).toISOString();
+}
+
+function getWeekEndISO(weekStartIso: string): string {
+  const end = dayjs.utc(weekStartIso).add(6, 'day').endOf('day');
   return end.toISOString();
 }
 
@@ -63,13 +63,6 @@ function paginate(items: GenericRecord[], page = 1, limit = 10) {
   };
 }
 
-function toUTCMidnight(date: any): Date {
-  if (!date) return new Date();
-  const d = dayjs(date);
-  // Always extract YYYY-MM-DD part first to avoid timezone shifts
-  return new Date(d.format('YYYY-MM-DD') + 'T00:00:00Z');
-}
-
 class DutyService extends BaseService {
   constructor() {
     super('duty_slots');
@@ -77,14 +70,12 @@ class DutyService extends BaseService {
 
   buildSlotPayload(data: GenericRecord = {}, createdBy: Identifier | null = null) {
     const now = new Date().toISOString();
-    const d = new Date(data.shiftDate || now);
-    d.setUTCHours(0, 0, 0, 0);
-    const shiftDate = d.toISOString();
-    const weekStart = getWeekStartISO(data.weekStart || shiftDate);
+    const shiftDate = toUTCMidnight(data.shiftDate);
+    const weekStartStr = getWeekStartISO(data.weekStart || shiftDate);
 
     return {
-      weekStart: new Date(weekStart),
-      shiftDate: new Date(shiftDate),
+      weekStart: new Date(weekStartStr),
+      shiftDate,
       dayId: data.dayId ? normalizeId(data.dayId) : null,
       kipId: data.kipId ? normalizeId(data.kipId) : null,
       shiftId: data.shiftId ? normalizeId(data.shiftId) : null,
@@ -391,6 +382,7 @@ class DutyService extends BaseService {
 
     const result = await db.findAllAdvanced('duty_slots', {
       ...options,
+      limit: 1000,
       filter: {
         ...(options.filter || {}),
         shiftDate_gte: weekStart,

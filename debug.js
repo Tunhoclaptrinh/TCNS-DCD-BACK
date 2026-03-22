@@ -6,22 +6,32 @@ async function debug() {
   await mongoose.connect(url);
   console.log('Connected.');
   
-  const dateStr = '2026-03-20';
-  const d = new Date(dateStr);
-  d.setUTCHours(0,0,0,0);
+  const slotSchema = new mongoose.Schema({
+    id: Number,
+    shiftDate: Date,
+    shiftLabel: String,
+    status: String,
+    assignedUserIds: [Number],
+  }, { collection: 'duty_slots' });
   
-  console.log('Searching for shiftDate:', d.toISOString());
+  const Slot = mongoose.model('Slot', slotSchema);
   
-  const slots = await mongoose.connection.db.collection('duty_slots').find({
-    shiftDate: d
-  }).toArray();
+  console.log('\n--- SLOTS FOR TODAY (MARCH 22) ---');
+  const start = new Date('2026-03-22T00:00:00Z');
+  const end = new Date('2026-03-22T23:59:59Z');
   
-  console.log(`Found ${slots.length} slots for ${dateStr} at UTC midnight`);
-  slots.forEach(s => {
-    console.log(`- ID: ${s.id}, Label: ${s.shiftLabel}, shiftId: ${s.shiftId} (${typeof s.shiftId})`);
+  const todaySlots = await Slot.find({ shiftDate: { $gte: start, $lte: end } });
+  todaySlots.forEach(s => {
+     console.log(`[${s.id}] ${s.shiftLabel} | Date: ${s.shiftDate.toISOString()} | Users: ${s.assignedUserIds}`);
   });
   
-  process.exit(0);
+  console.log('\n--- SLOTS FOR RECENT DAYS ---');
+  const recent = await Slot.find({ shiftDate: { $gte: new Date('2026-03-15T00:00:00Z') } }).sort({ shiftDate: 1 });
+  recent.forEach(s => {
+    console.log(`[${s.id}] ${s.shiftLabel} | Date: ${s.shiftDate.toISOString()}`);
+  });
+
+  await mongoose.disconnect();
 }
 
 debug().catch(console.error);
