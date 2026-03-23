@@ -1,4 +1,4 @@
-import BaseService from '@utils/base-service';
+import BaseService from 'src/common/base-service';
 import db from '@config/database';
 import { sanitizeUser, hashPassword } from '@utils/helpers';
 import ApiError from '@utils/api-error';

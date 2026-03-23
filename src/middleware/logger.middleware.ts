@@ -31,25 +31,7 @@ export default function apiLogger(req, res, next) {
   if (Object.keys(req.query).length) console.log('   Query:', req.query);
   if (req.body && Object.keys(req.body).length) console.log('   Body:', sanitize(req.body));
 
-  // Capture JSON response
-  let isJsonLogged = false;
-  const oldJson = res.json;
-  res.json = function (data) {
-    isJsonLogged = true;
-    const time = Date.now() - start;
-    const icon = statusIcon(res.statusCode);
-
-    console.log(`${icon} ${res.statusCode} ← ${req.method} ${req.originalUrl} (${time}ms)`);
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('   Response:', truncate(data));
-    }
-
-    return oldJson.call(this, data);
-  };
-
-  // Fallback for non-json responses (file download, redirect, etc.)
   res.on('finish', () => {
-    if (isJsonLogged) return;
     const time = Date.now() - start;
     const icon = statusIcon(res.statusCode);
     console.log(`${icon} ${res.statusCode} ← ${req.method} ${req.originalUrl} (${time}ms)`);

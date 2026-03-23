@@ -2,7 +2,7 @@ import { sanitizeUser } from '@utils/helpers';
 import userService from '@services/user/user.service';
 import userAvatarService from '@services/user/user-avatar.service';
 import userAccessService from '@services/user/user-access.service';
-import BaseController from '@utils/base-controller';
+import BaseController from 'src/common/base-controller';
 import ApiError from '@utils/api-error';
 import type { AnyRecord } from '@app-types/common';
 

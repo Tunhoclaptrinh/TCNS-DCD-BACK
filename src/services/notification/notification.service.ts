@@ -1,4 +1,4 @@
-import BaseService from '@utils/base-service';
+import BaseService from 'src/common/base-service';
 import db from '@config/database';
 import ApiError from '@utils/api-error';
 
@@ -16,6 +16,19 @@ type NotificationOptions = {
   force?: boolean;
 };
 
+const CATEGORY_TO_SETTING_KEY: Record<string, keyof typeof DEFAULT_SETTINGS> = {
+  shift: 'shiftNotifications',
+  approval: 'approvalNotifications',
+  system: 'systemNotifications',
+};
+
+function deriveNotificationTypeFromCategory(category: string | undefined) {
+  // Keep same behavior: approval -> approval, shift -> shift, everything else -> system.
+  if (category === 'approval') return 'approval';
+  if (category === 'shift') return 'shift';
+  return 'system';
+}
+
 function normalizeId(id: unknown): Identifier {
   const parsed = Number(id);
   return Number.isNaN(parsed) ? (id as Identifier) : parsed;
@@ -28,14 +41,15 @@ class NotificationService extends BaseService {
 
   async getSettings(userId: Identifier) {
     const normalizedUserId = normalizeId(userId);
+    const now = new Date().toISOString();
     let settings = await db.findOne('notification_settings', { userId: normalizedUserId });
 
     if (!settings) {
       settings = await db.create('notification_settings', {
         userId: normalizedUserId,
         ...DEFAULT_SETTINGS,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: now,
+        updatedAt: now,
       });
     }
 
@@ -56,24 +70,25 @@ class NotificationService extends BaseService {
       return settings;
     }
 
+    const now = new Date().toISOString();
     const updated = await db.update('notification_settings', settings.id, {
       ...updateData,
-      updatedAt: new Date().toISOString(),
+      updatedAt: now,
     });
     return updated;
   }
 
   isCategoryEnabled(settings: Record<string, any>, category: string) {
     if (!settings) return true;
-    if (category === 'shift') return settings.shiftNotifications !== false;
-    if (category === 'approval') return settings.approvalNotifications !== false;
-    return settings.systemNotifications !== false;
+    const settingKey = CATEGORY_TO_SETTING_KEY[category] ?? 'systemNotifications';
+    return settings[settingKey] !== false;
   }
 
   async notifyUser(userId: Identifier, payload: NotificationPayload = {}, options: NotificationOptions = {}) {
     const normalizedUserId = normalizeId(userId);
     const category = payload.category || 'system';
     const force = options.force === true;
+    const derivedType = deriveNotificationTypeFromCategory(category);
 
     if (!force) {
       const settings = await this.getSettings(normalizedUserId);
@@ -86,7 +101,7 @@ class NotificationService extends BaseService {
       userId: normalizedUserId,
       title: payload.title || 'Thông báo',
       message: payload.message || '',
-      type: payload.type || (category === 'approval' ? 'approval' : category === 'shift' ? 'shift' : 'system'),
+      type: payload.type || derivedType,
       category,
       channel: payload.channel || 'in_app',
       refId: payload.refId || null,

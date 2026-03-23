@@ -1,4 +1,6 @@
-import BaseController from '@utils/base-controller';
+import type { NextFunction, Request, Response } from 'express';
+
+import BaseController from 'src/common/base-controller';
 import notificationService from '@services/notification/notification.service';
 
 class NotificationController extends BaseController {
@@ -6,7 +8,7 @@ class NotificationController extends BaseController {
     super(notificationService);
   }
 
-  getNotifications = async (req, res, next) => {
+  getNotifications = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.service.getNotifications(req.user.id, req.parsedQuery);
       res.json(data);
@@ -15,7 +17,7 @@ class NotificationController extends BaseController {
     }
   };
 
-  markAsRead = async (req, res, next) => {
+  markAsRead = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.service.markAsRead(req.params.id, req.user.id);
       res.json(data);
@@ -24,7 +26,7 @@ class NotificationController extends BaseController {
     }
   };
 
-  markAllAsRead = async (req, res, next) => {
+  markAllAsRead = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.service.markAllAsRead(req.user.id);
       res.json(data);
@@ -33,7 +35,7 @@ class NotificationController extends BaseController {
     }
   };
 
-  deleteNotification = async (req, res, next) => {
+  deleteNotification = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.service.deleteForUser(req.params.id, req.user.id);
       res.json(data);
@@ -42,7 +44,7 @@ class NotificationController extends BaseController {
     }
   };
 
-  clearAll = async (req, res, next) => {
+  clearAll = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.service.deleteAll(req.user.id);
       res.json(data);
@@ -51,7 +53,7 @@ class NotificationController extends BaseController {
     }
   };
 
-  getSettings = async (req, res, next) => {
+  getSettings = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.service.getSettings(req.user.id);
       res.json(data);
@@ -60,7 +62,7 @@ class NotificationController extends BaseController {
     }
   };
 
-  updateSettings = async (req, res, next) => {
+  updateSettings = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.service.updateSettings(req.user.id, req.body);
       res.json(data);

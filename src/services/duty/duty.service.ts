@@ -1,4 +1,4 @@
-import BaseService from '@utils/base-service';
+import BaseService from 'src/common/base-service';
 import db from '@config/database';
 import ApiError from '@utils/api-error';
 import notificationService from '@services/notification/notification.service';

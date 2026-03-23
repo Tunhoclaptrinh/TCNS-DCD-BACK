@@ -5,13 +5,13 @@ import type { QueryOptions } from '@app-types/database';
 import type { SchemaDefinition, SchemaRule } from '@app-types/schema';
 import type { ServiceResult } from '@app-types/service';
 
-const BOOL_VALUES = new Set(['true', 'false', '1', '0']);
-const BOOL_TRUTHY = new Set(['true', '1', 'yes']);
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function isEmpty(value: any) {
-  return value === undefined || value === null || value === '';
-}
+import {
+  convertValue as convertValueBySchema,
+  isEmpty as isEmptyBySchema,
+  transformBySchema as transformBySchemaBySchema,
+  validateFieldConstraints as validateFieldConstraintsBySchema,
+  validateType as validateTypeBySchema,
+} from '../utils/schema-utils';
 
 class BaseService {
   collection: string;
@@ -41,69 +41,19 @@ class BaseService {
   }
 
   validateType(field: string, value: any, rule: SchemaRule) {
-    switch (rule.type) {
-      case 'string':
-        return typeof value !== 'string' ? `${field} must be a string` : null;
-      case 'number':
-        return isNaN(Number(value)) ? `${field} must be a number` : null;
-      case 'boolean':
-        return typeof value !== 'boolean' && !BOOL_VALUES.has(String(value).toLowerCase())
-          ? `${field} must be true/false`
-          : null;
-      case 'email':
-        return !EMAIL_REGEX.test(value) ? `${field} must be a valid email` : null;
-      case 'date':
-        return isNaN(new Date(value).getTime()) ? `${field} must be a valid date` : null;
-      case 'enum':
-        return !rule.enum.includes(value) ? `${field} must be one of: ${rule.enum.join(', ')}` : null;
-      case 'array':
-        return !Array.isArray(value) ? `${field} must be an array` : null;
-      default:
-        return null;
-    }
+    return validateTypeBySchema(field, value, rule);
   }
 
   convertValue(field: string, value: any, rule: SchemaRule) {
-    if (value === undefined || value === null) {
-      return rule.default !== undefined ? rule.default : null;
-    }
-
-    switch (rule.type) {
-      case 'number':
-        return Number(value);
-      case 'boolean':
-        return BOOL_TRUTHY.has(String(value).toLowerCase());
-      case 'date':
-        return new Date(value).toISOString();
-      case 'email':
-        return String(value).toLowerCase();
-      case 'array':
-        return Array.isArray(value) ? value : [value];
-      default:
-        return value;
-    }
+    return convertValueBySchema(field, value, rule);
   }
 
   transformBySchema(data: AnyRecord) {
-    if (!this.schema) return data;
-
-    const transformed: AnyRecord = {};
-    for (const [field, rule] of Object.entries(this.schema)) {
-      if (field in data) {
-        transformed[field] = this.convertValue(field, data[field], rule);
-      }
-    }
-    return transformed;
+    return transformBySchemaBySchema(this.schema, data);
   }
 
   validateFieldConstraints(field: string, value: any, rule: SchemaRule) {
-    if (rule.min !== undefined && Number(value) < rule.min) return `${field} must be >= ${rule.min}`;
-    if (rule.max !== undefined && Number(value) > rule.max) return `${field} must be <= ${rule.max}`;
-    if (rule.minLength && value.length < rule.minLength)
-      return `${field} must be at least ${rule.minLength} characters`;
-    if (rule.maxLength && value.length > rule.maxLength) return `${field} must be at most ${rule.maxLength} characters`;
-    if (rule.enum && !rule.enum.includes(value)) return `${field} must be one of: ${rule.enum.join(', ')}`;
-    return null;
+    return validateFieldConstraintsBySchema(field, value, rule);
   }
 
   async validateBySchema(data: AnyRecord, options: AnyRecord = {}) {
@@ -116,7 +66,7 @@ class BaseService {
 
       if (options.isUpdate && value === undefined) continue;
 
-      if (rule.required && isEmpty(value)) {
+      if (rule.required && isEmptyBySchema(value)) {
         errors[field] = `${field} is required`;
         continue;
       }
@@ -354,7 +304,7 @@ class BaseService {
     for (const [field, rule] of Object.entries(this.schema)) {
       const value = data[field];
 
-      if (rule.required && isEmpty(value)) {
+      if (rule.required && isEmptyBySchema(value)) {
         errors.push(`${field} is required`);
         continue;
       }

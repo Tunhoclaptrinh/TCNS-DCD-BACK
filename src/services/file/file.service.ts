@@ -1,7 +1,7 @@
 import path from 'path';
 import db from '@config/database';
 import ApiError from '@utils/api-error';
-import BaseService from '@utils/base-service';
+import BaseService from 'src/common/base-service';
 import type { AnyRecord, Identifier } from '@app-types/common';
 import type { QueryOptions } from '@app-types/database';
 
