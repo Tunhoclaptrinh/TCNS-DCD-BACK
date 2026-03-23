@@ -38,6 +38,14 @@ const RELATION_MAP = {
     shift: { collection: 'duty_shifts', localField: 'shiftId', justOne: true },
     creator: { collection: 'users', localField: 'createdBy', justOne: true },
   },
+  duty_kips: {
+    shift: { collection: 'duty_shifts', localField: 'shiftId', justOne: true },
+  },
+  duty_leave_requests: {
+    user: { collection: 'users', localField: 'userId', justOne: true },
+    slot: { collection: 'duty_slots', localField: 'slotId', justOne: true },
+    approver: { collection: 'users', localField: 'approvedBy', justOne: true },
+  },
 };
 
 class JsonAdapter implements DatabaseAdapter {
@@ -89,6 +97,11 @@ class JsonAdapter implements DatabaseAdapter {
       duty_slots: [],
       duty_swap_requests: [],
       reward_penalties: [],
+      duty_templates: [],
+      duty_shifts: [],
+      duty_kips: [],
+      duty_days: [],
+      duty_leave_requests: [],
     };
   }
 
@@ -294,22 +307,17 @@ class JsonAdapter implements DatabaseAdapter {
   }
 
   findOne(collection: string, query: AnyRecord) {
-    const normalizedQuery = camelizeObjectKeys(query);
-    return this.data[collection]?.find((item) => {
-      return Object.keys(normalizedQuery).every((key) => item[key] === normalizedQuery[key]);
-    });
+    const items = this.data[collection] || [];
+    const filtered = this.applyFilters(items, query);
+    return filtered[0] || null;
   }
 
   findMany(collection: string, query: AnyRecord = {}) {
-    const normalizedQuery = camelizeObjectKeys(query);
     if (!query || Object.keys(query).length === 0) {
       return this.data[collection] || [];
     }
-    return (
-      this.data[collection]?.filter((item) => {
-        return Object.keys(normalizedQuery).every((key) => item[key] === normalizedQuery[key]);
-      }) || []
-    );
+    const items = this.data[collection] || [];
+    return this.applyFilters(items, query);
   }
 
   create(collection: string, data: AnyRecord) {

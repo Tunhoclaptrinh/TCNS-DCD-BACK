@@ -22,6 +22,12 @@ router.post('/swaps', checkPermission('duty:update'), dutyController.requestSwap
 router.get('/swaps', checkPermission('duty:view'), dutyController.getSwapRequests);
 router.patch('/swaps/:id/decision', checkPermission('duty:approve_swap'), dutyController.decideSwap);
 
+// Template Groups
+router.get('/templates/groups', checkPermission('duty:view'), dutyController.getTemplates);
+router.post('/templates/groups', checkPermission('duty:manage'), dutyController.createTemplate);
+router.put('/templates/groups/:id', checkPermission('duty:manage'), dutyController.updateTemplate);
+router.delete('/templates/groups/:id', checkPermission('duty:manage'), dutyController.deleteTemplate);
+
 // Template & Generation
 router.get('/templates', checkPermission('duty:view'), dutyController.getShiftTemplates);
 router.post('/templates/shifts', checkPermission('duty:manage'), dutyController.createShiftTemplate);
@@ -34,6 +40,13 @@ router.post('/templates/copy', checkPermission('duty:manage'), dutyController.co
 router.post('/generate-range', checkPermission('duty:manage'), dutyController.generateRangeSlots);
 router.delete('/slots-range', checkPermission('duty:manage'), dutyController.deleteRangeSlots);
 router.delete('/slots-week', checkPermission('duty:manage'), dutyController.deleteWeeklySlots);
+
+// Template Assignments
+router.get('/template-assignments', checkPermission('duty:view'), dutyController.getTemplateAssignments);
+router.post('/template-assignments', checkPermission('duty:manage'), dutyController.createTemplateAssignment);
+router.put('/template-assignments/:id', checkPermission('duty:manage'), dutyController.updateTemplateAssignment);
+router.delete('/template-assignments/:id', checkPermission('duty:manage'), dutyController.deleteTemplateAssignment);
+router.delete('/template-shifts-day', checkPermission('duty:manage'), dutyController.removeShiftFromDay);
 
 // Attendance & Leave
 router.post('/slots/:id/attendance', checkPermission('duty:manage'), dutyController.markAttendance);

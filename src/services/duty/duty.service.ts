@@ -1,11 +1,15 @@
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
+import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
+import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import BaseService from '@utils/base-service';
 import db from '@config/database';
 import ApiError from '@utils/api-error';
 import notificationService from '@services/notification/notification.service';
 
 dayjs.extend(utc);
+dayjs.extend(isSameOrAfter);
+dayjs.extend(isSameOrBefore);
 
 type Identifier = number | string;
 type GenericRecord = Record<string, any>;
@@ -26,10 +30,9 @@ function getActorId(user: GenericRecord | Identifier): Identifier {
 }
 
 function toUTCMidnight(dateInput?: string | number | Date): Date {
-  // Always parse as UTC to avoid local timezone shifts when formatting
-  // If dateInput is 'YYYY-MM-DD' or ISO, dayjs.utc will treat it as UTC midnight
-  const d = dayjs.utc(dateInput || new Date());
-  return d.startOf('day').toDate();
+  // Extract YYYY-MM-DD and force to UTC 00:00:00.000
+  const dStr = dayjs(dateInput || new Date()).format('YYYY-MM-DD');
+  return dayjs.utc(dStr).toDate();
 }
 
 function getWeekStartISO(input?: string | number | Date): string {
@@ -94,8 +97,70 @@ class DutyService extends BaseService {
     };
   }
 
-  async getShiftTemplates() {
-    const shifts = await db.findAll('duty_shifts');
+  // ==================== TEMPLATE MANAGEMENT ====================
+
+  async getTemplates() {
+    const all = await db.findAll('duty_templates');
+    return all.sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '', 'vi'));
+  }
+
+  async createTemplate(data: GenericRecord) {
+    const template = await db.create('duty_templates', {
+      name: data.name,
+      isDefault: !!data.isDefault,
+      description: data.description || '',
+    });
+    if (data.isDefault) {
+      const all = await db.findAll('duty_templates');
+      for (const t of all) {
+        if (normalizeId(t.id) !== normalizeId(template.id) && t.isDefault) {
+          await db.update('duty_templates', t.id, { isDefault: false });
+        }
+      }
+    }
+    return template;
+  }
+
+  async updateTemplate(id: Identifier, data: GenericRecord) {
+    const updated = await db.update('duty_templates', id, {
+      name: data.name,
+      isDefault: !!data.isDefault,
+      description: data.description || '',
+    });
+    if (data.isDefault) {
+      const all = await db.findAll('duty_templates');
+      for (const t of all) {
+        if (normalizeId(t.id) !== normalizeId(id) && t.isDefault) {
+          await db.update('duty_templates', t.id, { isDefault: false });
+        }
+      }
+    }
+    return updated;
+  }
+
+  async deleteTemplate(id: Identifier) {
+    const shifts = await db.findMany('duty_shifts', { templateId: normalizeId(id) });
+    for (const s of shifts) {
+      await this.deleteShiftTemplate(s.id);
+    }
+    return await db.delete('duty_templates', id);
+  }
+
+  async getShiftTemplates(templateId?: Identifier | null) {
+    let filter: any = {};
+    if (templateId !== null) {
+      if (templateId) {
+        filter.templateId = normalizeId(templateId);
+      } else {
+        // Fallback to default if no templateId provided
+        const defaultTemplate = await db.findOne('duty_templates', { isDefault: true });
+        if (defaultTemplate) {
+          filter.templateId = normalizeId(defaultTemplate.id);
+        }
+      }
+    }
+
+    const shifts = await db.findMany('duty_shifts', filter);
     const kips = await db.findAll('duty_kips');
     return shifts
       .map((shift: any) => ({
@@ -109,21 +174,25 @@ class DutyService extends BaseService {
 
   async createShiftTemplate(data: GenericRecord) {
     return await db.create('duty_shifts', {
+      templateId: data.templateId ? normalizeId(data.templateId) : null,
       name: data.name,
       startTime: data.startTime,
       endTime: data.endTime,
       order: Number(data.order) || 0,
       description: data.description || '',
+      daysOfWeek: Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : [0, 1, 2, 3, 4, 5, 6],
     });
   }
 
   async updateShiftTemplate(id: Identifier, data: GenericRecord) {
     return await db.update('duty_shifts', id, {
+      templateId: data.templateId ? normalizeId(data.templateId) : undefined,
       name: data.name,
       startTime: data.startTime,
       endTime: data.endTime,
       order: Number(data.order) || 0,
       description: data.description || '',
+      daysOfWeek: Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : undefined,
     });
   }
 
@@ -266,28 +335,70 @@ class DutyService extends BaseService {
     return await db.insertMany('duty_slots', slots);
   }
 
-  async generateRangeSlots(startDate: string, endDate: string, actorId: Identifier) {
+  async generateRangeSlots(
+    startDate: string,
+    endDate: string,
+    actorId: Identifier,
+    templateId?: Identifier,
+    mode: 'all' | 'shifts' | 'kips' = 'kips',
+  ) {
     const s = toUTCMidnight(startDate);
     const e = toUTCMidnight(endDate);
     e.setUTCHours(23, 59, 59, 999);
 
     if (e < s) throw ApiError.badRequest('End date must be after start date');
 
-    const shifts = await this.getShiftTemplates();
-    const allSlots = [];
+    // Fetch all assignments that might overlap with this range
+    const assignments = await db.findMany('duty_template_assignments', {
+      startDate_lte: e.toISOString(),
+      endDate_gte: s.toISOString(),
+    });
 
+    const allSlots = [];
     let curr = new Date(s);
+
     while (curr <= e) {
       const isoDate = curr.toISOString();
       const dayOfWeek = (curr.getUTCDay() + 6) % 7;
       const weekStartIso = getWeekStartISO(isoDate);
+
+      // Determine effective template for this day
+      let effectiveTemplateId = templateId;
+      if (!effectiveTemplateId) {
+        const assignment = assignments.find(
+          (a: any) =>
+            dayjs.utc(isoDate).isSameOrAfter(dayjs.utc(a.startDate), 'day') &&
+            dayjs.utc(isoDate).isSameOrBefore(dayjs.utc(a.endDate), 'day'),
+        );
+        if (assignment) {
+          effectiveTemplateId = assignment.templateId;
+        } else {
+          const defaultTemplate = await db.findOne('duty_templates', { isDefault: true });
+          effectiveTemplateId = defaultTemplate?.id;
+        }
+      }
+
+      if (!effectiveTemplateId) {
+        curr.setUTCDate(curr.getUTCDate() + 1);
+        continue;
+      }
+
+      const shifts = await this.getShiftTemplates(effectiveTemplateId);
       const dayRecord = await this.findOrCreateDay(isoDate, actorId);
 
-      for (const shift of shifts as any[]) {
-        for (const kip of shift.kips) {
-          const days = kip.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
-          if (!days.includes(dayOfWeek)) continue;
+      const dayShiftIds = (shifts as any[])
+        .filter((s) => (s.daysOfWeek || [0, 1, 2, 3, 4, 5, 6]).includes(dayOfWeek))
+        .map((s) => normalizeId(s.id));
 
+      await db.update('duty_days', dayRecord.id, {
+        shiftTemplateIds: [...new Set([...(dayRecord.shiftTemplateIds || []), ...dayShiftIds])],
+      });
+
+      for (const shift of shifts as any[]) {
+        const shiftDays = shift.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
+        if (!shiftDays.includes(dayOfWeek)) continue;
+
+        if (mode === 'shifts' || mode === 'all') {
           allSlots.push(
             this.buildSlotPayload(
               {
@@ -295,17 +406,42 @@ class DutyService extends BaseService {
                 shiftDate: isoDate,
                 dayId: dayRecord.id,
                 shiftId: shift.id,
-                kipId: kip.id,
-                shiftLabel: `${shift.name} - ${kip.name}`,
-                startTime: kip.startTime || shift.startTime,
-                endTime: kip.endTime || shift.endTime,
-                order: kip.order,
-                endPeriod: kip.endPeriod,
-                note: kip.description || kip.duration || '',
+                kipId: null,
+                shiftLabel: shift.name,
+                startTime: shift.startTime,
+                endTime: shift.endTime,
+                order: shift.order,
+                note: shift.description || '',
               },
               actorId,
             ),
           );
+        }
+
+        if (mode === 'kips' || mode === 'all') {
+          for (const kip of shift.kips) {
+            const kipDays = kip.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
+            if (!kipDays.includes(dayOfWeek)) continue;
+
+            allSlots.push(
+              this.buildSlotPayload(
+                {
+                  weekStart: weekStartIso,
+                  shiftDate: isoDate,
+                  dayId: dayRecord.id,
+                  shiftId: shift.id,
+                  kipId: kip.id,
+                  shiftLabel: `${shift.name} - ${kip.name}`,
+                  startTime: kip.startTime || shift.startTime,
+                  endTime: kip.endTime || shift.endTime,
+                  order: kip.order,
+                  endPeriod: kip.endPeriod,
+                  note: kip.description || kip.duration || '',
+                },
+                actorId,
+              ),
+            );
+          }
         }
       }
       curr.setUTCDate(curr.getUTCDate() + 1);
@@ -403,10 +539,23 @@ class DutyService extends BaseService {
       };
     });
 
-    const days = await db.findMany('duty_days', { date_gte: weekStart, date_lte: weekEnd });
+    // Fetch assignments that overlap with this week
+    // Fetch assignments and days with a generous +/- 1 day buffer to handle timezone-shifted dates
+    const queryStart = dayjs.utc(weekStart).subtract(1, 'day').toDate();
+    const queryEnd = dayjs.utc(weekEnd).add(1, 'day').toDate();
+
+    const assignments = await db.findMany('duty_template_assignments', {
+      startDate_lte: queryEnd,
+      endDate_gte: queryStart,
+    });
+
+    const days = await db.findMany('duty_days', {
+      date_gte: queryStart,
+      date_lte: queryEnd,
+    });
 
     return {
-      data: { slots: data, days },
+      data: { slots: data, days, assignments },
       weekStart,
       weekEnd,
       pagination: result.pagination,
@@ -416,6 +565,12 @@ class DutyService extends BaseService {
   async createSlot(payload: GenericRecord, actorId: Identifier) {
     if (!payload?.shiftLabel || !payload?.shiftDate) throw ApiError.badRequest('shiftLabel and shiftDate required');
     const dayRecord = await this.findOrCreateDay(payload.shiftDate, actorId);
+    if (payload.shiftId) {
+      const existing = dayRecord.shiftTemplateIds || [];
+      if (!existing.includes(normalizeId(payload.shiftId))) {
+        await db.update('duty_days', dayRecord.id, { shiftTemplateIds: [...existing, normalizeId(payload.shiftId)] });
+      }
+    }
     return await db.create('duty_slots', this.buildSlotPayload({ ...payload, dayId: dayRecord.id }, actorId));
   }
 
@@ -503,11 +658,20 @@ class DutyService extends BaseService {
     const created = await db.create('duty_swap_requests', {
       dutySlotId: slotId,
       requesterId: normalizeId(requesterUser.id),
-      targetUserId,
-      reason: payload.reason,
+      targetUserId: targetUserId,
       status: 'pending',
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     });
+
+    await notificationService.notifyUser(targetUserId, {
+      title: 'Yêu cầu đổi ca trực',
+      message: `${requesterUser.name} muốn đổi ca với bạn: ${slot.shiftLabel}`,
+      category: 'swap',
+      type: 'swap',
+      refId: created.id,
+    });
+
     return created;
   }
 
@@ -596,18 +760,100 @@ class DutyService extends BaseService {
   }
 
   async getStats() {
-    const slots = await db.findAll('duty_slots');
+    const slots = (await db.findAll('duty_slots')) || [];
     return {
-      success: true,
-      data: {
-        global: {
-          total: slots.length,
-          open: slots.filter((s) => s.status === 'open').length,
-          locked: slots.filter((s) => s.status === 'locked').length,
-          totalAssigned: slots.reduce((acc, s) => acc + (s.assignedUserIds?.length || 0), 0),
-        },
+      global: {
+        total: slots.length,
+        open: slots.filter((s: any) => s.status === 'open').length,
+        locked: slots.filter((s: any) => s.status === 'locked').length,
+        totalAssigned: slots.reduce((acc: number, s: any) => acc + (s.assignedUserIds?.length || 0), 0),
       },
     };
+  }
+
+  // ==================== TEMPLATE ASSIGNMENT ====================
+
+  async getTemplateAssignments() {
+    return await db.findAll('duty_template_assignments');
+  }
+
+  async createTemplateAssignment(data: any, actorId: any) {
+    const startDate = toUTCMidnight(data.startDate);
+    const endDate = dayjs.utc(data.endDate).endOf('day').toDate();
+    const templateId = parseInt(data.templateId, 10);
+
+    // 1. Fetch all shifts for this template
+    const shifts = await this.getShiftTemplates(templateId);
+    if (!shifts || shifts.length === 0) {
+      throw ApiError.badRequest('Bản mẫu này không có ca trực nào để áp dụng.');
+    }
+
+    // 2. Iterate through each day in the range and "Stamp" the shifts
+    let current = dayjs.utc(startDate);
+    const end = dayjs.utc(endDate);
+    const results = [];
+
+    while (current.isSameOrBefore(end, 'day')) {
+      const dateStr = current.format('YYYY-MM-DD');
+      const dIdx = (current.day() + 6) % 7; // Mon=0...Sun=6
+
+      // Find shifts that apply to this day of week
+      const applicableShiftIds = shifts
+        .filter((s) => (s.daysOfWeek || [0, 1, 2, 3, 4, 5, 6]).includes(dIdx))
+        .map((s) => normalizeId(s.id));
+
+      if (applicableShiftIds.length > 0) {
+        const dayRecord = await this.findOrCreateDay(dateStr, actorId);
+        const existingIds = dayRecord.shiftTemplateIds || [];
+
+        // Merge without duplicates
+        const mergedIds = [...new Set([...existingIds, ...applicableShiftIds])];
+
+        if (mergedIds.length > existingIds.length) {
+          await db.update('duty_days', dayRecord.id, { shiftTemplateIds: mergedIds });
+        }
+        results.push({ date: dateStr, shifts: applicableShiftIds });
+      }
+      current = current.add(1, 'day');
+    }
+
+    // 3. Log the assignment for history (optional but useful)
+    return await db.create('duty_template_assignments', {
+      templateId,
+      startDate,
+      endDate,
+      note: data.note || `Applied stamping for ${results.length} days`,
+      createdBy: parseInt(actorId, 10),
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  async removeShiftFromDay(date: string, shiftId: number) {
+    const d = toUTCMidnight(date);
+    const dayRecord = await db.findOne('duty_days', { date: d });
+    if (!dayRecord) throw ApiError.notFound('Day not found');
+
+    const existingIds = dayRecord.shiftTemplateIds || [];
+    const filteredIds = existingIds.filter((id) => String(id) !== String(shiftId));
+
+    if (filteredIds.length < existingIds.length) {
+      await db.update('duty_days', dayRecord.id, { shiftTemplateIds: filteredIds });
+    }
+    return { success: true };
+  }
+
+  async updateTemplateAssignment(id: any, data: any) {
+    const update: any = { updatedAt: new Date().toISOString() };
+    if (data.startDate) update.startDate = new Date(data.startDate).toISOString();
+    if (data.endDate) update.endDate = new Date(data.endDate).toISOString();
+    if (data.templateId) update.templateId = parseInt(data.templateId, 10);
+    if (data.note !== undefined) update.note = data.note;
+
+    return await db.update('duty_template_assignments', id, update);
+  }
+
+  async deleteTemplateAssignment(id: any) {
+    return await db.delete('duty_template_assignments', id);
   }
 }
 

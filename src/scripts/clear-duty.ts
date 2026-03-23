@@ -13,6 +13,7 @@ async function clearDutyData() {
     console.log('Connected successfully.');
 
     const collections = [
+      'duty_templates',
       'duty_shifts',
       'duty_kips',
       'duty_slots',

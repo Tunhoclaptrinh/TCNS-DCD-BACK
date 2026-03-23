@@ -32,9 +32,13 @@ async function seedDutyData() {
       await dbObj.collection(colName).deleteMany({});
     }
 
-    // 1. Create Template Group
-    console.log('Creating Default Template Group...');
-    const templateGroups = [{ id: 1, name: 'Bản mẫu Mặc định', isDefault: true, description: 'Bản mẫu trực chuẩn' }];
+    // 1. Create Template Groups
+    console.log('Creating Template Groups...');
+    const templateGroups = [
+      { id: 1, name: 'Bản mẫu Mặc định', isDefault: true, description: 'Bản mẫu trực chuẩn dùng chung' },
+      { id: 2, name: 'Bản mẫu Mùa Đông', isDefault: false, description: 'Áp dụng cho khung giờ mùa đông' },
+      { id: 3, name: 'Bản mẫu Mùa Hè', isDefault: false, description: 'Áp dụng cho khung giờ mùa hè' },
+    ];
     await dbObj.collection('duty_templates').insertMany(templateGroups);
 
     // 2. Create Shift Templates
@@ -71,7 +75,32 @@ async function seedDutyData() {
         daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
       },
     ];
-    await dbObj.collection('duty_shifts').insertMany(shifts);
+
+    // Add some shifts for Winter Template (ID 2)
+    const winterShifts = [
+      {
+        id: 4,
+        templateId: 2,
+        name: 'Ca Sáng (Mùa Đông)',
+        startTime: '07:00',
+        endTime: '11:00',
+        order: 1,
+        description: 'Vào muộn hơn 30p',
+        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+      },
+      {
+        id: 5,
+        templateId: 2,
+        name: 'Ca Chiều (Mùa Đông)',
+        startTime: '13:00',
+        endTime: '17:00',
+        order: 2,
+        description: 'Về sớm hơn 30p',
+        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+      },
+    ];
+
+    await dbObj.collection('duty_shifts').insertMany([...shifts, ...winterShifts]);
 
     // 2. Create Kip Templates
     console.log('Creating Kip Templates...');
@@ -147,7 +176,24 @@ async function seedDutyData() {
         description: 'Trực ban đêm',
       },
     ];
-    await dbObj.collection('duty_kips').insertMany(kips);
+
+    // Add a kip for Winter Shift (ID 4)
+    const winterKips = [
+      {
+        id: 6,
+        shiftId: 4,
+        name: 'Kíp Sáng Phụ',
+        startTime: '07:30',
+        endTime: '09:30',
+        coefficient: 1,
+        capacity: 2,
+        order: 1,
+        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        description: 'Trực sầm uất',
+      },
+    ];
+
+    await dbObj.collection('duty_kips').insertMany([...kips, ...winterKips]);
 
     // 3. Generate Days and Slots for the Entire Current Month
     console.log('Generating Days and Slots for the current month...');

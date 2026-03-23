@@ -104,11 +104,54 @@ class DutyController {
     }
   };
 
+  // ==================== TEMPLATE GROUPS ====================
+
+  getTemplates = async (req, res, next) => {
+    try {
+      const data = await dutyService.getTemplates();
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  createTemplate = async (req, res, next) => {
+    try {
+      const data = await dutyService.createTemplate(req.body);
+      res.status(201).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updateTemplate = async (req, res, next) => {
+    try {
+      const data = await dutyService.updateTemplate(req.params.id, req.body);
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  deleteTemplate = async (req, res, next) => {
+    try {
+      const data = await dutyService.deleteTemplate(req.params.id);
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   // ==================== TEMPLATE & GENERATION ====================
 
   getShiftTemplates = async (req, res, next) => {
     try {
-      const data = await dutyService.getShiftTemplates();
+      let { templateId } = req.query;
+      // Convert "null" string or empty string from query to literal null
+      if (templateId === 'null' || templateId === '') {
+        templateId = null;
+      }
+      const data = await dutyService.getShiftTemplates(templateId);
       res.json({ success: true, data });
     } catch (error) {
       next(error);
@@ -211,9 +254,11 @@ class DutyController {
 
   generateRangeSlots = async (req, res, next) => {
     try {
-      const { startDate, endDate } = req.body;
-      const data = await dutyService.generateRangeSlots(startDate, endDate, req.user.id);
-      res.json({ success: true, data });
+      const { startDate, endDate, templateId, mode } = req.body;
+      const actorId = (req as any).user.id;
+
+      const result = await dutyService.generateRangeSlots(startDate, endDate, actorId, templateId, mode);
+      res.json({ success: true, data: result });
     } catch (error) {
       next(error);
     }
@@ -265,6 +310,54 @@ class DutyController {
       const { status, rejectionReason } = req.body;
       const data = await dutyService.resolveLeaveRequest(req.params.id, status, req.user.id, rejectionReason);
       res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  // ==================== TEMPLATE ASSIGNMENTS ====================
+
+  getTemplateAssignments = async (req, res, next) => {
+    try {
+      const data = await dutyService.getTemplateAssignments();
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  createTemplateAssignment = async (req, res, next) => {
+    try {
+      const data = await dutyService.createTemplateAssignment(req.body, req.user.id);
+      res.status(201).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updateTemplateAssignment = async (req, res, next) => {
+    try {
+      const data = await dutyService.updateTemplateAssignment(req.params.id, req.body);
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  deleteTemplateAssignment = async (req, res, next) => {
+    try {
+      const data = await dutyService.deleteTemplateAssignment(req.params.id);
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  removeShiftFromDay = async (req, res, next) => {
+    try {
+      const { date, shiftId } = req.body;
+      const data = await dutyService.removeShiftFromDay(date, shiftId);
+      res.json(data);
     } catch (error) {
       next(error);
     }

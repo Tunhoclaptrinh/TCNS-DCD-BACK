@@ -10,6 +10,8 @@ import dutySwapRequests from './duty-swap-request.schema';
 import rewardPenalties from './reward-penalty.schema';
 import dutyLeaveRequests from './duty-leave-request.schema';
 import dutyDays from './duty-day.schema';
+import dutyTemplates from './duty-template.schema';
+import dutyTemplateAssignments from './duty-template-assignment.schema';
 
 const schemas: SchemaMap = {
   // Auth & User
@@ -19,6 +21,7 @@ const schemas: SchemaMap = {
   notifications,
   notification_settings: notificationSettings,
   files,
+  duty_templates: dutyTemplates,
   duty_shifts: dutyShifts,
   duty_kips: dutyKips,
   duty_slots: dutySlots,
@@ -26,6 +29,7 @@ const schemas: SchemaMap = {
   duty_leave_requests: dutyLeaveRequests,
   reward_penalties: rewardPenalties,
   duty_days: dutyDays,
+  duty_template_assignments: dutyTemplateAssignments,
 };
 
 export default schemas;
