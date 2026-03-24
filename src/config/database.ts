@@ -1,409 +1,440 @@
+import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
+import { pathToFileURL } from 'url';
 import type { AnyRecord, Identifier } from '@app-types/common';
-import type { CollectionStore, DatabaseAdapter, FindAllResult, QueryOptions } from '@app-types/database';
+import type { DatabaseAdapter, QueryOptions } from '@app-types/database';
+import type { SchemaDefinition, SchemaRule } from '@app-types/schema';
 import { camelizeObjectKeys, splitKeyBySuffix, toCamelCase } from '@utils/case';
 
-const DATA_DIR = path.resolve(process.cwd(), 'src/database');
-const DB_FILE = process.env.DB_FILE || path.join(DATA_DIR, 'db.json');
+const SCHEMA_MODEL_MAP = {
+  'user.schema': 'users',
+  'notification.schema': 'notifications',
+  'notification-setting.schema': 'notification_settings',
+  'file.schema': 'files',
+  'duty-slot.schema': 'duty_slots',
+  'duty-swap-request.schema': 'duty_swap_requests',
+  'reward-penalty.schema': 'reward_penalties',
+};
 const FILTER_SUFFIXES = ['_not_like', '_ilike', '_like', '_gte', '_lte', '_gt', '_lt', '_ne', '_in', '_nin'];
 
-const RELATION_MAP = {
-  users: {
-    notifications: { collection: 'notifications', foreignField: 'userId' },
-    notificationSettings: { collection: 'notification_settings', foreignField: 'userId' },
-    files: { collection: 'files', foreignField: 'uploadedBy' },
-  },
-  files: {
-    uploader: { collection: 'users', localField: 'uploadedBy', justOne: true },
-  },
-  notifications: {
-    user: { collection: 'users', localField: 'userId', justOne: true },
-  },
-  notification_settings: {
-    user: { collection: 'users', localField: 'userId', justOne: true },
-  },
-  reward_penalties: {
-    user: { collection: 'users', localField: 'userId', justOne: true },
-    creator: { collection: 'users', localField: 'createdBy', justOne: true },
-  },
-  duty_swap_requests: {
-    requester: { collection: 'users', localField: 'requesterId', justOne: true },
-    targetUser: { collection: 'users', localField: 'targetUserId', justOne: true },
-    approver: { collection: 'users', localField: 'approvedBy', justOne: true },
-    dutySlot: { collection: 'duty_slots', localField: 'dutySlotId', justOne: true },
-  },
+function stripModuleExtension(fileName: string) {
+  return fileName.replace(/\.(ts|js)$/, '');
+}
+
+type RelationConfig = {
+  ref: string;
+  localField: string;
+  foreignField: string;
+  justOne?: boolean;
 };
 
-class JsonAdapter implements DatabaseAdapter {
-  data: CollectionStore;
+class MongoConnect implements DatabaseAdapter {
+  models: Record<string, any>;
+  relations: Record<string, Record<string, RelationConfig>>;
 
   constructor() {
-    this.data = this.loadData();
-    console.log('📂 JSON Database Adapter Loaded');
-  }
-
-  loadData(): CollectionStore {
-    try {
-      const rawData = fs.readFileSync(DB_FILE, 'utf8');
-      return this.normalizeStore(JSON.parse(rawData));
-    } catch (error) {
-      console.error('Error loading database:', error);
-      return this.getDefaultData();
-    }
-  }
-
-  saveData() {
-    try {
-      fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
-      fs.writeFileSync(DB_FILE, JSON.stringify(this.data, null, 2));
-      return true;
-    } catch (error) {
-      console.error('Error saving database:', error);
-      return false;
-    }
-  }
-
-  normalizeStore(store: CollectionStore | Record<string, any>) {
-    const normalized = { ...this.getDefaultData(), ...(store || {}) };
-
-    for (const [collection, items] of Object.entries(normalized)) {
-      if (!Array.isArray(items)) continue;
-      normalized[collection] = items.map((item) => camelizeObjectKeys(item));
-    }
-
-    return normalized as CollectionStore;
-  }
-
-  getDefaultData(): CollectionStore {
-    return {
-      users: [],
-      notifications: [],
-      notification_settings: [],
-      files: [],
-      duty_slots: [],
-      duty_swap_requests: [],
-      reward_penalties: [],
-    };
-  }
-
-  // ==================== RELATION HELPERS ====================
-
-  getRelationConfig(collection: string, relation: string) {
-    return RELATION_MAP[collection]?.[relation];
-  }
-
-  getRelatedCollection(collection: string, relation: string) {
-    return this.getRelationConfig(collection, relation)?.collection;
-  }
-
-  getForeignKey(collection: string, relation: string) {
-    const relationConfig = this.getRelationConfig(collection, relation);
-    return relationConfig?.foreignField || relationConfig?.localField;
-  }
-
-  // ==================== ENHANCED QUERY METHODS ====================
-
-  findAllAdvanced(collection: string, options: QueryOptions = {}): FindAllResult {
-    let items = [...(this.data[collection] || [])];
-
-    if (options.filter) {
-      items = this.applyFilters(items, options.filter);
-    }
-
-    if (options.q) {
-      items = this.applyFullTextSearch(items, options.q);
-    }
-
-    if (options.embed || options.expand) {
-      items = this.applyRelations(items, collection, options);
-    }
-
-    if (options.sort) {
-      items = this.applySorting(items, options.sort, options.order);
-    }
-
-    const pagination = this.applyPagination(items, options.page, options.limit);
-
-    return {
-      data: pagination.data,
-      pagination: {
-        page: pagination.page,
-        limit: pagination.limit,
-        total: pagination.total,
-        totalPages: pagination.totalPages,
-        hasNext: pagination.hasNext,
-        hasPrev: pagination.hasPrev,
+    this.models = {};
+    this.relations = {
+      users: {
+        notifications: { ref: 'notifications', localField: 'id', foreignField: 'userId' },
+        notificationSettings: { ref: 'notification_settings', localField: 'id', foreignField: 'userId' },
+        files: { ref: 'files', localField: 'id', foreignField: 'uploadedBy' },
+      },
+      files: {
+        uploader: { ref: 'users', localField: 'uploadedBy', foreignField: 'id', justOne: true },
+      },
+      notifications: {
+        user: { ref: 'users', localField: 'userId', foreignField: 'id', justOne: true },
+      },
+      notification_settings: {
+        user: { ref: 'users', localField: 'userId', foreignField: 'id', justOne: true },
+      },
+      reward_penalties: {
+        user: { ref: 'users', localField: 'userId', foreignField: 'id', justOne: true },
+        creator: { ref: 'users', localField: 'createdBy', foreignField: 'id', justOne: true },
+      },
+      duty_swap_requests: {
+        requester: { ref: 'users', localField: 'requesterId', foreignField: 'id', justOne: true },
+        targetUser: { ref: 'users', localField: 'targetUserId', foreignField: 'id', justOne: true },
+        approver: { ref: 'users', localField: 'approvedBy', foreignField: 'id', justOne: true },
+        dutySlot: { ref: 'duty_slots', localField: 'dutySlotId', foreignField: 'id', justOne: true },
       },
     };
   }
 
-  applyFilters(items: AnyRecord[], filters: AnyRecord) {
-    return items.filter((item) => {
-      return Object.keys(filters).every((key) => {
-        const { field, suffix } = splitKeyBySuffix(key, FILTER_SUFFIXES);
+  castQueryValue(val: any) {
+    if (val === null || val === undefined) return val;
+    if (typeof val === 'number' || typeof val === 'boolean' || val instanceof Date) return val;
+
+    const text = String(val).trim();
+    if (text === '') return text;
+
+    if (text === 'true') return true;
+    if (text === 'false') return false;
+
+    if (/^-?\d+(\.\d+)?$/.test(text)) {
+      return Number(text);
+    }
+
+    const maybeDate = new Date(text);
+    if (!Number.isNaN(maybeDate.getTime())) {
+      return maybeDate;
+    }
+
+    return text;
+  }
+
+  // ==================== CONNECTION ====================
+
+  async initConnection() {
+    if (mongoose.connection.readyState === 0) {
+      try {
+        await mongoose.connect(process.env.DATABASE_URL);
+        console.log('🔌 MongoDB Adapter Connected');
+      } catch (error) {
+        console.error('❌ MongoDB Connection Error:', error);
+        throw error;
+      }
+    }
+  }
+
+  // ==================== SCHEMA LOADING ====================
+
+  async loadSchemasAsModels() {
+    const schemasDir = path.join(__dirname, '../schemas');
+
+    if (!fs.existsSync(schemasDir)) {
+      console.error('❌ Schemas directory not found:', schemasDir);
+      return;
+    }
+
+    const files = fs.readdirSync(schemasDir);
+
+    for (const file of files) {
+      if (stripModuleExtension(file) === 'index') continue;
+
+      const entityName = SCHEMA_MODEL_MAP[stripModuleExtension(file)];
+      if (!entityName) continue;
+
+      try {
+        const schemaPath = pathToFileURL(path.join(schemasDir, file)).href;
+        const schemaDef = (await import(schemaPath)).default as SchemaDefinition;
+
+        if (!schemaDef || typeof schemaDef !== 'object') continue;
+
+        const mongooseFields: Record<string, any> = {};
+
+        // Auto-increment numeric id field
+        mongooseFields.id = { type: Number, unique: true, index: true };
+
+        for (const [key, val] of Object.entries(schemaDef) as Array<[string, SchemaRule]>) {
+          if (key === 'custom') continue;
+
+          let type: any = String;
+          if (val.type === 'number') type = Number;
+          if (val.type === 'boolean') type = Boolean;
+          if (val.type === 'date') type = Date;
+          if (val.type === 'array') type = Array;
+          if (val.type === 'object') type = mongoose.Schema.Types.Mixed;
+          if (val.foreignKey) type = Number;
+
+          mongooseFields[key] = {
+            type: type,
+            required: val.required || false,
+            default: val.default,
+            unique: val.unique || false,
+          };
+
+          if (val.enum) mongooseFields[key].enum = val.enum;
+          if (val.min !== undefined) mongooseFields[key].min = val.min;
+          if (val.max !== undefined) mongooseFields[key].max = val.max;
+          if (val.minLength) mongooseFields[key].minlength = val.minLength;
+          if (val.maxLength) mongooseFields[key].maxlength = val.maxLength;
+        }
+
+        if (!mongoose.models[entityName]) {
+          const schema = new mongoose.Schema(mongooseFields, {
+            timestamps: true,
+            toJSON: {
+              virtuals: true,
+              versionKey: false,
+              transform: function (_doc: any, ret: AnyRecord) {
+                delete ret._id;
+                delete ret.__v;
+              },
+            },
+            toObject: { virtuals: true },
+            id: false,
+          });
+
+          // Setup virtuals for populate
+          const rels = this.relations[entityName];
+          if (rels) {
+            for (const [field, config] of Object.entries(rels) as Array<[string, RelationConfig]>) {
+              if (!mongooseFields[field]) {
+                schema.virtual(field, {
+                  ref: config.ref,
+                  localField: config.localField,
+                  foreignField: config.foreignField,
+                  justOne: config.justOne || false,
+                });
+              }
+            }
+          }
+
+          this.models[entityName] = mongoose.model(entityName, schema);
+          console.log(`✅ Model created: ${entityName}`);
+        } else {
+          this.models[entityName] = mongoose.models[entityName];
+        }
+      } catch (error: any) {
+        console.error(`❌ Error loading schema ${file}:`, error.message);
+      }
+    }
+
+    console.log(`📦 Total models loaded: ${Object.keys(this.models).length}`);
+  }
+
+  getModel(collection: string) {
+    return this.models[collection];
+  }
+
+  // ==================== FIND ALL ADVANCED ====================
+
+  async findAllAdvanced(collection: string, options: QueryOptions = {}) {
+    const Model = this.getModel(collection);
+    if (!Model) throw new Error(`Model not found for collection: ${collection}`);
+
+    const query: AnyRecord = {};
+
+    if (options.q) {
+      query['$or'] = [
+        { name: { $regex: options.q, $options: 'i' } },
+        { title: { $regex: options.q, $options: 'i' } },
+        { description: { $regex: options.q, $options: 'i' } },
+        { comment: { $regex: options.q, $options: 'i' } },
+      ];
+    }
+
+    if (options.filter) {
+      for (const [key, val] of Object.entries(options.filter)) {
+        const { field: rawField, suffix } = splitKeyBySuffix(key, FILTER_SUFFIXES);
+        const field = toCamelCase(rawField);
 
         if (suffix === '_gte') {
-          return item[field] >= filters[key];
+          query[field] = { ...query[field], $gte: this.castQueryValue(val) };
+        } else if (suffix === '_lte') {
+          query[field] = { ...query[field], $lte: this.castQueryValue(val) };
+        } else if (suffix === '_gt') {
+          query[field] = { ...query[field], $gt: this.castQueryValue(val) };
+        } else if (suffix === '_lt') {
+          query[field] = { ...query[field], $lt: this.castQueryValue(val) };
+        } else if (suffix === '_ne') {
+          query[field] = { $ne: this.castQueryValue(val) };
+        } else if (suffix === '_like' || suffix === '_ilike') {
+          query[field] = { $regex: val, $options: 'i' };
+        } else if (suffix === '_not_like') {
+          query[field] = { $not: { $regex: val, $options: 'i' } };
+        } else if (suffix === '_in') {
+          const values = Array.isArray(val) ? val : String(val).split(',');
+          query[field] = { $in: values.map((item) => this.castQueryValue(item)) };
+        } else if (suffix === '_nin') {
+          const values = Array.isArray(val) ? val : String(val).split(',');
+          query[field] = { $nin: values.map((item) => this.castQueryValue(item)) };
+        } else {
+          query[toCamelCase(key)] = this.castQueryValue(val);
         }
-        if (suffix === '_lte') {
-          return item[field] <= filters[key];
-        }
-        if (suffix === '_gt') {
-          return item[field] > filters[key];
-        }
-        if (suffix === '_lt') {
-          return item[field] < filters[key];
-        }
-        if (suffix === '_ne') {
-          return item[field] !== filters[key];
-        }
-        if (suffix === '_like' || suffix === '_ilike') {
-          // Escape special regex characters to prevent ReDoS
-          const escaped = String(filters[key]).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          return new RegExp(escaped, 'i').test(item[field]);
-        }
-        if (suffix === '_not_like') {
-          const escaped = String(filters[key]).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          return !new RegExp(escaped, 'i').test(item[field]);
-        }
-        if (suffix === '_in') {
-          const values = Array.isArray(filters[key]) ? filters[key] : String(filters[key]).split(',');
-          return values.includes(String(item[field]));
-        }
-        if (suffix === '_nin') {
-          const values = Array.isArray(filters[key]) ? filters[key] : String(filters[key]).split(',');
-          return !values.includes(String(item[field]));
-        }
+      }
+    }
 
-        // Strict equality — convert types to match
-        const filterVal = filters[key];
-        const itemVal = item[key];
-        if (typeof itemVal === 'number') return itemVal === Number(filterVal);
-        if (typeof itemVal === 'boolean') return itemVal === (filterVal === true || filterVal === 'true');
-        return itemVal === filterVal;
+    const page = parseInt(String(options.page || 1), 10) || 1;
+    const limit = parseInt(String(options.limit || 10), 10) || 10;
+    const skip = (page - 1) * limit;
+
+    let queryBuilder = Model.find(query);
+
+    // Sort
+    if (options.sort) {
+      const sortFields = options.sort.split(',');
+      const orders = options.order ? options.order.split(',') : [];
+      const sortObj: Record<string, number> = {};
+      sortFields.forEach((field, index) => {
+        sortObj[toCamelCase(field)] = orders[index] === 'desc' ? -1 : 1;
       });
-    });
-  }
+      queryBuilder = queryBuilder.sort(sortObj);
+    } else {
+      queryBuilder = queryBuilder.sort({ createdAt: -1 });
+    }
 
-  applyFullTextSearch(items: AnyRecord[], query: string) {
-    const searchTerm = query.toLowerCase();
-    return items.filter((item) => {
-      return Object.values(item).some((value) => {
-        if (typeof value === 'string') {
-          return value.toLowerCase().includes(searchTerm);
-        }
-        return false;
-      });
-    });
-  }
+    // Populate
+    const populateFields: string[] = [];
+    if (options.embed) populateFields.push(...options.embed.split(',').map((field) => toCamelCase(field)));
+    if (options.expand) populateFields.push(...options.expand.split(',').map((field) => toCamelCase(field)));
 
-  applyRelations(items: AnyRecord[], collection: string, options: QueryOptions) {
-    return items.map((item) => {
-      const enriched: AnyRecord = { ...item };
-
-      if (options.embed) {
-        const relations = options.embed.split(',');
-        relations.forEach((relation) => {
-          const relatedCollection = this.getRelatedCollection(collection, relation);
-          if (relatedCollection) {
-            const foreignKey = this.getForeignKey(collection, relation);
-            enriched[relation] = this.data[relatedCollection]?.filter((r) => r[foreignKey] === item.id) || [];
-          }
-        });
+    for (const field of populateFields) {
+      try {
+        queryBuilder = queryBuilder.populate(field);
+      } catch (e) {
+        console.warn(`⚠️ Cannot populate ${field}`);
       }
+    }
 
-      if (options.expand) {
-        const relations = options.expand.split(',');
-        relations.forEach((relation) => {
-          const relationConfig = this.getRelationConfig(collection, relation);
-          const foreignKey =
-            relationConfig?.localField || (item[`${relation}Id`] !== undefined ? `${relation}Id` : `${relation}_id`);
-          if (item[foreignKey]) {
-            const targetCollection = relationConfig?.collection || relation + 's';
-            enriched[relation] = this.findById(targetCollection, item[foreignKey]);
-          }
-        });
-      }
-
-      return enriched;
-    });
-  }
-
-  applySorting(items: AnyRecord[], sortField: string, order = 'asc') {
-    const fields = sortField.split(',');
-
-    return items.sort((a, b) => {
-      for (const field of fields) {
-        const aVal = a[field];
-        const bVal = b[field];
-
-        if (typeof aVal === 'string' && typeof bVal === 'string') {
-          const comparison = aVal.localeCompare(bVal, 'vi');
-          return order === 'asc' ? comparison : -comparison;
-        }
-
-        if (aVal < bVal) return order === 'asc' ? -1 : 1;
-        if (aVal > bVal) return order === 'asc' ? 1 : -1;
-      }
-      return 0;
-    });
-  }
-
-  applyPagination(items: AnyRecord[], page: number | string = 1, limit: number | string = 10) {
-    const total = items.length;
-    const currentPage = Math.max(1, Number(page) || 1);
-    const itemsPerPage = Math.max(1, Math.min(Number(limit) || 10, 1000));
-    const totalPages = Math.ceil(total / itemsPerPage);
-
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
+    const [data, total] = await Promise.all([queryBuilder.skip(skip).limit(limit).exec(), Model.countDocuments(query)]);
 
     return {
-      data: items.slice(startIndex, endIndex),
-      page: currentPage,
-      limit: itemsPerPage,
-      total,
-      totalPages,
-      hasNext: currentPage < totalPages,
-      hasPrev: currentPage > 1,
-    };
-  }
-
-  getSlice(collection: string, start: number, end: number) {
-    const items = this.data[collection] || [];
-    return {
-      data: items.slice(start, end),
-      total: items.length,
+      success: true,
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page < Math.ceil(total / limit),
+        hasPrev: page > 1,
+      },
     };
   }
 
   // ==================== CRUD METHODS ====================
 
-  findAll(collection: string) {
-    return this.data[collection] || [];
+  async findAll(collection: string) {
+    const Model = this.getModel(collection);
+    if (!Model) return [];
+    return await Model.find();
   }
 
-  findById(collection: string, id: Identifier) {
-    return this.data[collection]?.find((item) => item.id === parseInt(String(id), 10));
+  async findById(collection: string, id: Identifier) {
+    const Model = this.getModel(collection);
+    if (!Model) return null;
+    return await Model.findOne({ id: parseInt(String(id), 10) });
   }
 
-  findOne(collection: string, query: AnyRecord) {
-    const normalizedQuery = camelizeObjectKeys(query);
-    return this.data[collection]?.find((item) => {
-      return Object.keys(normalizedQuery).every((key) => item[key] === normalizedQuery[key]);
+  async findOne(collection: string, query: AnyRecord) {
+    const Model = this.getModel(collection);
+    if (!Model) return null;
+    return await Model.findOne(camelizeObjectKeys(query));
+  }
+
+  async findMany(collection: string, query: AnyRecord = {}) {
+    const Model = this.getModel(collection);
+    if (!Model) return [];
+    return await Model.find(camelizeObjectKeys(query));
+  }
+
+  async create(collection: string, data: AnyRecord) {
+    const Model = this.getModel(collection);
+    if (!Model) throw new Error(`Model not found: ${collection}`);
+
+    const normalizedData = camelizeObjectKeys(data);
+
+    if (!normalizedData.id) {
+      normalizedData.id = await this.getNextId(collection);
+    }
+
+    delete normalizedData._id;
+
+    const created = await Model.create(normalizedData);
+    return created;
+  }
+
+  async update(collection: string, id: Identifier, data: AnyRecord) {
+    const Model = this.getModel(collection);
+    if (!Model) return null;
+
+    const updated = await Model.findOneAndUpdate({ id: parseInt(String(id), 10) }, camelizeObjectKeys(data), {
+      new: true,
+      runValidators: true,
     });
+    return updated;
   }
 
-  findMany(collection: string, query: AnyRecord = {}) {
-    const normalizedQuery = camelizeObjectKeys(query);
-    if (!query || Object.keys(query).length === 0) {
-      return this.data[collection] || [];
-    }
-    return (
-      this.data[collection]?.filter((item) => {
-        return Object.keys(normalizedQuery).every((key) => item[key] === normalizedQuery[key]);
-      }) || []
-    );
-  }
+  async delete(collection: string, id: Identifier) {
+    const Model = this.getModel(collection);
+    if (!Model) return false;
 
-  create(collection: string, data: AnyRecord) {
-    if (!this.data[collection]) {
-      this.data[collection] = [];
-    }
-    const id = this.getNextId(collection);
-    const newItem = { id, ...camelizeObjectKeys(data) };
-    this.data[collection].push(newItem);
-    this.saveData();
-    return newItem;
-  }
-
-  update(collection: string, id: Identifier, data: AnyRecord) {
-    if (!this.data[collection]) return null;
-    const index = this.data[collection].findIndex((item) => item.id === parseInt(String(id), 10));
-    if (index === -1) return null;
-
-    this.data[collection][index] = {
-      ...this.data[collection][index],
-      ...camelizeObjectKeys(data),
-      id: parseInt(String(id), 10),
-    };
-    this.saveData();
-    return this.data[collection][index];
-  }
-
-  delete(collection: string, id: Identifier) {
-    if (!this.data[collection]) return false;
-    const index = this.data[collection].findIndex((item) => item.id === parseInt(String(id), 10));
-    if (index === -1) return false;
-
-    this.data[collection].splice(index, 1);
-    this.saveData();
-    return true;
-  }
-
-  getNextId(collection: string) {
-    const items = this.data[collection] || [];
-    if (items.length === 0) return 1;
-    return Math.max(...items.map((item) => item.id)) + 1;
+    const deleted = await Model.findOneAndDelete({ id: parseInt(String(id), 10) });
+    return !!deleted;
   }
 
   // ==================== UTILITY METHODS ====================
 
-  exists(collection: string, query: AnyRecord) {
-    const normalizedQuery = camelizeObjectKeys(query);
-    if (!this.data[collection]) return false;
-    return this.data[collection].some((item) => {
-      return Object.keys(normalizedQuery).every((key) => item[key] === normalizedQuery[key]);
-    });
-  }
+  async insertMany(collection: string, records: AnyRecord[]) {
+    const Model = this.getModel(collection);
+    if (!Model) throw new Error(`Model not found: ${collection}`);
 
-  distinct(collection: string, field: string) {
-    if (!this.data[collection]) return [];
-    const normalizedField = toCamelCase(field);
-    const values = this.data[collection]
-      .map((item) => item[normalizedField])
-      .filter((v) => v !== undefined && v !== null);
-    return [...new Set(values)];
-  }
-
-  count(collection: string, query: AnyRecord | null = null) {
-    const normalizedQuery = query ? camelizeObjectKeys(query) : null;
-    if (!this.data[collection]) return 0;
-    if (!normalizedQuery || Object.keys(normalizedQuery).length === 0) {
-      return this.data[collection].length;
-    }
-    return this.data[collection].filter((item) => {
-      return Object.keys(normalizedQuery).every((key) => item[key] === normalizedQuery[key]);
-    }).length;
-  }
-
-  insertMany(collection: string, records: AnyRecord[]) {
-    if (!this.data[collection]) {
-      this.data[collection] = [];
-    }
-
-    const created = records.map((data) => {
-      const id = this.getNextId(collection);
-      const newItem = { id, ...camelizeObjectKeys(data) };
-      this.data[collection].push(newItem);
-      return newItem;
+    // Auto-generate numeric IDs for records that don't have one
+    let nextId = await this.getNextId(collection);
+    const prepared = records.map((record) => {
+      const item = camelizeObjectKeys(record);
+      delete item._id;
+      if (!item.id) {
+        item.id = nextId++;
+      }
+      return item;
     });
 
-    this.saveData();
+    const created = await Model.insertMany(prepared);
     return created;
   }
 
-  deleteMany(collection: string, ids: Identifier[]) {
-    if (!this.data[collection]) return 0;
+  async deleteMany(collection: string, query: AnyRecord) {
+    const Model = this.getModel(collection);
+    if (!Model) return 0;
 
-    const parsedIds = ids.map((id) => parseInt(String(id), 10));
-    const before = this.data[collection].length;
-    this.data[collection] = this.data[collection].filter((item) => !parsedIds.includes(item.id));
-    const deleted = before - this.data[collection].length;
+    const result = await Model.deleteMany(query);
+    return result.deletedCount;
+  }
 
-    if (deleted > 0) this.saveData();
-    return deleted;
+  async exists(collection: string, query: AnyRecord) {
+    const Model = this.getModel(collection);
+    if (!Model) return false;
+
+    const doc = await Model.exists(camelizeObjectKeys(query));
+    return !!doc;
+  }
+
+  async distinct(collection: string, field: string, query: AnyRecord = {}) {
+    const Model = this.getModel(collection);
+    if (!Model) return [];
+
+    return await Model.distinct(toCamelCase(field), camelizeObjectKeys(query));
+  }
+
+  async count(collection: string, query: AnyRecord = {}) {
+    const Model = this.getModel(collection);
+    if (!Model) return 0;
+
+    return await Model.countDocuments(camelizeObjectKeys(query));
+  }
+
+  async getNextId(collection: string) {
+    const Model = this.getModel(collection);
+    if (!Model) return 1;
+
+    try {
+      const lastItem = await Model.findOne().sort({ id: -1 }).select('id').lean();
+      return lastItem ? lastItem.id + 1 : 1;
+    } catch (error) {
+      return 1;
+    }
+  }
+
+  async getSlice(collection: string, start: number, end: number) {
+    const Model = this.getModel(collection);
+    if (!Model) return { data: [], total: 0 };
+
+    const [items, total] = await Promise.all([
+      Model.find()
+        .skip(start)
+        .limit(end - start),
+      Model.countDocuments(),
+    ]);
+    return { data: items, total };
+  }
+
+  saveData() {
+    return true;
   }
 }
 
@@ -411,32 +442,19 @@ class JsonAdapter implements DatabaseAdapter {
 
 let dbInstance: DatabaseAdapter | null;
 
-const dbConnection = (process.env.DB_CONNECTION || 'json').toLowerCase();
-
 async function initDatabase() {
   if (dbInstance) return dbInstance;
 
-  if (dbConnection === 'mongodb' || dbConnection === 'mongo') {
-    if (!process.env.DATABASE_URL) {
-      console.warn('⚠️ DB_CONNECTION=mongodb but DATABASE_URL is missing. Falling back to JSON.');
-      dbInstance = new JsonAdapter();
-    } else {
-      const { default: MongoConnect } = await import('@config/mongo-connect');
-      const adapter = new MongoConnect();
-      await adapter.initConnection();
-      await adapter.loadSchemasAsModels();
-      dbInstance = adapter;
-    }
-  } else {
-    dbInstance = new JsonAdapter();
+  if (!process.env.DATABASE_URL) {
+    throw new Error('⚠️ DATABASE_URL is missing. Cannot connect to MongoDB.');
   }
 
-  return dbInstance;
-}
+  const adapter = new MongoConnect();
+  await adapter.initConnection();
+  await adapter.loadSchemasAsModels();
+  dbInstance = adapter;
 
-// Init ngay cho JSON adapter (sync), MongoDB sẽ init khi gọi initDatabase()
-if (dbConnection !== 'mongodb' && dbConnection !== 'mongo') {
-  dbInstance = new JsonAdapter();
+  return dbInstance;
 }
 
 const dbProxy = new Proxy({} as DatabaseAdapter, {
