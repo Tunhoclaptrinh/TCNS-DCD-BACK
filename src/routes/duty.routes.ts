@@ -46,6 +46,7 @@ router.get('/template-assignments', checkPermission('duty:view'), dutyController
 router.post('/template-assignments', checkPermission('duty:manage'), dutyController.createTemplateAssignment);
 router.put('/template-assignments/:id', checkPermission('duty:manage'), dutyController.updateTemplateAssignment);
 router.delete('/template-assignments/:id', checkPermission('duty:manage'), dutyController.deleteTemplateAssignment);
+router.post('/template-shifts-day', checkPermission('duty:manage'), dutyController.addShiftToDay);
 router.delete('/template-shifts-day', checkPermission('duty:manage'), dutyController.removeShiftFromDay);
 
 // Attendance & Leave

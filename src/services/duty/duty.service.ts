@@ -72,7 +72,6 @@ class DutyService extends BaseService {
   }
 
   buildSlotPayload(data: GenericRecord = {}, createdBy: Identifier | null = null) {
-    const now = new Date().toISOString();
     const shiftDate = toUTCMidnight(data.shiftDate);
     const weekStartStr = getWeekStartISO(data.weekStart || shiftDate);
 
@@ -80,9 +79,9 @@ class DutyService extends BaseService {
       weekStart: new Date(weekStartStr),
       shiftDate,
       dayId: data.dayId ? normalizeId(data.dayId) : null,
-      kipId: data.kipId ? normalizeId(data.kipId) : null,
       shiftId: data.shiftId ? normalizeId(data.shiftId) : null,
-      shiftLabel: data.shiftLabel,
+      kipId: data.kipId ? normalizeId(data.kipId) : null,
+      shiftLabel: data.shiftLabel || 'Kíp trực',
       startTime: data.startTime || null,
       endTime: data.endTime || null,
       assignedUserIds: normalizeIdList(data.assignedUserIds || []),
@@ -92,8 +91,8 @@ class DutyService extends BaseService {
       endPeriod: data.endPeriod ? Number(data.endPeriod) : null,
       note: data.note || '',
       capacity: data.capacity ? Number(data.capacity) : null,
-      createdAt: new Date(data.createdAt || now),
-      updatedAt: new Date(now),
+      createdAt: new Date(data.createdAt || new Date()),
+      updatedAt: new Date(),
     };
   }
 
@@ -148,16 +147,17 @@ class DutyService extends BaseService {
 
   async getShiftTemplates(templateId?: Identifier | null) {
     let filter: any = {};
-    if (templateId !== null) {
+    if (templateId !== undefined) {
       if (templateId) {
         filter.templateId = normalizeId(templateId);
-      } else {
-        // Fallback to default if no templateId provided
-        const defaultTemplate = await db.findOne('duty_templates', { isDefault: true });
-        if (defaultTemplate) {
-          filter.templateId = normalizeId(defaultTemplate.id);
-        }
+      } else if (templateId === null) {
+        // Individual shifts have templateId as null in our new system
+        filter.templateId = null;
       }
+    } else {
+      // If nothing provided, we might want ALL shifts for the calendar to pick from
+      // or just the default. For the calendar, "all" is safer.
+      filter = {};
     }
 
     const shifts = await db.findMany('duty_shifts', filter);
@@ -282,6 +282,7 @@ class DutyService extends BaseService {
                 shiftLabel: `${shift.name} - ${kip.name}`,
                 startTime: kip.startTime || shift.startTime,
                 endTime: kip.endTime || shift.endTime,
+                capacity: kip.capacity,
                 order: kip.order,
                 endPeriod: kip.endPeriod,
                 note: kip.description || kip.duration || '',
@@ -322,6 +323,7 @@ class DutyService extends BaseService {
               shiftLabel: `${shift.name} - ${kip.name}`,
               startTime: kip.startTime || shift.startTime,
               endTime: kip.endTime || shift.endTime,
+              capacity: kip.capacity,
               order: kip.order,
               endPeriod: kip.endPeriod,
               note: kip.description || kip.duration || '',
@@ -386,17 +388,34 @@ class DutyService extends BaseService {
       const shifts = await this.getShiftTemplates(effectiveTemplateId);
       const dayRecord = await this.findOrCreateDay(isoDate, actorId);
 
-      const dayShiftIds = (shifts as any[])
-        .filter((s) => (s.daysOfWeek || [0, 1, 2, 3, 4, 5, 6]).includes(dayOfWeek))
-        .map((s) => normalizeId(s.id));
+      const persistentShiftIds: number[] = [];
+      const shiftMap = new Map<number, number>(); // SourceID -> PersistentID
+
+      // 1. Deep Copy the shifts into "Individual Records" (templateId = null)
+      for (const s of shifts as any[]) {
+        if (!(s.daysOfWeek || [0, 1, 2, 3, 4, 5, 6]).includes(dayOfWeek)) continue;
+
+        const newShift = await db.create('duty_shifts', {
+          name: s.name,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          order: s.order,
+          description: 'INSTANCE',
+          templateId: null, // DISCONNECT from template group
+          daysOfWeek: [dayOfWeek],
+        });
+
+        persistentShiftIds.push(newShift.id);
+        shiftMap.set(s.id, newShift.id);
+      }
 
       await db.update('duty_days', dayRecord.id, {
-        shiftTemplateIds: [...new Set([...(dayRecord.shiftTemplateIds || []), ...dayShiftIds])],
+        shiftTemplateIds: persistentShiftIds,
       });
 
       for (const shift of shifts as any[]) {
-        const shiftDays = shift.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
-        if (!shiftDays.includes(dayOfWeek)) continue;
+        if (!shiftMap.has(shift.id)) continue;
+        const persistentShiftId = shiftMap.get(shift.id)!;
 
         if (mode === 'shifts' || mode === 'all') {
           allSlots.push(
@@ -434,6 +453,7 @@ class DutyService extends BaseService {
                   shiftLabel: `${shift.name} - ${kip.name}`,
                   startTime: kip.startTime || shift.startTime,
                   endTime: kip.endTime || shift.endTime,
+                  capacity: kip.capacity,
                   order: kip.order,
                   endPeriod: kip.endPeriod,
                   note: kip.description || kip.duration || '',
@@ -563,15 +583,40 @@ class DutyService extends BaseService {
   }
 
   async createSlot(payload: GenericRecord, actorId: Identifier) {
-    if (!payload?.shiftLabel || !payload?.shiftDate) throw ApiError.badRequest('shiftLabel and shiftDate required');
+    if (!payload?.shiftDate) throw ApiError.badRequest('shiftDate is required');
+
     const dayRecord = await this.findOrCreateDay(payload.shiftDate, actorId);
-    if (payload.shiftId) {
-      const existing = dayRecord.shiftTemplateIds || [];
-      if (!existing.includes(normalizeId(payload.shiftId))) {
-        await db.update('duty_days', dayRecord.id, { shiftTemplateIds: [...existing, normalizeId(payload.shiftId)] });
+
+    // Auto-stamp development: If shiftId is provided, Deep Copy it if it's from a template
+    let finalShiftId = payload.shiftId ? normalizeId(payload.shiftId) : null;
+    if (finalShiftId) {
+      const existingIds = dayRecord.shiftTemplateIds || [];
+      if (!existingIds.map(String).includes(String(finalShiftId))) {
+        const shiftTemplate = await db.findById('duty_shifts', finalShiftId);
+        // Only deep copy if it's currently linked to a template
+        if (shiftTemplate && shiftTemplate.templateId) {
+          const newShift = await db.create('duty_shifts', {
+            name: shiftTemplate.name,
+            startTime: shiftTemplate.startTime,
+            endTime: shiftTemplate.endTime,
+            order: shiftTemplate.order,
+            templateId: null, // DISCONNECT
+            description: 'INSTANCE',
+            daysOfWeek: shiftTemplate.daysOfWeek,
+          });
+          finalShiftId = newShift.id;
+        }
+
+        if (!existingIds.map(String).includes(String(finalShiftId))) {
+          await db.update('duty_days', dayRecord.id, {
+            shiftTemplateIds: [...existingIds, finalShiftId],
+          });
+        }
       }
     }
-    return await db.create('duty_slots', this.buildSlotPayload({ ...payload, dayId: dayRecord.id }, actorId));
+
+    const data = this.buildSlotPayload({ ...payload, dayId: dayRecord.id, shiftId: finalShiftId }, actorId);
+    return await db.create('duty_slots', data);
   }
 
   async deleteSlot(id: Identifier) {
@@ -828,16 +873,48 @@ class DutyService extends BaseService {
     });
   }
 
+  async addShiftToDay(date: string, shiftId: number, actorId: Identifier) {
+    const dayRecord = await this.findOrCreateDay(date, actorId);
+    const shiftTemplate = await db.findById('duty_shifts', shiftId);
+    if (!shiftTemplate) throw ApiError.notFound('Shift not found');
+
+    let finalShiftId = normalizeId(shiftId);
+    // Deep Copy if it's from a template
+    if (shiftTemplate.templateId) {
+      const newShift = await db.create('duty_shifts', {
+        name: shiftTemplate.name,
+        startTime: shiftTemplate.startTime,
+        endTime: shiftTemplate.endTime,
+        order: shiftTemplate.order,
+        description: 'INSTANCE',
+        templateId: null, // DISCONNECT
+        daysOfWeek: shiftTemplate.daysOfWeek,
+      });
+      finalShiftId = newShift.id;
+    }
+
+    const existingIds = dayRecord.shiftTemplateIds || [];
+    if (!existingIds.map(String).includes(String(finalShiftId))) {
+      await db.update('duty_days', dayRecord.id, {
+        shiftTemplateIds: [...existingIds, finalShiftId],
+      });
+    }
+    return { success: true };
+  }
+
   async removeShiftFromDay(date: string, shiftId: number) {
     const d = toUTCMidnight(date);
     const dayRecord = await db.findOne('duty_days', { date: d });
     if (!dayRecord) throw ApiError.notFound('Day not found');
 
     const existingIds = dayRecord.shiftTemplateIds || [];
-    const filteredIds = existingIds.filter((id) => String(id) !== String(shiftId));
+    // Remove ONLY ONE instance of this shiftId to support duplicate boundaries
+    const index = existingIds.findIndex((id) => String(id) === String(shiftId));
 
-    if (filteredIds.length < existingIds.length) {
-      await db.update('duty_days', dayRecord.id, { shiftTemplateIds: filteredIds });
+    if (index !== -1) {
+      const newIds = [...existingIds];
+      newIds.splice(index, 1);
+      await db.update('duty_days', dayRecord.id, { shiftTemplateIds: newIds });
     }
     return { success: true };
   }

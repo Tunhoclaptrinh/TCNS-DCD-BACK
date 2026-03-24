@@ -43,11 +43,6 @@ export default defineSchema({
     required: false,
     description: 'Giờ kết thúc cụ thể nếu khác Ca (HH:mm)',
   },
-  duration: {
-    type: 'string',
-    required: false,
-    description: 'Mô tả thời gian trực (e.g., 08:00 - 10:30)',
-  },
   daysOfWeek: {
     type: 'array',
     items: { type: 'number' },

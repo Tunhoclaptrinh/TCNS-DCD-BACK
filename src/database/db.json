@@ -1,0 +1,174 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "email": "user@example.com",
+      "password": "$2a$10$Ihg2UIbklwf1JBsurzYPMOQ06U2ybIoL4aFgqqdm/1mYcxt6a.I/K",
+      "name": "string",
+      "phone": "stringstri",
+      "address": "string",
+      "avatar": "https://ui-avatars.com/api/?name=string&background=random",
+      "role": "admin",
+      "isActive": true,
+      "createdAt": "2026-03-24T00:51:03.062Z",
+      "updatedAt": "2026-03-24T00:52:03.695Z",
+      "lastLogin": "2026-03-24T00:52:03.695Z"
+    }
+  ],
+  "notifications": [],
+  "notification_settings": [],
+  "files": [],
+  "duty_slots": [
+    {
+      "id": 1,
+      "weekStart": "2026-03-23T00:00:00.000Z",
+      "shiftDate": "2026-03-25T00:00:00.000Z",
+      "dayId": 2,
+      "kipId": null,
+      "shiftId": null,
+      "shiftLabel": "Sáng",
+      "startTime": "06:00",
+      "endTime": "08:00",
+      "assignedUserIds": [],
+      "status": "open",
+      "createdBy": 1,
+      "order": 0,
+      "endPeriod": null,
+      "note": "",
+      "capacity": 5,
+      "createdAt": "2026-03-24T00:54:15.119Z",
+      "updatedAt": "2026-03-24T00:54:15.119Z"
+    },
+    {
+      "id": 2,
+      "weekStart": "2026-03-23T00:00:00.000Z",
+      "shiftDate": "2026-03-24T00:00:00.000Z",
+      "dayId": 1,
+      "kipId": null,
+      "shiftId": null,
+      "shiftLabel": "Sáng",
+      "startTime": "06:00",
+      "endTime": "08:00",
+      "assignedUserIds": [],
+      "status": "open",
+      "createdBy": 1,
+      "order": 0,
+      "endPeriod": null,
+      "note": "",
+      "capacity": null,
+      "createdAt": "2026-03-24T00:54:40.047Z",
+      "updatedAt": "2026-03-24T00:54:40.047Z"
+    }
+  ],
+  "duty_swap_requests": [],
+  "reward_penalties": [],
+  "duty_templates": [
+    {
+      "id": 1,
+      "name": "Test",
+      "isDefault": false,
+      "description": ""
+    }
+  ],
+  "duty_shifts": [
+    {
+      "id": 1,
+      "templateId": 1,
+      "name": "Sáng",
+      "startTime": "06:00",
+      "endTime": "11:00",
+      "order": 1,
+      "description": "",
+      "daysOfWeek": [0, 1, 2, 3, 4]
+    }
+  ],
+  "duty_kips": [
+    {
+      "id": 1,
+      "shiftId": 1,
+      "name": "kíp 1",
+      "coefficient": 1,
+      "capacity": 5,
+      "startTime": "08:00",
+      "endTime": "10:00",
+      "order": 1,
+      "endPeriod": null,
+      "daysOfWeek": [0, 1, 2, 4, 3],
+      "description": ""
+    }
+  ],
+  "duty_days": [
+    {
+      "id": 1,
+      "date": "2026-03-24T00:00:00.000Z",
+      "dayOfWeek": 1,
+      "status": "open",
+      "createdBy": 1,
+      "createdAt": "2026-03-24T00:53:23.536Z",
+      "updatedAt": "2026-03-24T00:53:23.536Z",
+      "shiftTemplateIds": [1]
+    },
+    {
+      "id": 2,
+      "date": "2026-03-25T00:00:00.000Z",
+      "dayOfWeek": 2,
+      "status": "open",
+      "createdBy": 1,
+      "createdAt": "2026-03-24T00:53:23.539Z",
+      "updatedAt": "2026-03-24T00:53:23.539Z",
+      "shiftTemplateIds": [1]
+    },
+    {
+      "id": 3,
+      "date": "2026-03-26T00:00:00.000Z",
+      "dayOfWeek": 3,
+      "status": "open",
+      "createdBy": 1,
+      "createdAt": "2026-03-24T00:53:23.540Z",
+      "updatedAt": "2026-03-24T00:53:23.540Z",
+      "shiftTemplateIds": [1]
+    },
+    {
+      "id": 4,
+      "date": "2026-03-27T00:00:00.000Z",
+      "dayOfWeek": 4,
+      "status": "open",
+      "createdBy": 1,
+      "createdAt": "2026-03-24T00:53:23.542Z",
+      "updatedAt": "2026-03-24T00:53:23.542Z",
+      "shiftTemplateIds": [1]
+    },
+    {
+      "id": 5,
+      "date": "2026-03-30T00:00:00.000Z",
+      "dayOfWeek": 0,
+      "status": "open",
+      "createdBy": 1,
+      "createdAt": "2026-03-24T00:53:23.544Z",
+      "updatedAt": "2026-03-24T00:53:23.544Z",
+      "shiftTemplateIds": [1]
+    },
+    {
+      "id": 6,
+      "date": "2026-03-31T00:00:00.000Z",
+      "dayOfWeek": 1,
+      "status": "open",
+      "createdBy": 1,
+      "createdAt": "2026-03-24T00:53:23.547Z",
+      "updatedAt": "2026-03-24T00:53:23.547Z",
+      "shiftTemplateIds": [1]
+    }
+  ],
+  "duty_leave_requests": [],
+  "duty_template_assignments": [
+    {
+      "id": 1,
+      "templateId": 1,
+      "startDate": "2026-03-24T00:00:00.000Z",
+      "endDate": "2026-03-31T23:59:59.999Z",
+      "note": "Applied stamping for 6 days",
+      "createdBy": 1,
+      "createdAt": "2026-03-24T00:53:23.548Z"
+    }
+  ]
+}
