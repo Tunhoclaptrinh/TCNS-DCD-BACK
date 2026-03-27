@@ -895,15 +895,62 @@ class DutyService extends BaseService {
 
   async decideSwap(requestId: Identifier, payload: GenericRecord = {}, approverUser: GenericRecord) {
     const req = await db.findById('duty_swap_requests', requestId);
-    if (!req) throw ApiError.notFound('Request not found');
+    if (!req) throw ApiError.notFound('Yêu cầu không tồn tại');
+
     const status = payload.status || payload.decision;
+    const approverId = normalizeId(approverUser.id);
+
+    // Permission check: Admin/Staff can always decide. TargetUser can also decide (Accept/Reject).
+    const isTargetUser = normalizeId(req.targetUserId) === approverId;
+    const isAdminOrStaff = ['admin', 'staff'].includes(approverUser.role);
+
+    if (!isTargetUser && !isAdminOrStaff) {
+      throw ApiError.forbidden('Bạn không có quyền xử lý yêu cầu này');
+    }
+
     if (status === 'approved') {
       const slot = await db.findById('duty_slots', req.dutySlotId);
+      if (!slot) throw ApiError.notFound('Kíp trực không tồn tại');
+
       const assigned = normalizeIdList(slot.assignedUserIds);
-      const next = [...assigned.filter((id) => id !== req.requesterId), req.targetUserId];
-      await db.update('duty_slots', slot.id, { assignedUserIds: next });
+      // Ensure Requester is still in the slot
+      if (!assigned.includes(normalizeId(req.requesterId))) {
+        throw ApiError.badRequest('Người yêu cầu không còn trong kíp trực này');
+      }
+
+      const next = [
+        ...assigned.filter((id) => normalizeId(id) !== normalizeId(req.requesterId)),
+        normalizeId(req.targetUserId),
+      ];
+      await db.update('duty_slots', slot.id, {
+        assignedUserIds: next,
+        updatedAt: new Date().toISOString(),
+      });
+
+      // Notify the requester
+      await notificationService.notifyUser(req.requesterId, {
+        title: 'Yêu cầu đổi ca được chấp thuận',
+        message: `Yêu cầu đổi ca cho: ${slot.shiftLabel} của bạn đã được chấp thuận.`,
+        category: 'swap',
+        type: 'swap',
+        refId: req.id,
+      });
+    } else if (status === 'rejected') {
+      // Notify the requester about rejection
+      await notificationService.notifyUser(req.requesterId, {
+        title: 'Yêu cầu đổi ca bị từ chối',
+        message: `Yêu cầu đổi ca của bạn đã bị từ chối.`,
+        category: 'swap',
+        type: 'swap',
+        refId: req.id,
+      });
     }
-    return await db.update('duty_swap_requests', requestId, { status, approvedBy: normalizeId(approverUser.id) });
+
+    return await db.update('duty_swap_requests', requestId, {
+      status,
+      approvedBy: approverId,
+      updatedAt: new Date().toISOString(),
+    });
   }
 
   async markAttendance(slotId: Identifier, userIds: Identifier[]) {
@@ -948,7 +995,7 @@ class DutyService extends BaseService {
     rejectionReason: string = '',
   ) {
     const request = await db.findById('duty_leave_requests', requestId);
-    if (!request) throw ApiError.notFound('Leave request not found');
+    if (!request) throw ApiError.notFound('Đơn xin nghỉ không tồn tại');
 
     const now = new Date().toISOString();
     const updated = await db.update('duty_leave_requests', requestId, {
@@ -962,10 +1009,33 @@ class DutyService extends BaseService {
       const slot = await db.findById('duty_slots', request.slotId);
       if (slot) {
         const assigned = normalizeIdList(slot.assignedUserIds || []);
-        const nextAssigned = assigned.filter((id) => id !== normalizeId(request.userId));
-        await db.update('duty_slots', slot.id, { assignedUserIds: nextAssigned, updatedAt: now });
+        const nextAssigned = assigned.filter((id) => normalizeId(id) !== normalizeId(request.userId));
+        await db.update('duty_slots', slot.id, {
+          assignedUserIds: nextAssigned,
+          updatedAt: now,
+        });
+
+        // Notify member
+        await notificationService.notifyUser(request.userId, {
+          title: 'Đơn xin nghỉ đã được duyệt',
+          message: `Yêu cầu xin nghỉ cho ca ${slot.shiftLabel || ''} đã được chấp thuận.`,
+          category: 'shift',
+          type: 'shift',
+          status: 'unread',
+          refId: slot.id,
+        });
       }
+    } else if (status === 'rejected') {
+      // Notify member about rejection
+      await notificationService.notifyUser(request.userId, {
+        title: 'Đơn xin nghỉ bị từ chối',
+        message: `Yêu cầu xin nghỉ của bạn bị từ chối. Lý do: ${rejectionReason || 'Không có'}`,
+        category: 'shift',
+        type: 'shift',
+        status: 'unread',
+      });
     }
+
     return updated;
   }
 
