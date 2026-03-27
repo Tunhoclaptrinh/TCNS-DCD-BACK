@@ -355,8 +355,8 @@ class DutyController {
 
   addShiftToDay = async (req, res, next) => {
     try {
-      const { date, shiftId, overrides } = req.body;
-      const data = await dutyService.addShiftToDay(date, shiftId, req.user.id, overrides);
+      const { date, shiftId, overrides, mode } = req.body;
+      const data = await dutyService.addShiftToDay(date, shiftId, req.user.id, overrides, mode);
       res.status(201).json(data);
     } catch (error) {
       next(error);

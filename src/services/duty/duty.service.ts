@@ -1,5 +1,6 @@
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
+import isoWeek from 'dayjs/plugin/isoWeek';
 import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import BaseService from '@utils/base-service';
@@ -8,6 +9,7 @@ import ApiError from '@utils/api-error';
 import notificationService from '@services/notification/notification.service';
 
 dayjs.extend(utc);
+dayjs.extend(isoWeek);
 dayjs.extend(isSameOrAfter);
 dayjs.extend(isSameOrBefore);
 
@@ -76,7 +78,7 @@ class DutyService extends BaseService {
     const weekStartStr = getWeekStartISO(data.weekStart || shiftDate);
 
     return {
-      weekStart: new Date(weekStartStr),
+      weekStart: toUTCMidnight(weekStartStr),
       shiftDate,
       dayId: data.dayId ? normalizeId(data.dayId) : null,
       shiftId: data.shiftId ? normalizeId(data.shiftId) : null,
@@ -255,45 +257,54 @@ class DutyService extends BaseService {
 
   async generateWeekSlots(weekStart: string, actorId: Identifier) {
     const startIso = getWeekStartISO(weekStart);
-    const existing = await db.findOne('duty_slots', { weekStart: new Date(startIso) });
-    if (existing) throw ApiError.badRequest('Schedule already exists for this week');
+    const ws = new Date(startIso);
+    const we = new Date(startIso);
+    we.setUTCDate(we.getUTCDate() + 6); // End of the week
 
-    const shifts = await this.getShiftTemplates();
-    const slots = [];
+    // Check for existing slots
+    const existingSlots = await db.findMany('duty_slots', {
+      shiftDate_gte: ws.toISOString(),
+      shiftDate_lte: we.toISOString(),
+    });
+    if (existingSlots.length > 0) throw ApiError.badRequest('Schedule already exists for this week');
+
+    // Fetch all assignments that might overlap with this week
+    const assignments = await db.findMany('duty_template_assignments', {
+      startDate_lte: we.toISOString(),
+      endDate_gte: ws.toISOString(),
+    });
+
+    const defaultGroup = await db.findOne('duty_templates', { isDefault: true });
+
+    const allWeeklySlots = [];
     for (let i = 0; i < 7; i++) {
       const d = new Date(startIso);
       d.setUTCDate(d.getUTCDate() + i);
       const isoDate = d.toISOString();
-      const dayRecord = await this.findOrCreateDay(isoDate, actorId);
 
-      for (const shift of shifts as any[]) {
-        for (const kip of shift.kips) {
-          const days = kip.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
-          if (!days.includes(i)) continue;
+      // Find assignment for this specific day
+      const assignment = assignments.find((a) => {
+        const start = new Date(a.startDate);
+        const end = new Date(a.endDate);
+        return d >= start && d <= end;
+      });
 
-          slots.push(
-            this.buildSlotPayload(
-              {
-                weekStart: startIso,
-                shiftDate: isoDate,
-                dayId: dayRecord.id,
-                shiftId: shift.id,
-                kipId: kip.id,
-                shiftLabel: `${shift.name} - ${kip.name}`,
-                startTime: kip.startTime || shift.startTime,
-                endTime: kip.endTime || shift.endTime,
-                capacity: kip.capacity,
-                order: kip.order,
-                endPeriod: kip.endPeriod,
-                note: kip.description || kip.duration || '',
-              },
-              actorId,
-            ),
-          );
-        }
+      const groupId = assignment?.templateId || defaultGroup?.id;
+      if (!groupId) continue;
+
+      const shifts = await db.findMany('duty_shifts', { templateId: normalizeId(groupId) });
+
+      for (const shift of shifts) {
+        const res = await this.addShiftToDay(isoDate, shift.id, actorId, null, 'kips', true);
+        if (res.slots) allWeeklySlots.push(...res.slots);
       }
     }
-    return await db.insertMany('duty_slots', slots);
+
+    if (allWeeklySlots.length > 0) {
+      await db.insertMany('duty_slots', allWeeklySlots);
+    }
+
+    return { success: true };
   }
 
   async generateDaySlots(date: string, actorId: Identifier) {
@@ -512,29 +523,104 @@ class DutyService extends BaseService {
     const srcIso = getWeekStartISO(sourceWeekStart);
     const targetIso = getWeekStartISO(targetWeekStart);
 
-    const existingTarget = await db.findOne('duty_slots', { weekStart: new Date(targetIso) });
+    const wsSource = new Date(srcIso);
+    const weSource = new Date(srcIso);
+    weSource.setUTCDate(weSource.getUTCDate() + 6);
+
+    const wsTarget = new Date(targetIso);
+    const weTarget = new Date(targetIso);
+    weTarget.setUTCDate(weTarget.getUTCDate() + 6);
+
+    const existingTarget = await db.findOne('duty_slots', {
+      shiftDate_gte: wsTarget.toISOString(),
+      shiftDate_lte: weTarget.toISOString(),
+    });
     if (existingTarget) throw ApiError.badRequest('Target week already has slots');
 
-    const sourceSlots = await db.findMany('duty_slots', { weekStart: new Date(srcIso) });
+    // 1. Fetch all data for source week
+    const sourceSlots = await db.findMany('duty_slots', {
+      shiftDate_gte: wsSource.toISOString(),
+      shiftDate_lte: weSource.toISOString(),
+    });
     if (!sourceSlots || sourceSlots.length === 0) throw ApiError.badRequest('Source week is empty');
 
+    const sourceDays = await db.findMany('duty_days', {
+      date_gte: wsSource.toISOString(),
+      date_lte: weSource.toISOString(),
+    });
+
+    const shiftIdMap: Record<string, any> = {};
+    const kipIdMap: Record<string, any> = {};
+
+    // 2. Clone Days and their Shift/Kip instances
+    for (let i = 0; i < 7; i++) {
+      const srcDate = new Date(wsSource);
+      srcDate.setUTCDate(srcDate.getUTCDate() + i);
+      const targetDate = new Date(wsTarget);
+      targetDate.setUTCDate(targetDate.getUTCDate() + i);
+
+      const srcDay = sourceDays.find((d) => new Date(d.date).getTime() === srcDate.getTime());
+      if (!srcDay) continue;
+
+      const targetDay = await this.findOrCreateDay(targetDate.toISOString(), actorId);
+      const oldShiftIds = srcDay.shiftTemplateIds || [];
+      const newShiftIds = [];
+
+      for (const oldShiftId of oldShiftIds) {
+        const shift = await db.findById('duty_shifts', oldShiftId);
+        if (!shift) continue;
+
+        // If it's an instance, clone it to keep weeks independent
+        if (shift.description === 'INSTANCE') {
+          const newShift = await db.create('duty_shifts', {
+            ...shift,
+            id: undefined,
+            _id: undefined,
+            templateId: shift.templateId, // Keep reference to original blueprint if any
+          });
+          newShiftIds.push(newShift.id);
+          shiftIdMap[String(oldShiftId)] = newShift.id;
+
+          // Also clone its kips
+          const kips = await db.findMany('duty_kips', { shiftId: normalizeId(oldShiftId) });
+          for (const k of kips) {
+            const newKip = await db.create('duty_kips', {
+              ...k,
+              id: undefined,
+              _id: undefined,
+              shiftId: newShift.id,
+            });
+            kipIdMap[String(k.id)] = newKip.id;
+          }
+        } else {
+          // If it's a direct blueprint (unlikely in stencil but possible), just link it
+          newShiftIds.push(oldShiftId);
+          shiftIdMap[String(oldShiftId)] = oldShiftId;
+        }
+      }
+
+      await db.update('duty_days', targetDay.id, { shiftTemplateIds: newShiftIds });
+    }
+
+    // 3. Clone Slots with translated IDs
     const newSlots = sourceSlots.map((slot: any) => {
       const d = new Date(slot.shiftDate);
-      const dayOffset = (d.getTime() - new Date(srcIso).getTime()) / (1000 * 60 * 60 * 24);
-      const t = new Date(targetIso);
+      const dayOffset = (d.getTime() - wsSource.getTime()) / (1000 * 60 * 60 * 24);
+      const t = new Date(wsTarget);
       t.setUTCDate(t.getUTCDate() + Math.round(dayOffset));
+
+      const newShiftId = shiftIdMap[String(slot.shiftId)] || slot.shiftId;
+      const newKipId = kipIdMap[String(slot.kipId)] || slot.kipId;
 
       return this.buildSlotPayload(
         {
+          ...slot,
+          id: undefined,
+          _id: undefined,
           weekStart: targetIso,
           shiftDate: t.toISOString(),
-          kipId: slot.kipId,
-          shiftLabel: slot.shiftLabel,
-          startTime: slot.startTime,
-          endTime: slot.endTime,
-          order: slot.order,
-          endPeriod: slot.endPeriod,
-          note: slot.note,
+          shiftId: newShiftId,
+          kipId: newKipId,
         },
         actorId,
       );
@@ -545,20 +631,46 @@ class DutyService extends BaseService {
 
   async deleteWeeklySlots(weekStart: string) {
     const startIso = getWeekStartISO(weekStart);
-    return await db.deleteMany('duty_slots', { weekStart: new Date(startIso) });
+    const ws = new Date(startIso);
+    const we = new Date(startIso);
+    we.setUTCDate(we.getUTCDate() + 6);
+
+    // 1. Delete all slots for the week
+    await db.deleteMany('duty_slots', {
+      weekStart: new Date(startIso),
+    });
+
+    // 2. Clear shift boundaries in duty_days
+    const days = await db.findMany('duty_days', {
+      date_gte: ws.toISOString(),
+      date_lte: we.toISOString(),
+    });
+
+    for (const d of days) {
+      if (d.shiftTemplateIds?.length > 0) {
+        // Optional: We could also delete the actual duty_shifts records here if they are 'INSTANCE'
+        // But for simplicity and safety, resetting the reference is the most important for UI
+        await db.update('duty_days', d.id, { shiftTemplateIds: [] });
+      }
+    }
+
+    return { success: true };
   }
 
   async getWeeklySchedule(options: any = {}) {
     const weekStart = getWeekStartISO(options.weekStart);
     const weekEnd = getWeekEndISO(weekStart);
 
+    const ws = new Date(weekStart);
+    const we = new Date(weekEnd);
+
     const result = await db.findAllAdvanced('duty_slots', {
       ...options,
       limit: 1000,
       filter: {
         ...(options.filter || {}),
-        shiftDate_gte: weekStart,
-        shiftDate_lte: weekEnd,
+        shiftDate_gte: ws,
+        shiftDate_lte: we,
       },
       expand: 'kip',
       sort: options.sort || 'shiftDate,startTime',
@@ -665,7 +777,17 @@ class DutyService extends BaseService {
   async deleteSlot(id: Identifier) {
     const slot = await db.findById('duty_slots', id);
     if (!slot) throw ApiError.notFound('Slot not found');
-    await db.delete('duty_slots', id);
+
+    // If it's a Shift-level slot (kipId null), cascade delete all kips in this shift on this date
+    if (slot.kipId === null && slot.shiftId) {
+      await db.deleteMany('duty_slots', {
+        shiftDate: slot.shiftDate,
+        shiftId: slot.shiftId,
+      });
+    } else {
+      await db.delete('duty_slots', id);
+    }
+
     return { success: true };
   }
 
@@ -869,6 +991,7 @@ class DutyService extends BaseService {
     const startDate = toUTCMidnight(data.startDate);
     const endDate = dayjs.utc(data.endDate).endOf('day').toDate();
     const templateId = parseInt(data.templateId, 10);
+    const mode = data.mode || 'kips';
 
     // 1. Fetch all shifts for this template
     const shifts = await this.getShiftTemplates(templateId);
@@ -877,31 +1000,43 @@ class DutyService extends BaseService {
     }
 
     // 2. Iterate through each day in the range and "Stamp" the shifts
-    let current = dayjs.utc(startDate);
-    const end = dayjs.utc(endDate);
+    let current = dayjs.utc(startDate).startOf('day');
+    const end = dayjs.utc(endDate).startOf('day');
     const results = [];
+    const allSlots: any[] = [];
 
     while (current.isSameOrBefore(end, 'day')) {
       const dateStr = current.format('YYYY-MM-DD');
       const dIdx = (current.day() + 6) % 7; // Mon=0...Sun=6
 
-      if (shifts.length > 0) {
-        for (const s of shifts) {
-          const shiftDays = s.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
-          if (shiftDays.includes(dIdx)) {
-            // Use the established cloning logic for each shift
-            await this.addShiftToDay(dateStr, s.id, actorId);
-            results.push({ date: dateStr, shiftId: s.id });
-          }
+      for (const s of shifts) {
+        const shiftDays = s.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
+        if (shiftDays.includes(dIdx)) {
+          // Use the established cloning logic for each shift with mode support
+          // Note: Passing collectSlotsOnly=true to prevent multiple small inserts
+          const { slots } = await this.addShiftToDay(dateStr, s.id, actorId, null, mode, true);
+          if (slots) allSlots.push(...slots);
+          results.push({ date: dateStr, shiftId: s.id });
         }
       }
       current = current.add(1, 'day');
     }
 
+    if (allSlots.length > 0) {
+      await db.insertMany('duty_slots', allSlots);
+    }
+
     return { success: true, results };
   }
 
-  async addShiftToDay(date: string, shiftId: number, actorId: Identifier, overrides: any = null) {
+  async addShiftToDay(
+    date: string,
+    shiftId: number,
+    actorId: Identifier,
+    overrides: any = null,
+    mode: string = 'kips',
+    batchMode: boolean = false,
+  ) {
     const dayRecord = await this.findOrCreateDay(date, actorId);
     const shiftTemplate = await db.findById('duty_shifts', shiftId);
     if (!shiftTemplate) throw ApiError.notFound('Shift not found');
@@ -949,45 +1084,84 @@ class DutyService extends BaseService {
     }
 
     // IMPORTANT: Stamping must also create the Slot records in duty_slots or they won't appear as kips
-    // even though the boundary is there.
-    const dayOfWeek = (new Date(date).getUTCDay() + 6) % 7;
+    const dayOfWeek = (dayjs.utc(date).day() + 6) % 7;
     const weekStartIso = getWeekStartISO(date);
 
     // Fetch newly created kips or original kips if already an instance
     const effectiveShift = await db.findById('duty_shifts', finalShiftId);
     const effectiveKips = await db.findMany('duty_kips', { shiftId: finalShiftId });
 
-    const slots = [];
-    for (const kip of effectiveKips) {
-      const kipDays = kip.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
-      if (!kipDays.includes(dayOfWeek)) continue;
+    // Idempotency: Fetch existing slots for this shift instance on this day
+    // This prevents creating a 'Full Kip' (shift-level) if it already exists,
+    // and prevents duplicate kips if stamping is re-run.
+    const existingSlots = await db.findMany('duty_slots', {
+      shiftDate: new Date(date),
+      shiftId: finalShiftId,
+    });
 
-      slots.push(
-        this.buildSlotPayload(
-          {
-            weekStart: weekStartIso,
-            shiftDate: date,
-            dayId: dayRecord.id,
-            shiftId: finalShiftId,
-            kipId: kip.id,
-            shiftLabel: `${effectiveShift.name} - ${kip.name}`,
-            startTime: kip.startTime || effectiveShift.startTime,
-            endTime: kip.endTime || effectiveShift.endTime,
-            capacity: kip.capacity,
-            order: kip.order,
-            endPeriod: kip.endPeriod,
-            note: kip.description || '',
-          },
-          actorId,
-        ),
-      );
+    const slots = [];
+
+    // 1. Shift-level Slot (ONLY if mode is explicitly 'shifts'. In 'all' mode, kips take priority)
+    if (mode === 'shifts') {
+      const hasShiftSlot = existingSlots.some((s) => s.kipId === null);
+      if (!hasShiftSlot) {
+        slots.push(
+          this.buildSlotPayload(
+            {
+              weekStart: weekStartIso,
+              shiftDate: date,
+              dayId: dayRecord.id,
+              shiftId: finalShiftId,
+              kipId: null,
+              shiftLabel: effectiveShift.name,
+              startTime: effectiveShift.startTime,
+              endTime: effectiveShift.endTime,
+              capacity: 1, // Default for shift overall
+              order: effectiveShift.order,
+              note: 'Individual Shift Slot',
+            },
+            actorId,
+          ),
+        );
+      }
     }
 
-    if (slots.length > 0) {
+    // 2. Kip-level Slots (Only if mode is 'kips' or 'all')
+    if (mode === 'kips' || mode === 'all') {
+      for (const kip of effectiveKips) {
+        const kipDays = kip.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
+        if (!kipDays.includes(dayOfWeek)) continue;
+
+        const hasKipSlot = existingSlots.some((s) => normalizeId(s.kipId) === normalizeId(kip.id));
+        if (hasKipSlot) continue;
+
+        slots.push(
+          this.buildSlotPayload(
+            {
+              weekStart: weekStartIso,
+              shiftDate: date,
+              dayId: dayRecord.id,
+              shiftId: finalShiftId,
+              kipId: kip.id,
+              shiftLabel: `${effectiveShift.name} - ${kip.name}`,
+              startTime: kip.startTime || effectiveShift.startTime,
+              endTime: kip.endTime || effectiveShift.endTime,
+              capacity: kip.capacity,
+              order: kip.order,
+              endPeriod: kip.endPeriod,
+              note: kip.description || '',
+            },
+            actorId,
+          ),
+        );
+      }
+    }
+
+    if (slots.length > 0 && !batchMode) {
       await db.insertMany('duty_slots', slots);
     }
 
-    return { success: true };
+    return { success: true, slots };
   }
 
   async removeShiftFromDay(date: string, shiftId: number) {
@@ -1003,6 +1177,13 @@ class DutyService extends BaseService {
       const newIds = [...existingIds];
       newIds.splice(index, 1);
       await db.update('duty_days', dayRecord.id, { shiftTemplateIds: newIds });
+
+      // Cascade: Delete all slots (both shift-level and kips) belonging to this shift instance on this day
+      // shiftId here is the instance ID
+      await db.deleteMany('duty_slots', {
+        shiftDate: d,
+        shiftId: Number(shiftId),
+      });
     }
     return { success: true };
   }
