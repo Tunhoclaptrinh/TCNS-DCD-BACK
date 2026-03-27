@@ -417,6 +417,26 @@ class DutyService extends BaseService {
         if (!shiftMap.has(shift.id)) continue;
         const persistentShiftId = shiftMap.get(shift.id)!;
 
+        // 2. Clone Kips for this shift instance
+        const templateKips = await db.findMany('duty_kips', { shiftId: normalizeId(shift.id) });
+        const kipMap = new Map<number, number>();
+
+        for (const k of templateKips) {
+          const newKip = await db.create('duty_kips', {
+            shiftId: persistentShiftId,
+            name: k.name,
+            coefficient: k.coefficient,
+            capacity: k.capacity,
+            startTime: k.startTime,
+            endTime: k.endTime,
+            order: k.order,
+            endPeriod: k.endPeriod,
+            daysOfWeek: k.daysOfWeek,
+            description: 'INSTANCE',
+          });
+          kipMap.set(k.id, newKip.id);
+        }
+
         if (mode === 'shifts' || mode === 'all') {
           allSlots.push(
             this.buildSlotPayload(
@@ -424,7 +444,7 @@ class DutyService extends BaseService {
                 weekStart: weekStartIso,
                 shiftDate: isoDate,
                 dayId: dayRecord.id,
-                shiftId: shift.id,
+                shiftId: persistentShiftId,
                 kipId: null,
                 shiftLabel: shift.name,
                 startTime: shift.startTime,
@@ -438,7 +458,7 @@ class DutyService extends BaseService {
         }
 
         if (mode === 'kips' || mode === 'all') {
-          for (const kip of shift.kips) {
+          for (const kip of templateKips) {
             const kipDays = kip.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
             if (!kipDays.includes(dayOfWeek)) continue;
 
@@ -448,8 +468,8 @@ class DutyService extends BaseService {
                   weekStart: weekStartIso,
                   shiftDate: isoDate,
                   dayId: dayRecord.id,
-                  shiftId: shift.id,
-                  kipId: kip.id,
+                  shiftId: persistentShiftId,
+                  kipId: kipMap.get(kip.id),
                   shiftLabel: `${shift.name} - ${kip.name}`,
                   startTime: kip.startTime || shift.startTime,
                   endTime: kip.endTime || shift.endTime,
@@ -574,8 +594,31 @@ class DutyService extends BaseService {
       date_lte: queryEnd,
     });
 
+    // 3. Fetch full metadata for all referred shifts and kips (True Snapshot rendering)
+    const referredShiftIds = new Set<Identifier>();
+    result.data.forEach((s: any) => {
+      if (s.shiftId) referredShiftIds.add(normalizeId(s.shiftId));
+    });
+    days.forEach((d: any) => {
+      (d.shiftTemplateIds || []).forEach((id: any) => referredShiftIds.add(normalizeId(id)));
+    });
+
+    const fullShifts = await db.findMany('duty_shifts', { id_in: Array.from(referredShiftIds) });
+    const allKips = await db.findMany('duty_kips', { shiftId_in: Array.from(referredShiftIds) });
+
+    const templateData = fullShifts.map((s) => ({
+      ...s,
+      kips: allKips.filter((k) => normalizeId(k.shiftId) === normalizeId(s.id)),
+    }));
+
     return {
-      data: { slots: data, days, assignments },
+      success: true,
+      data: {
+        slots: data,
+        days,
+        assignments,
+        templates: templateData,
+      },
       weekStart,
       weekEnd,
       pagination: result.pagination,
@@ -842,55 +885,60 @@ class DutyService extends BaseService {
       const dateStr = current.format('YYYY-MM-DD');
       const dIdx = (current.day() + 6) % 7; // Mon=0...Sun=6
 
-      // Find shifts that apply to this day of week
-      const applicableShiftIds = shifts
-        .filter((s) => (s.daysOfWeek || [0, 1, 2, 3, 4, 5, 6]).includes(dIdx))
-        .map((s) => normalizeId(s.id));
-
-      if (applicableShiftIds.length > 0) {
-        const dayRecord = await this.findOrCreateDay(dateStr, actorId);
-        const existingIds = dayRecord.shiftTemplateIds || [];
-
-        // Merge without duplicates
-        const mergedIds = [...new Set([...existingIds, ...applicableShiftIds])];
-
-        if (mergedIds.length > existingIds.length) {
-          await db.update('duty_days', dayRecord.id, { shiftTemplateIds: mergedIds });
+      if (shifts.length > 0) {
+        for (const s of shifts) {
+          const shiftDays = s.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
+          if (shiftDays.includes(dIdx)) {
+            // Use the established cloning logic for each shift
+            await this.addShiftToDay(dateStr, s.id, actorId);
+            results.push({ date: dateStr, shiftId: s.id });
+          }
         }
-        results.push({ date: dateStr, shifts: applicableShiftIds });
       }
       current = current.add(1, 'day');
     }
 
-    // 3. Log the assignment for history (optional but useful)
-    return await db.create('duty_template_assignments', {
-      templateId,
-      startDate,
-      endDate,
-      note: data.note || `Applied stamping for ${results.length} days`,
-      createdBy: parseInt(actorId, 10),
-      createdAt: new Date().toISOString(),
-    });
+    return { success: true, results };
   }
 
-  async addShiftToDay(date: string, shiftId: number, actorId: Identifier) {
+  async addShiftToDay(date: string, shiftId: number, actorId: Identifier, overrides: any = null) {
     const dayRecord = await this.findOrCreateDay(date, actorId);
     const shiftTemplate = await db.findById('duty_shifts', shiftId);
     if (!shiftTemplate) throw ApiError.notFound('Shift not found');
 
     let finalShiftId = normalizeId(shiftId);
+    let finalKipIds: number[] = [];
+
     // Deep Copy if it's from a template
     if (shiftTemplate.templateId) {
       const newShift = await db.create('duty_shifts', {
-        name: shiftTemplate.name,
-        startTime: shiftTemplate.startTime,
-        endTime: shiftTemplate.endTime,
-        order: shiftTemplate.order,
+        name: overrides?.name || shiftTemplate.name,
+        startTime: overrides?.startTime || shiftTemplate.startTime,
+        endTime: overrides?.endTime || shiftTemplate.endTime,
+        order: overrides?.order !== undefined ? Number(overrides.order) : shiftTemplate.order,
         description: 'INSTANCE',
         templateId: null, // DISCONNECT
         daysOfWeek: shiftTemplate.daysOfWeek,
       });
       finalShiftId = newShift.id;
+
+      // ALSO CLONE KIPS for this shift
+      const kips = await db.findMany('duty_kips', { shiftId: normalizeId(shiftId) });
+      for (const k of kips) {
+        const newKip = await db.create('duty_kips', {
+          shiftId: finalShiftId,
+          name: k.name,
+          coefficient: k.coefficient,
+          capacity: k.capacity,
+          startTime: k.startTime,
+          endTime: k.endTime,
+          order: k.order,
+          endPeriod: k.endPeriod,
+          daysOfWeek: k.daysOfWeek,
+          description: 'INSTANCE',
+        });
+        finalKipIds.push(newKip.id);
+      }
     }
 
     const existingIds = dayRecord.shiftTemplateIds || [];
@@ -899,6 +947,46 @@ class DutyService extends BaseService {
         shiftTemplateIds: [...existingIds, finalShiftId],
       });
     }
+
+    // IMPORTANT: Stamping must also create the Slot records in duty_slots or they won't appear as kips
+    // even though the boundary is there.
+    const dayOfWeek = (new Date(date).getUTCDay() + 6) % 7;
+    const weekStartIso = getWeekStartISO(date);
+
+    // Fetch newly created kips or original kips if already an instance
+    const effectiveShift = await db.findById('duty_shifts', finalShiftId);
+    const effectiveKips = await db.findMany('duty_kips', { shiftId: finalShiftId });
+
+    const slots = [];
+    for (const kip of effectiveKips) {
+      const kipDays = kip.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
+      if (!kipDays.includes(dayOfWeek)) continue;
+
+      slots.push(
+        this.buildSlotPayload(
+          {
+            weekStart: weekStartIso,
+            shiftDate: date,
+            dayId: dayRecord.id,
+            shiftId: finalShiftId,
+            kipId: kip.id,
+            shiftLabel: `${effectiveShift.name} - ${kip.name}`,
+            startTime: kip.startTime || effectiveShift.startTime,
+            endTime: kip.endTime || effectiveShift.endTime,
+            capacity: kip.capacity,
+            order: kip.order,
+            endPeriod: kip.endPeriod,
+            note: kip.description || '',
+          },
+          actorId,
+        ),
+      );
+    }
+
+    if (slots.length > 0) {
+      await db.insertMany('duty_slots', slots);
+    }
+
     return { success: true };
   }
 
