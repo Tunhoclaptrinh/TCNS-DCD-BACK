@@ -407,16 +407,30 @@ class JsonAdapter implements DatabaseAdapter {
     return created;
   }
 
-  deleteMany(collection: string, ids: Identifier[]) {
+  deleteMany(collection: string, queryOrIds: any) {
     if (!this.data[collection]) return 0;
 
-    const parsedIds = ids.map((id) => parseInt(String(id), 10));
     const before = this.data[collection].length;
-    this.data[collection] = this.data[collection].filter((item) => !parsedIds.includes(item.id));
-    const deleted = before - this.data[collection].length;
 
-    if (deleted > 0) this.saveData();
-    return deleted;
+    if (Array.isArray(queryOrIds)) {
+      const parsedIds = queryOrIds.map((id) => parseInt(String(id), 10));
+      this.data[collection] = this.data[collection].filter((item) => !parsedIds.includes(item.id));
+    } else if (typeof queryOrIds === 'object' && queryOrIds !== null) {
+      // If empty query {}, it matches all items
+      if (Object.keys(queryOrIds).length === 0) {
+        this.data[collection] = [];
+      } else {
+        const itemsToKeep = this.data[collection].filter((item) => {
+          const matched = this.applyFilters([item], queryOrIds);
+          return matched.length === 0; // Keep if NOT matched by the delete query
+        });
+        this.data[collection] = itemsToKeep;
+      }
+    }
+
+    const deletedCount = before - this.data[collection].length;
+    if (deletedCount > 0) this.saveData();
+    return deletedCount;
   }
 }
 
@@ -424,10 +438,14 @@ class JsonAdapter implements DatabaseAdapter {
 
 let dbInstance: DatabaseAdapter | null;
 
-const dbConnection = (process.env.DB_CONNECTION || 'json').toLowerCase();
-
 async function initDatabase() {
   if (dbInstance) return dbInstance;
+
+  // Ensure dotenv is loaded before checking env vars
+  const { default: dotenv } = await import('dotenv');
+  dotenv.config({ path: path.join(process.cwd(), '.env') });
+
+  const dbConnection = (process.env.DB_CONNECTION || 'json').toLowerCase();
 
   if (dbConnection === 'mongodb' || dbConnection === 'mongo') {
     if (!process.env.DATABASE_URL) {
@@ -445,11 +463,6 @@ async function initDatabase() {
   }
 
   return dbInstance;
-}
-
-// Init ngay cho JSON adapter (sync), MongoDB sẽ init khi gọi initDatabase()
-if (dbConnection !== 'mongodb' && dbConnection !== 'mongo') {
-  dbInstance = new JsonAdapter();
 }
 
 const dbProxy = new Proxy({} as DatabaseAdapter, {

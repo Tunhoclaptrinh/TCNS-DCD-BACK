@@ -1,16 +1,14 @@
-import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import path from 'path';
+import db, { initDatabase } from '../config/database';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
-const MONGODB_URI = process.env.DATABASE_URL || 'mongodb://127.0.0.1:27017/base';
-
 async function clearDutyData() {
   try {
-    console.log('Connecting to MongoDB...');
-    await mongoose.connect(MONGODB_URI);
-    console.log('Connected successfully.');
+    console.log('Initializing Database...');
+    await initDatabase();
+    console.log('Database initialized successfully.');
 
     const collections = [
       'duty_templates',
@@ -24,14 +22,13 @@ async function clearDutyData() {
 
     for (const colName of collections) {
       console.log(`Clearing collection: ${colName}...`);
-      await mongoose.connection.collection(colName).deleteMany({});
+      await db.deleteMany(colName, {});
     }
 
     console.log('Successfully cleared all duty-related data.');
   } catch (error) {
     console.error('Error clearing data:', error);
   } finally {
-    await mongoose.disconnect();
     process.exit(0);
   }
 }
