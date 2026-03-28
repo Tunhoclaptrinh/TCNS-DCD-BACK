@@ -778,15 +778,8 @@ class DutyService extends BaseService {
     const slot = await db.findById('duty_slots', id);
     if (!slot) throw ApiError.notFound('Slot not found');
 
-    // If it's a Shift-level slot (kipId null), cascade delete all kips in this shift on this date
-    if (slot.kipId === null && slot.shiftId) {
-      await db.deleteMany('duty_slots', {
-        shiftDate: slot.shiftDate,
-        shiftId: slot.shiftId,
-      });
-    } else {
-      await db.delete('duty_slots', id);
-    }
+    // Simplified: Delete ONLY the requested slot, no cascading
+    await db.delete('duty_slots', id);
 
     return { success: true };
   }
