@@ -42,6 +42,57 @@ function findExistingFile(basePath: string) {
   return candidates.find((candidate) => fs.existsSync(candidate)) || null;
 }
 
+const SOURCE_ALIAS_ROOTS: Record<string, string> = {
+  '@database/': path.join(__dirname, '../database'),
+  '@modules/': path.join(__dirname, '../modules'),
+  '@shared/': path.join(__dirname, '../shared'),
+  '@routes/': path.join(__dirname, '../routes'),
+  '@utils/': path.join(__dirname, '../utils'),
+};
+
+function resolveSourceImportPath(fromFile: string, importPath: string) {
+  const normalizedImportPath = String(importPath || '').trim();
+  if (!normalizedImportPath) return null;
+
+  if (normalizedImportPath.startsWith('.')) {
+    return findExistingFile(path.resolve(path.dirname(fromFile), normalizedImportPath));
+  }
+
+  for (const [aliasPrefix, aliasRoot] of Object.entries(SOURCE_ALIAS_ROOTS)) {
+    if (normalizedImportPath.startsWith(aliasPrefix)) {
+      const relativePath = normalizedImportPath.slice(aliasPrefix.length);
+      return findExistingFile(path.join(aliasRoot, relativePath));
+    }
+  }
+
+  return null;
+}
+
+function buildResolvedImportMap(content: string, fromFile: string) {
+  const importMap: Record<string, string> = {};
+  const importRegex = /import\s+(\w+)\s+from\s+['"`]([^'"`]+)['"`]/g;
+  let importMatch;
+
+  while ((importMatch = importRegex.exec(content)) !== null) {
+    const resolvedPath = resolveSourceImportPath(fromFile, importMatch[2]);
+    if (resolvedPath) {
+      importMap[importMatch[1]] = resolvedPath;
+    }
+  }
+
+  const requireRegex = /const\s+(\w+)\s*=\s*require\s*\(\s*['"`]([^'"`]+)['"`]\s*\)/g;
+  let requireMatch;
+
+  while ((requireMatch = requireRegex.exec(content)) !== null) {
+    const resolvedPath = resolveSourceImportPath(fromFile, requireMatch[2]);
+    if (resolvedPath) {
+      importMap[requireMatch[1]] = resolvedPath;
+    }
+  }
+
+  return importMap;
+}
+
 function capitalize(str: string) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
@@ -1151,16 +1202,7 @@ function getMountPaths(routesDir: string) {
 
   const content = fs.readFileSync(indexPath, 'utf-8');
   const mountMap: AnyRecord = {};
-
-  // Parse import: import varName from './xxx.routes'
-  const importMap: Record<string, string> = {};
-  const importRegex = /import\s+(\w+)\s+from\s+['"`]\.\/([^'"`]+)['"`]/g;
-  let importMatch;
-  while ((importMatch = importRegex.exec(content)) !== null) {
-    const varName = importMatch[1];
-    const fileName = importMatch[2].replace('.routes', '').replace('./', '');
-    importMap[varName] = fileName;
-  }
+  const importMap = buildResolvedImportMap(content, indexPath);
 
   // Parse router.use('/path', varName)
   const useRegex = /router\.use\s*\(\s*['"`]\/([^'"`]+)['"`]\s*,\s*(\w+)\s*\)/g;
@@ -1168,15 +1210,18 @@ function getMountPaths(routesDir: string) {
   while ((useMatch = useRegex.exec(content)) !== null) {
     const mountPath = useMatch[1];
     const varName = useMatch[2];
-    const fileName = importMap[varName];
-    if (fileName) mountMap[fileName] = mountPath;
+    const filePath = importMap[varName];
+    if (filePath) mountMap[filePath] = mountPath;
   }
 
   // Fallback: require() syntax
   const requireRegex = /router\.use\s*\(\s*['"`]\/([^'"`]+)['"`]\s*,\s*require\s*\(\s*['"`]\.\/([^'"`]+)['"`]\s*\)/g;
   let reqMatch;
   while ((reqMatch = requireRegex.exec(content)) !== null) {
-    mountMap[reqMatch[2].replace('.routes', '').replace('./', '')] = reqMatch[1];
+    const filePath = resolveSourceImportPath(indexPath, reqMatch[2]);
+    if (filePath) {
+      mountMap[filePath] = reqMatch[1];
+    }
   }
 
   return mountMap;
@@ -1245,21 +1290,22 @@ function detectRouteMiddleware(routeText) {
 function scanRoutes(routesDir = path.join(__dirname, '../routes')) {
   const paths: AnyRecord = {};
   const mountMap = getMountPaths(routesDir);
-  const routeFiles = fs.readdirSync(routesDir).filter((f) => /\.routes\.(ts|js)$/.test(f));
 
-  for (const file of routeFiles) {
-    const content = fs.readFileSync(path.join(routesDir, file), 'utf-8');
-    const baseName = file.replace(/\.routes\.(ts|js)$/, '');
-    Object.assign(paths, parseRoutesFromFile(content, mountMap[baseName] || baseName));
+  for (const [routeFilePath, mountPath] of Object.entries(mountMap)) {
+    if (!routeFilePath || !fs.existsSync(routeFilePath)) continue;
+
+    const content = fs.readFileSync(routeFilePath, 'utf-8');
+    Object.assign(paths, parseRoutesFromFile(content, mountPath, routeFilePath));
   }
 
   return paths;
 }
 
-function parseRoutesFromFile(content: string, basePath: string) {
+function parseRoutesFromFile(content: string, basePath: string, routeFilePath: string) {
   const paths: AnyRecord = {};
   const cleanContent = content.replace(/^\s*\/\/.*$/gm, '');
   const globalMw = detectGlobalMiddleware(cleanContent);
+  const importMap = buildResolvedImportMap(cleanContent, routeFilePath);
 
   const routeRegex =
     /router\.(get|post|put|patch|delete)\s*\(\s*['"`]([^'"`]+)['"`]([\s\S]*?(\w+Controller)\.([\w]+))/g;

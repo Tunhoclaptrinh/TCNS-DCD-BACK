@@ -1,12 +1,12 @@
 import express from 'express';
-import authRoutes from './auth.routes';
-import userRoutes from './user.routes';
-import uploadRoutes from './upload.routes';
-import fileRoutes from './file.routes';
-import notificationRoutes from './notification.routes';
-import dutyRoutes from './duty.routes';
-import rewardPenaltyRoutes from './reward-penalty.routes';
-import reportRoutes from './report.routes';
+import authRoutes from '@modules/auth/routes/auth.routes';
+import userRoutes from '@modules/users/routes/user.routes';
+import uploadRoutes from '@modules/files/routes/upload.routes';
+import fileRoutes from '@modules/files/routes/file.routes';
+import notificationRoutes from '@modules/notifications/routes/notification.routes';
+import dutyRoutes from '@modules/duty/routes/duty.routes';
+import rewardPenaltyRoutes from '@modules/reward-penalties/routes/reward-penalty.routes';
+import reportRoutes from '@modules/reports/routes/report.routes';
 
 const router = express.Router();
 

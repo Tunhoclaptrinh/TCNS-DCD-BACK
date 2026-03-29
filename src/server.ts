@@ -9,14 +9,14 @@ import os from 'os';
 import axios from 'axios';
 import { Server as SocketIOServer } from 'socket.io';
 
-import loggerMiddleware from './middleware/logger.middleware';
-import { responseInterceptor, errorHandler, notFoundHandler } from './middleware/response.middleware';
-import { parseQuery, formatResponse, validateQuery, logQuery } from './middleware/query.middleware';
-import { normalizeRequestBodyCase } from './middleware/request-case.middleware';
+import requestLogger from './middleware/request-logger.middleware';
+import { errorHandler, notFoundHandler, wrapJsonResponse } from './middleware/http-response.middleware';
+import { appendPaginationHeaders, parseApiQuery, validatePaginationQuery } from './middleware/api-query.middleware';
+import { normalizeRequestBodyKeys } from './middleware/normalize-request-body.middleware';
 import { setupSwagger } from './utils/swagger';
 import routes from './routes';
 import { initSocket } from './socket';
-import { initDatabase } from './config/database';
+import { initDatabase } from '@database';
 
 dotenv.config();
 
@@ -75,13 +75,12 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(UPLOAD_DIR));
 
 // ==================== APP MIDDLEWARE ====================
-app.use(normalizeRequestBodyCase);
-app.use(loggerMiddleware);
-app.use(responseInterceptor);
-app.use(parseQuery);
-app.use(formatResponse);
-app.use(validateQuery);
-app.use(logQuery);
+app.use(normalizeRequestBodyKeys);
+app.use(requestLogger);
+app.use(wrapJsonResponse);
+app.use(parseApiQuery);
+app.use(appendPaginationHeaders);
+app.use(validatePaginationQuery);
 
 // ==================== RATE LIMITING ====================
 const authLimiter = rateLimit({

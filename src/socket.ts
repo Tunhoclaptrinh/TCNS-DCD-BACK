@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import type { JwtPayload } from 'jsonwebtoken';
 import type { Server } from 'socket.io';
-import db from '@config/database';
+import db from '@database';
 
 type SocketTokenPayload = JwtPayload & {
   id?: number | string;
