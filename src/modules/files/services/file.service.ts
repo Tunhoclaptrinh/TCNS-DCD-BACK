@@ -16,6 +16,11 @@ type SaveFileRecordOptions = {
   dataBuffer?: Buffer | null;
   storeData?: unknown;
 };
+type SerializableRecord = AnyRecord & {
+  toJSON?: () => AnyRecord;
+  toObject?: () => AnyRecord;
+  _doc?: AnyRecord;
+};
 
 const PRIVILEGED_ROLES = new Set(['admin', 'staff', 'researcher']);
 
@@ -28,11 +33,7 @@ function normalizeNumericId(value: Identifier | null | undefined) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function toPlainRecord(item: AnyRecord) {
-  if (!item || typeof item !== 'object') {
-    return item;
-  }
-
+function toPlainRecord(item: SerializableRecord) {
   if (typeof item.toJSON === 'function') {
     return item.toJSON();
   }
@@ -41,7 +42,7 @@ function toPlainRecord(item: AnyRecord) {
     return item.toObject();
   }
 
-  if (item._doc && typeof item._doc === 'object') {
+  if (item._doc) {
     return item._doc;
   }
 

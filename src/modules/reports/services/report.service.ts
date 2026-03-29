@@ -3,8 +3,7 @@ import XLSX from 'xlsx';
 import reportsRepository from '@modules/reports/repositories/reports.repository';
 import type { AnyRecord } from '@app-types/common';
 
-function normalizeIdList(values: any[] = []) {
-  if (!Array.isArray(values)) return [];
+function normalizeIdList(values: readonly unknown[] = []) {
   return [...new Set(values.map((v) => Number(v)).filter((v) => !Number.isNaN(v)))];
 }
 
