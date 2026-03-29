@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "baseUrl": ".",
+    "paths": {
+      "@database": ["src/database/index"],
+      "@database/*": ["src/database/*"],
+      "@middleware/*": ["src/middleware/*"],
+      "@modules/*": ["src/modules/*"],
+      "@routes/*": ["src/routes/*"],
+      "@schemas": ["src/schemas/index"],
+      "@shared/*": ["src/shared/*"],
+      "@app-types/*": ["src/types/*"],
+      "@utils/*": ["src/utils/*"]
+    },
+    "outDir": "dist",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["index.ts", "src/**/*.ts", "src/**/*.d.ts"],
+  "exclude": ["dist", "node_modules"]
+}

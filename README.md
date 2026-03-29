@@ -8,7 +8,7 @@ Base Backend được xây dựng trên **Node.js + Express**, theo kiến trúc
 - **Authorization**: Permission-based RBAC (`resource:action`). Admin bypass toàn bộ với wildcard `*`.
 - **Users**: CRUD đầy đủ, quản lý trạng thái, thống kê, activity log, cập nhật profile.
 - **Notifications**: CRUD thông báo theo từng user.
-- **Uploads**: Upload avatar & file, quản lý storage (admin).
+- **Uploads**: Upload avatar & file lên Cloudinary, quản lý asset từ admin endpoint.
 - **Import / Export**: Import/Export dữ liệu CSV/XLSX, download template.
 - **Database**: JSON file (dev, zero-config) hoặc MongoDB (production).
 - **Swagger**: Tài liệu API tự động sinh từ code — xem `SWAGGER_AUTO.md`.
@@ -46,16 +46,20 @@ npm run dev
 
 ### Environment Variables (`.env`)
 
-| Biến                | Mô tả                                     | Mặc định           |
-| ------------------- | ----------------------------------------- | ------------------ |
-| `PORT`              | Port server lắng nghe                     | `3000`             |
-| `NODE_ENV`          | Môi trường (`development` / `production`) | `development`      |
-| `JWT_SECRET`        | Secret key JWT (tối thiểu 32 ký tự)       | _(bắt buộc)_       |
-| `JWT_EXPIRE`        | Thời hạn token                            | `30d`              |
-| `DB_CONNECTION`     | Loại database (`json` / `mongodb`)        | `json`             |
-| `DATABASE_URL`      | MongoDB connection string                 | \*(khi dùng mongo) |
-| `CORS_ORIGIN`       | Allowed CORS origins                      | `*`                |
-| `STORAGE_TOKEN_KEY` | Key lưu token trên client                 | `base_token`       |
+| Biến                    | Mô tả                                     | Mặc định                     |
+| ----------------------- | ----------------------------------------- | ---------------------------- |
+| `PORT`                  | Port server lắng nghe                     | `3000`                       |
+| `NODE_ENV`              | Môi trường (`development` / `production`) | `development`                |
+| `JWT_SECRET`            | Secret key JWT (tối thiểu 32 ký tự)       | _(bắt buộc)_                 |
+| `JWT_EXPIRE`            | Thời hạn token                            | `30d`                        |
+| `DB_CONNECTION`         | Loại database (`json` / `mongodb`)        | `json`                       |
+| `DATABASE_URL`          | MongoDB connection string                 | \*(khi dùng mongo)           |
+| `CLOUDINARY_CLOUD_NAME` | Cloudinary cloud name cho upload          | _(bắt buộc khi dùng upload)_ |
+| `CLOUDINARY_API_KEY`    | Cloudinary API key                        | _(bắt buộc khi dùng upload)_ |
+| `CLOUDINARY_API_SECRET` | Cloudinary API secret                     | _(bắt buộc khi dùng upload)_ |
+| `CLOUDINARY_FOLDER`     | Thư mục gốc trên Cloudinary               | `tcns`                       |
+| `CORS_ORIGIN`           | Allowed CORS origins                      | `*`                          |
+| `STORAGE_TOKEN_KEY`     | Key lưu token trên client                 | `base_token`                 |
 
 ---
 
@@ -63,46 +67,47 @@ npm run dev
 
 ```
 base-backend/
-├── index.js                        # Entrypoint
+├── index.ts                        # Entrypoint
 ├── src/
-│   ├── server.js                   # Khởi tạo Express, middleware, routes
+│   ├── server.ts                   # Khởi tạo Express, middleware, routes
 │   ├── config/                     # Cấu hình database abstraction
 │   ├── controllers/                # HTTP Request Handlers
-│   │   ├── auth.controller.js
-│   │   ├── user.controller.js
-│   │   ├── notification.controller.js
-│   │   ├── upload.controller.js
-│   │   └── importExport.controller.js
+│   │   ├── auth.controller.ts
+│   │   ├── user.controller.ts
+│   │   ├── notification.controller.ts
+│   │   ├── upload.controller.ts
+│   │   └── importExport.controller.ts
 │   ├── services/                   # Business Logic
-│   │   ├── user.service.js
+│   │   ├── user.service.ts
 │   │   └── common/
-│   │       ├── notification.service.js
-│   │       ├── upload.service.js
-│   │       └── importExport.service.js
+│   │       ├── notification.service.ts
+│   │       ├── upload.service.ts
+│   │       └── importExport.service.ts
 │   ├── middleware/
-│   │   ├── auth.middleware.js       # JWT validation, protect, authorize
-│   │   ├── rbac.middleware.js       # checkPermission('resource:action')
-│   │   ├── validation.middleware.js # Schema validation
-│   │   ├── query.middleware.js      # Parsing filter/sort/pagination
-│   │   ├── logger.middleware.js     # Request logging
-│   │   └── response.middleware.js   # Chuẩn hoá response format
+│   │   ├── auth.middleware.ts       # JWT validation, protect, authorize
+│   │   ├── rbac.middleware.ts       # checkPermission('resource:action')
+│   │   ├── validation.middleware.ts # Schema validation
+│   │   ├── query.middleware.ts      # Parsing filter/sort/pagination
+│   │   ├── logger.middleware.ts     # Request logging
+│   │   └── response.middleware.ts   # Chuẩn hoá response format
 │   ├── routes/
-│   │   ├── index.js                # Route aggregator
-│   │   ├── auth.routes.js
-│   │   ├── user.routes.js
-│   │   ├── notification.routes.js
-│   │   └── upload.routes.js
+│   │   ├── index.ts                # Route aggregator
+│   │   ├── auth.routes.ts
+│   │   ├── user.routes.ts
+│   │   ├── notification.routes.ts
+│   │   └── upload.routes.ts
 │   ├── schemas/                    # Validation schemas
-│   │   ├── index.js
-│   │   ├── user.schema.js
-│   │   └── notification.schema.js
+│   │   ├── index.ts
+│   │   ├── user.schema.ts
+│   │   └── notification.schema.ts
+│   ├── types/                      # Express/Socket augmentation
 │   ├── utils/
-│   │   ├── base-service.js         # CRUD generic service
-│   │   ├── base-controller.js      # Generic controller wrapper
-│   │   ├── api-error.js            # Custom error class
-│   │   ├── helpers.js              # JWT, password helpers
-│   │   └── swagger.js              # Swagger auto-generation
-│   └── database/                   # JSON DB storage & uploads
+│   │   ├── base-service.ts         # CRUD generic service
+│   │   ├── base-controller.ts      # Generic controller wrapper
+│   │   ├── api-error.ts            # Custom error class
+│   │   ├── helpers.ts              # JWT, password helpers
+│   │   └── swagger.ts              # Swagger auto-generation
+│   └── database/                   # JSON DB storage
 ```
 
 ---
@@ -150,14 +155,14 @@ base-backend/
 
 ### Upload — `/api/upload`
 
-| Method | Path         | Auth  | Mô tả                 |
-| ------ | ------------ | ----- | --------------------- |
-| POST   | `/avatar`    | ✓     | Upload avatar (ảnh)   |
-| POST   | `/general`   | ✓     | Upload file tổng quát |
-| DELETE | `/file`      | admin | Xoá file              |
-| GET    | `/file/info` | admin | Thông tin file        |
-| GET    | `/stats`     | admin | Thống kê storage      |
-| POST   | `/cleanup`   | admin | Dọn dẹp file cũ       |
+| Method | Path         | Auth  | Mô tả                                        |
+| ------ | ------------ | ----- | -------------------------------------------- |
+| POST   | `/avatar`    | ✓     | Upload avatar (ảnh)                          |
+| POST   | `/general`   | ✓     | Upload ảnh tổng quát lên Cloudinary          |
+| DELETE | `/file`      | admin | Xoá file theo `publicId` hoặc `url`          |
+| GET    | `/file/info` | admin | Thông tin file từ Cloudinary                 |
+| GET    | `/stats`     | admin | Thống kê storage theo folder trên Cloudinary |
+| POST   | `/cleanup`   | admin | Dọn asset cũ trên Cloudinary                 |
 
 ---
 
