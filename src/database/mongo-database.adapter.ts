@@ -76,9 +76,8 @@ class MongoConnect implements DatabaseAdapter {
     if (mongoose.connection.readyState === 0) {
       try {
         await mongoose.connect(process.env.DATABASE_URL);
-        console.log('🔌 MongoDB Adapter Connected');
       } catch (error) {
-        console.error('❌ MongoDB Connection Error:', error);
+        console.error('MongoDB connection error:', error);
         throw error;
       }
     }
@@ -150,13 +149,10 @@ class MongoConnect implements DatabaseAdapter {
         }
 
         this.models[entityName] = mongoose.model(entityName, schema);
-        console.log(`✅ Model created: ${entityName}`);
       } else {
         this.models[entityName] = mongoose.models[entityName];
       }
     }
-
-    console.log(`📦 Total models loaded: ${Object.keys(this.models).length}`);
   }
 
   getModel(collection: string) {
