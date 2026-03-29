@@ -5,13 +5,13 @@
     "moduleResolution": "node",
     "baseUrl": ".",
     "paths": {
-      "@config/*": ["src/config/*"],
-      "@controllers/*": ["src/controllers/*"],
+      "@database": ["src/database/index"],
+      "@database/*": ["src/database/*"],
       "@middleware/*": ["src/middleware/*"],
+      "@modules/*": ["src/modules/*"],
       "@routes/*": ["src/routes/*"],
       "@schemas": ["src/schemas/index"],
-      "@schemas/*": ["src/schemas/*"],
-      "@services/*": ["src/services/*"],
+      "@shared/*": ["src/shared/*"],
       "@app-types/*": ["src/types/*"],
       "@utils/*": ["src/utils/*"]
     },

@@ -1,47 +1,7 @@
-const PERMISSIONS = {
-  admin: ['*'],
-  staff: [
-    'users:list',
-    'users:read',
-    'users:create',
-    'users:update',
-    'users:delete',
-    'users:manage_status',
-    'users:view_stats',
-    'users:manage_rank',
-    'users:expel',
-    'dashboard:view',
-    'duty:view',
-    'duty:register',
-    'duty:update',
-    'duty:manage',
-    'duty:approve_swap',
-    'reward_penalty:view',
-    'reward_penalty:manage',
-    'reports:view',
-    'reports:export',
-  ],
-  researcher: ['users:list', 'users:read', 'dashboard:view', 'reports:view'],
-  customer: [
-    'profile:read',
-    'profile:update',
-    'dashboard:view',
-    'duty:view',
-    'duty:register',
-    'duty:update',
-    'reward_penalty:view',
-  ],
-};
+import { getRolePermissions as resolveRolePermissions, hasPermission } from '@shared/security/permission-policy';
 
-const ADMIN_WILDCARD = '*';
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
-
-function hasPermission(role, permission) {
-  const rolePermissions = PERMISSIONS[role];
-  if (!rolePermissions) return false;
-  if (rolePermissions.includes(ADMIN_WILDCARD)) return true;
-  return rolePermissions.includes(permission);
-}
+type RateLimitRecord = { count: number; resetTime: number };
 
 export const checkPermission = (permission) => {
   return (req, res, next) => {
@@ -66,10 +26,10 @@ export const checkPermission = (permission) => {
 };
 
 export const getRolePermissions = (role) => {
-  return PERMISSIONS[role] || [];
+  return resolveRolePermissions(role);
 };
 
-const rateLimitStore = new Map();
+const rateLimitStore = new Map<string, RateLimitRecord>();
 
 export const roleBasedRateLimit = (limits) => {
   return (req, res, next) => {
@@ -103,6 +63,6 @@ export const getUserPermissions = (req, res) => {
   const userRole = req.user?.role;
   res.json({
     success: true,
-    data: { role: userRole, permissions: PERMISSIONS[userRole] || [] },
+    data: { role: userRole, permissions: resolveRolePermissions(userRole) },
   });
 };
