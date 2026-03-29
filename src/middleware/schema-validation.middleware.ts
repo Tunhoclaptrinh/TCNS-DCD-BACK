@@ -6,6 +6,7 @@ import { camelizeObjectKeys } from '@utils/case';
 
 const BOOL_VALUES = new Set(['true', 'false', '1', '0', 'yes', 'no']);
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+type FieldFilter = readonly string[];
 
 function isEmpty(value: any) {
   return value === undefined || value === null || value === '';
@@ -65,7 +66,7 @@ function validateType(field: string, value: any, rule: SchemaRule) {
   return null;
 }
 
-function collectValidationErrors(schema: SchemaDefinition, body: AnyRecord, fieldFilter?: string[]) {
+function collectValidationErrors(schema: SchemaDefinition, body: AnyRecord, fieldFilter?: FieldFilter) {
   const errors: Record<string, string> = {};
 
   for (const [field, rule] of Object.entries(schema) as Array<[string, SchemaRule]>) {
@@ -98,31 +99,33 @@ function sendValidationErrorResponse(res: Response, errors: Record<string, strin
   return true;
 }
 
-export const validateSchema = (entity: string) => {
+function normalizeRequestBody(req: Request) {
+  req.body = camelizeObjectKeys(req.body);
+}
+
+function normalizeFieldFilter(fields: string | string[]): FieldFilter {
+  return Array.isArray(fields) ? fields : [fields];
+}
+
+function createSchemaValidator(entity: string, fieldFilter?: FieldFilter) {
   return (req: Request, res: Response, next: NextFunction) => {
     const schema = findSchemaByEntityName(entity);
     if (!schema) return next();
 
-    req.body = camelizeObjectKeys(req.body);
-    const errors = collectValidationErrors(schema, req.body);
-    if (sendValidationErrorResponse(res, errors)) return;
-
-    next();
-  };
-};
-
-export const validateFields = (entity: string, fields: string | string[]) => {
-  return (req: Request, res: Response, next: NextFunction) => {
-    const schema = findSchemaByEntityName(entity);
-    if (!schema) return next();
-
-    req.body = camelizeObjectKeys(req.body);
-    const fieldFilter = Array.isArray(fields) ? fields : [fields];
+    normalizeRequestBody(req);
     const errors = collectValidationErrors(schema, req.body, fieldFilter);
     if (sendValidationErrorResponse(res, errors)) return;
 
     next();
   };
+}
+
+export const validateSchema = (entity: string) => {
+  return createSchemaValidator(entity);
+};
+
+export const validateFields = (entity: string, fields: string | string[]) => {
+  return createSchemaValidator(entity, normalizeFieldFilter(fields));
 };
 
 function buildFieldDoc(rule: SchemaRule) {
