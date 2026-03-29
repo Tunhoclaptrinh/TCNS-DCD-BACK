@@ -1,13 +1,45 @@
 import type { NextFunction, Request, Response } from 'express';
 import type { AnyRecord } from '@app-types/common';
 
-function buildWrappedJsonResponse(res: Response, data: any) {
+type ResponseEnvelope = AnyRecord & {
+  success: boolean;
+  statusCode?: number;
+  timestamp?: string;
+};
+type PaginationPayload = AnyRecord & {
+  data?: unknown;
+  pagination: unknown;
+};
+type ErrorLike = Error & {
+  statusCode?: number;
+  isOperational?: boolean;
+  errors?: unknown;
+};
+
+function isRecord(value: unknown): value is AnyRecord {
+  return value !== null && typeof value === 'object';
+}
+
+function isResponseEnvelope(value: unknown): value is ResponseEnvelope {
+  return isRecord(value) && 'success' in value;
+}
+
+function hasPaginationPayload(value: unknown): value is PaginationPayload {
+  return isRecord(value) && 'pagination' in value;
+}
+
+function addTimestamp<T extends AnyRecord & { timestamp?: string }>(payload: T) {
+  payload.timestamp = new Date().toISOString();
+  return payload;
+}
+
+function buildWrappedJsonResponse(res: Response, data: unknown) {
   const wrapped: AnyRecord = {
     success: res.statusCode < 400,
     statusCode: res.statusCode,
   };
 
-  if (data && typeof data === 'object' && data.pagination) {
+  if (hasPaginationPayload(data)) {
     wrapped.data = data.data;
     wrapped.pagination = data.pagination;
 
@@ -20,11 +52,10 @@ function buildWrappedJsonResponse(res: Response, data: any) {
     wrapped.data = data;
   }
 
-  wrapped.timestamp = new Date().toISOString();
-  return wrapped;
+  return addTimestamp(wrapped);
 }
 
-function logUnexpectedError(err: any, req: Request) {
+function logUnexpectedError(err: ErrorLike, req: Request) {
   console.error('[ERROR]', {
     message: err.message,
     path: req.path,
@@ -36,13 +67,12 @@ function logUnexpectedError(err: any, req: Request) {
 export const wrapJsonResponse = (_req: Request, res: Response, next: NextFunction) => {
   const originalJson = res.json.bind(res);
 
-  res.json = function (data: any) {
-    if (data && typeof data === 'object' && 'success' in data) {
+  res.json = function (data: unknown) {
+    if (isResponseEnvelope(data)) {
       if (data.success === false && data.statusCode) {
         res.statusCode = data.statusCode;
       }
-      data.timestamp = new Date().toISOString();
-      return originalJson(data);
+      return originalJson(addTimestamp(data));
     }
 
     return originalJson(buildWrappedJsonResponse(res, data));
@@ -51,7 +81,7 @@ export const wrapJsonResponse = (_req: Request, res: Response, next: NextFunctio
   next();
 };
 
-export const errorHandler = (err: any, req: Request, res: Response, _next: NextFunction) => {
+export const errorHandler = (err: ErrorLike, req: Request, res: Response, _next: NextFunction) => {
   const statusCode = err.statusCode || 500;
   const isOperational = err.isOperational || false;
 
@@ -70,9 +100,7 @@ export const errorHandler = (err: any, req: Request, res: Response, _next: NextF
     response.error = { type: err.name, stack: err.stack };
   }
 
-  response.timestamp = new Date().toISOString();
-
-  res.status(statusCode).json(response);
+  res.status(statusCode).json(addTimestamp(response));
 };
 
 export const notFoundHandler = (req: Request, res: Response) => {

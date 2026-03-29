@@ -1,14 +1,27 @@
 import jwt from 'jsonwebtoken';
+import type { NextFunction, Request, Response } from 'express';
 import db from '@database';
+import type { Identifier } from '@app-types/common';
 
-function sendAuthError(res, message: string) {
+type AuthTokenPayload = {
+  id: Identifier;
+  loginTime?: string | null;
+};
+type AuthenticatedUser = Record<string, any> & {
+  id: Identifier;
+  role?: string;
+  isActive?: boolean;
+  lastLogin?: string | null;
+};
+
+function sendAuthError(res: Response, message: string) {
   return res.status(401).json({
     success: false,
     message,
   });
 }
 
-function readBearerToken(req) {
+function readBearerToken(req: Request) {
   const authorizationHeader = req.headers.authorization;
   if (authorizationHeader && authorizationHeader.startsWith('Bearer')) {
     return authorizationHeader.split(' ')[1];
@@ -16,7 +29,19 @@ function readBearerToken(req) {
   return null;
 }
 
-export const protect = async (req, res, next) => {
+function decodeAuthToken(token: string) {
+  return jwt.verify(token, process.env.JWT_SECRET as string) as AuthTokenPayload;
+}
+
+function isTokenOutdated(decoded: AuthTokenPayload, user: AuthenticatedUser) {
+  if (!decoded.loginTime || !user.lastLogin) {
+    return false;
+  }
+
+  return new Date(decoded.loginTime).getTime() < new Date(user.lastLogin).getTime();
+}
+
+export const protect = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const token = readBearerToken(req);
 
@@ -24,14 +49,14 @@ export const protect = async (req, res, next) => {
       return sendAuthError(res, 'Not authorized to access this route');
     }
 
-    let decoded;
+    let decoded: AuthTokenPayload;
     try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET);
+      decoded = decodeAuthToken(token);
     } catch {
       return sendAuthError(res, 'Token is invalid or expired');
     }
 
-    const user = await db.findById('users', decoded.id);
+    const user = (await db.findById('users', decoded.id)) as AuthenticatedUser | null;
 
     if (!user) {
       return sendAuthError(res, 'User not found');
@@ -41,11 +66,8 @@ export const protect = async (req, res, next) => {
       return sendAuthError(res, 'User account is inactive');
     }
 
-    if (decoded.loginTime && user.lastLogin) {
-      const isTokenOutdated = new Date(decoded.loginTime).getTime() < new Date(user.lastLogin).getTime();
-      if (isTokenOutdated) {
-        return sendAuthError(res, 'Token has been invalidated. Please login again.');
-      }
+    if (isTokenOutdated(decoded, user)) {
+      return sendAuthError(res, 'Token has been invalidated. Please login again.');
     }
 
     req.user = user;
@@ -55,8 +77,8 @@ export const protect = async (req, res, next) => {
   }
 };
 
-export const authorize = (...roles) => {
-  return (req, res, next) => {
+export const authorize = (...roles: string[]) => {
+  return (req: Request, res: Response, next: NextFunction) => {
     const userRole = req.user?.role;
 
     if (!userRole || !roles.includes(userRole)) {
