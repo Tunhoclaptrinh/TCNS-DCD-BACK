@@ -5,18 +5,17 @@ import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import path from 'path';
-import os from 'os';
 import axios from 'axios';
 import { Server as SocketIOServer } from 'socket.io';
 
-import loggerMiddleware from './middleware/logger.middleware';
-import { responseInterceptor, errorHandler, notFoundHandler } from './middleware/response.middleware';
-import { parseQuery, formatResponse, validateQuery, logQuery } from './middleware/query.middleware';
-import { normalizeRequestBodyCase } from './middleware/request-case.middleware';
+import requestLogger from './middleware/request-logger.middleware';
+import { errorHandler, notFoundHandler, wrapJsonResponse } from './middleware/http-response.middleware';
+import { appendPaginationHeaders, parseApiQuery, validatePaginationQuery } from './middleware/api-query.middleware';
+import { normalizeRequestBodyKeys } from './middleware/normalize-request-body.middleware';
 import { setupSwagger } from './utils/swagger';
 import routes from './routes';
 import { initSocket } from './socket';
-import { initDatabase } from './config/database';
+import { initDatabase } from '@database';
 
 dotenv.config();
 
@@ -75,13 +74,12 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(UPLOAD_DIR));
 
 // ==================== APP MIDDLEWARE ====================
-app.use(normalizeRequestBodyCase);
-app.use(loggerMiddleware);
-app.use(responseInterceptor);
-app.use(parseQuery);
-app.use(formatResponse);
-app.use(validateQuery);
-app.use(logQuery);
+app.use(normalizeRequestBodyKeys);
+app.use(requestLogger);
+app.use(wrapJsonResponse);
+app.use(parseApiQuery);
+app.use(appendPaginationHeaders);
+app.use(validatePaginationQuery);
 
 // ==================== RATE LIMITING ====================
 const authLimiter = rateLimit({
@@ -110,27 +108,13 @@ app.get('/api/health', (req, res) => {
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-// ==================== HELPERS ====================
-function getNetworkIp() {
-  const interfaces = os.networkInterfaces();
-  for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name]) {
-      if (iface.family === 'IPv4' && !iface.internal) return iface.address;
-    }
-  }
-  return 'localhost';
-}
-
 async function pingService(url) {
   try {
     await axios.get(url, { timeout: 10000 });
-    console.log(`[${new Date().toISOString()}] 💓 Wake up successful`);
   } catch (error) {
     const status = error.response?.status;
-    if (status) {
-      console.log(`[${new Date().toISOString()}] 💓 Wake up successful (Status: ${status})`);
-    } else {
-      console.error(`[${new Date().toISOString()}] ⚠️ Wake up failed: ${error.message}`);
+    if (!status) {
+      console.error(`Keep-alive request failed: ${error.message}`);
     }
   }
 }
@@ -141,7 +125,6 @@ function startKeepAlive() {
 
   try {
     const targetUrl = `${new URL(serviceUrl).origin}/`;
-    console.log(`⏰ Keep-alive: ${targetUrl}`);
     pingService(targetUrl);
     setInterval(() => pingService(targetUrl), KEEPALIVE_INTERVAL);
   } catch (err) {
@@ -165,26 +148,16 @@ async function bootstrap() {
   initSocket(io);
 
   httpServer.listen(PORT, () => {
-    const ip = getNetworkIp();
     const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
-    console.log(`
-╔══════════════════════════════════════════╗
-║  🚀 Server Started                      ║
-╠══════════════════════════════════════════╣
-║  📍 Local:   http://localhost:${PORT}        ║
-║  📡 Network: http://${ip}:${PORT}     ║
-║  🔌 Socket:  ws://localhost:${PORT}         ║
-║  🌐 Base:    ${baseUrl.padEnd(28)}║
-║  📖 ApiDocs: ${baseUrl}/api-docs        ║
-║  🌍 Env:     ${(process.env.NODE_ENV || 'development').padEnd(26)}║
-╚══════════════════════════════════════════╝`);
+    console.log(`Local: http://localhost:${PORT}`);
+    console.log(`API Docs: ${baseUrl}/api-docs`);
 
     startKeepAlive();
   });
 }
 
 bootstrap().catch((err) => {
-  console.error('❌ Failed to start server:', err.message);
+  console.error('Failed to start server:', err.message);
   process.exit(1);
 });
 
