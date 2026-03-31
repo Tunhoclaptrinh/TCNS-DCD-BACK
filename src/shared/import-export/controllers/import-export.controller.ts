@@ -1,57 +1,50 @@
 import multer from 'multer';
+import BaseController from '@shared/common/base-controller';
 import importExportService from '@shared/import-export/services/import-export.service';
 
-class ImportExportController {
+class ImportExportController extends BaseController {
   getUploadMiddleware() {
     return multer({ storage: multer.memoryStorage() }).single('file');
   }
 
-  importData = async (req, res, next) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({ message: 'No file uploaded' });
-      }
+  getFormat(queryValue) {
+    return Array.isArray(queryValue) ? String(queryValue[0] || 'xlsx') : String(queryValue || 'xlsx');
+  }
 
-      const { entity } = req.params;
-      const data = await importExportService.importData(entity, req.file.buffer, req.file.originalname);
-      res.json(data);
-    } catch (error) {
-      next(error);
+  importData = this.handle(async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded' });
     }
-  };
 
-  exportData = async (req, res, next) => {
-    try {
-      const { entity } = req.params;
-      const format = req.query.format || 'xlsx';
-      const buffer = await importExportService.exportData(entity, format, req.query);
+    const { entity } = req.params;
+    const data = await importExportService.importData(entity, req.file.buffer, req.file.originalname);
+    this.ok(res, data);
+  });
 
-      const contentType =
-        format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      const ext = format === 'csv' ? 'csv' : 'xlsx';
+  exportData = this.handle(async (req, res) => {
+    const { entity } = req.params;
+    const format = this.getFormat(req.query.format);
+    const buffer = await importExportService.exportData(entity, format, req.query);
 
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Disposition', `attachment; filename="${entity}.${ext}"`);
-      res.send(buffer);
-    } catch (error) {
-      next(error);
-    }
-  };
+    const contentType =
+      format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const ext = format === 'csv' ? 'csv' : 'xlsx';
 
-  downloadTemplate = async (req, res, next) => {
-    try {
-      const { entity } = req.params;
-      const format = req.query.format || 'xlsx';
-      const buffer = importExportService.generateTemplate(entity, format);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${entity}.${ext}"`);
+    res.send(buffer);
+  });
 
-      const ext = format === 'csv' ? 'csv' : 'xlsx';
-      res.setHeader('Content-Type', 'application/octet-stream');
-      res.setHeader('Content-Disposition', `attachment; filename="${entity}_template.${ext}"`);
-      res.send(buffer);
-    } catch (error) {
-      next(error);
-    }
-  };
+  downloadTemplate = this.handle(async (req, res) => {
+    const { entity } = req.params;
+    const format = this.getFormat(req.query.format);
+    const buffer = importExportService.generateTemplate(entity, format);
+
+    const ext = format === 'csv' ? 'csv' : 'xlsx';
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${entity}_template.${ext}"`);
+    res.send(buffer);
+  });
 }
 
 export default new ImportExportController();

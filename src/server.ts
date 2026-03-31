@@ -8,10 +8,10 @@ import path from 'path';
 import axios from 'axios';
 import { Server as SocketIOServer } from 'socket.io';
 
-import requestLogger from './middleware/request-logger.middleware';
-import { errorHandler, notFoundHandler, wrapJsonResponse } from './middleware/http-response.middleware';
-import { appendPaginationHeaders, parseApiQuery, validatePaginationQuery } from './middleware/api-query.middleware';
-import { normalizeRequestBodyKeys } from './middleware/normalize-request-body.middleware';
+import logRequest from './middleware/request-logger.middleware';
+import { handleError, notFound, wrapJson } from './middleware/http-response.middleware';
+import { appendPaginationHeaders, parseApiQuery } from './middleware/api-query.middleware';
+import { camelizeBody } from './middleware/normalize-request-body.middleware';
 import { setupSwagger } from './utils/swagger';
 import routes from './routes';
 import { initSocket } from './socket';
@@ -73,13 +73,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(UPLOAD_DIR));
 
-// ==================== APP MIDDLEWARE ====================
-app.use(normalizeRequestBodyKeys);
-app.use(requestLogger);
-app.use(wrapJsonResponse);
-app.use(parseApiQuery);
-app.use(appendPaginationHeaders);
-app.use(validatePaginationQuery);
+// ==================== API MIDDLEWARE ====================
+app.use('/api', camelizeBody, logRequest, wrapJson, appendPaginationHeaders, parseApiQuery);
 
 // ==================== RATE LIMITING ====================
 const authLimiter = rateLimit({
@@ -105,8 +100,8 @@ app.get('/api/health', (req, res) => {
 });
 
 // ==================== ERROR HANDLING ====================
-app.use(notFoundHandler);
-app.use(errorHandler);
+app.use(notFound);
+app.use(handleError);
 
 async function pingService(url) {
   try {

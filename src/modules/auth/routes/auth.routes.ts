@@ -1,8 +1,8 @@
 import express from 'express';
 import authController from '@modules/auth/controllers/auth.controller';
-import { protect } from '@middleware/auth.middleware';
-import { copyNewPasswordField, requirePasswordResetTarget } from '@middleware/normalize-auth-payload.middleware';
-import { validateSchema, validateFields } from '@middleware/schema-validation.middleware';
+import { requireAuth } from '@middleware/auth.middleware';
+import { mapNewPassword, requireResetTarget } from '@middleware/normalize-auth-payload.middleware';
+import { validateFields, validateSchema } from '@middleware/schema-validation.middleware';
 
 const router = express.Router();
 
@@ -13,27 +13,22 @@ router.post('/register', validateSchema('user'), authController.register);
 router.post('/login', validateFields('user', ['email', 'password']), authController.login);
 
 // Forgot password
-router.post('/forgot-password', requirePasswordResetTarget, authController.forgotPassword);
+router.post('/forgot-password', requireResetTarget, authController.forgotPassword);
 
 // Reset password
-router.post(
-  '/reset-password',
-  copyNewPasswordField,
-  validateFields('user', ['password']),
-  authController.resetPassword,
-);
+router.post('/reset-password', mapNewPassword, validateFields('user', ['password']), authController.resetPassword);
 
 // Get me
-router.get('/me', protect, authController.getMe);
+router.get('/me', requireAuth, authController.getMe);
 
 // Logout
-router.post('/logout', protect, authController.logout);
+router.post('/logout', requireAuth, authController.logout);
 
 // Change password - custom validate
 router.put(
   '/change-password',
-  protect,
-  copyNewPasswordField,
+  requireAuth,
+  mapNewPassword,
   validateFields('user', ['password']),
   authController.changePassword,
 );
