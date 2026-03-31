@@ -1,5 +1,6 @@
 import { validationResult } from 'express-validator';
 import authService from '@modules/auth/services/auth.service';
+import BaseController from '@shared/common/base-controller';
 import ApiError from '@utils/api-error';
 
 function ensureValidRequest(req) {
@@ -9,81 +10,49 @@ function ensureValidRequest(req) {
   }
 }
 
-class AuthController {
-  register = async (req, res, next) => {
-    try {
-      ensureValidRequest(req);
-      const data = await authService.register(req.body);
-      res.status(201).json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+class AuthController extends BaseController {
+  register = this.handle(async (req, res) => {
+    ensureValidRequest(req);
+    const data = await authService.register(req.body);
+    this.created(res, data);
+  });
 
-  login = async (req, res, next) => {
-    try {
-      ensureValidRequest(req);
-      const data = await authService.login(req.body);
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  login = this.handle(async (req, res) => {
+    ensureValidRequest(req);
+    const data = await authService.login(req.body);
+    this.ok(res, data);
+  });
 
-  getMe = async (req, res, next) => {
-    try {
-      res.json(authService.getMe(req.user));
-    } catch (error) {
-      next(error);
-    }
-  };
+  getMe = this.handle(async (req, res) => {
+    this.ok(res, authService.getMe(req.user));
+  });
 
-  logout = async (_req, res, next) => {
-    try {
-      res.json(authService.logout());
-    } catch (error) {
-      next(error);
-    }
-  };
+  logout = this.handle(async (_req, res) => {
+    this.ok(res, authService.logout());
+  });
 
-  changePassword = async (req, res, next) => {
-    try {
-      ensureValidRequest(req);
-      const data = await authService.changePassword(req.user, req.body);
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  changePassword = this.handle(async (req, res) => {
+    ensureValidRequest(req);
+    const data = await authService.changePassword(req.user, req.body);
+    this.ok(res, data);
+  });
 
-  refresh = async (req, res, next) => {
-    try {
-      const data = await authService.refreshToken(req.body);
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  refresh = this.handle(async (req, res) => {
+    const data = await authService.refreshToken(req.body);
+    this.ok(res, data);
+  });
 
-  forgotPassword = async (req, res, next) => {
-    try {
-      ensureValidRequest(req);
-      const data = await authService.forgotPassword(req.body);
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  forgotPassword = this.handle(async (req, res) => {
+    ensureValidRequest(req);
+    const data = await authService.forgotPassword(req.body);
+    this.ok(res, data);
+  });
 
-  resetPassword = async (req, res, next) => {
-    try {
-      ensureValidRequest(req);
-      const data = await authService.resetPassword(req.body);
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  resetPassword = this.handle(async (req, res) => {
+    ensureValidRequest(req);
+    const data = await authService.resetPassword(req.body);
+    this.ok(res, data);
+  });
 }
 
 export default new AuthController();

@@ -14,22 +14,23 @@ type AuthenticatedUser = Record<string, any> & {
   lastLogin?: string | null;
 };
 
-function sendAuthError(res: Response, message: string) {
+function unauthorized(res: Response, message: string) {
   return res.status(401).json({
     success: false,
     message,
   });
 }
 
-function readBearerToken(req: Request) {
+function getBearerToken(req: Request) {
   const authorizationHeader = req.headers.authorization;
   if (authorizationHeader && authorizationHeader.startsWith('Bearer')) {
     return authorizationHeader.split(' ')[1];
   }
+
   return null;
 }
 
-function decodeAuthToken(token: string) {
+function verifyAuthToken(token: string) {
   return jwt.verify(token, process.env.JWT_SECRET as string) as AuthTokenPayload;
 }
 
@@ -41,33 +42,37 @@ function isTokenOutdated(decoded: AuthTokenPayload, user: AuthenticatedUser) {
   return new Date(decoded.loginTime).getTime() < new Date(user.lastLogin).getTime();
 }
 
-export const protect = async (req: Request, res: Response, next: NextFunction) => {
+async function findUser(userId: Identifier) {
+  return (await db.findById('users', userId)) as AuthenticatedUser | null;
+}
+
+export const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const token = readBearerToken(req);
+    const token = getBearerToken(req);
 
     if (!token) {
-      return sendAuthError(res, 'Not authorized to access this route');
+      return unauthorized(res, 'Not authorized to access this route');
     }
 
     let decoded: AuthTokenPayload;
     try {
-      decoded = decodeAuthToken(token);
+      decoded = verifyAuthToken(token);
     } catch {
-      return sendAuthError(res, 'Token is invalid or expired');
+      return unauthorized(res, 'Token is invalid or expired');
     }
 
-    const user = (await db.findById('users', decoded.id)) as AuthenticatedUser | null;
+    const user = await findUser(decoded.id);
 
     if (!user) {
-      return sendAuthError(res, 'User not found');
+      return unauthorized(res, 'User not found');
     }
 
     if (!user.isActive) {
-      return sendAuthError(res, 'User account is inactive');
+      return unauthorized(res, 'User account is inactive');
     }
 
     if (isTokenOutdated(decoded, user)) {
-      return sendAuthError(res, 'Token has been invalidated. Please login again.');
+      return unauthorized(res, 'Token has been invalidated. Please login again.');
     }
 
     req.user = user;
@@ -77,11 +82,11 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
   }
 };
 
-export const authorize = (...roles: string[]) => {
+export const requireRole = (...allowedRoles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
     const userRole = req.user?.role;
 
-    if (!userRole || !roles.includes(userRole)) {
+    if (!userRole || !allowedRoles.includes(userRole)) {
       return res.status(403).json({
         success: false,
         message: `User role '${userRole}' is not authorized to access this route`,
@@ -90,5 +95,3 @@ export const authorize = (...roles: string[]) => {
     next();
   };
 };
-
-export const authorizeRoles = authorize;

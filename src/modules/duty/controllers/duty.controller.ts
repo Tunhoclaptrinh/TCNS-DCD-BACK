@@ -1,89 +1,59 @@
 import dutyService from '@modules/duty/services/duty.service';
+import BaseController from '@shared/common/base-controller';
+import type { AnyRecord, Identifier } from '@app-types/common';
 
-class DutyController {
-  getWeeklySchedule = async (req, res, next) => {
-    try {
-      const data = await dutyService.getWeeklySchedule({
-        ...req.parsedQuery,
-        weekStart: req.query.weekStart || req.query.week_start,
-      });
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+class DutyController extends BaseController {
+  getCurrentUser(req) {
+    return req.user as AnyRecord & { id: Identifier };
+  }
 
-  createSlot = async (req, res, next) => {
-    try {
-      const data = await dutyService.createSlot(req.body, req.user.id);
-      res.status(201).json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  getWeeklySchedule = this.handle(async (req, res) => {
+    const data = await dutyService.getWeeklySchedule({
+      ...req.parsedQuery,
+      weekStart: req.query.weekStart || req.query.week_start,
+    });
+    this.ok(res, data);
+  });
 
-  updateSlot = async (req, res, next) => {
-    try {
-      const data = await dutyService.updateSlot(req.params.id, req.body);
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  createSlot = this.handle(async (req, res) => {
+    const data = await dutyService.createSlot(req.body, req.user.id);
+    this.created(res, data);
+  });
 
-  registerToSlot = async (req, res, next) => {
-    try {
-      const data = await dutyService.registerToSlot(req.params.id, req.user);
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  updateSlot = this.handle(async (req, res) => {
+    const data = await dutyService.updateSlot(req.params.id, req.body);
+    this.ok(res, data);
+  });
 
-  cancelRegistration = async (req, res, next) => {
-    try {
-      const data = await dutyService.cancelRegistration(req.params.id, req.user);
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  registerToSlot = this.handle(async (req, res) => {
+    const data = await dutyService.registerToSlot(req.params.id, this.getCurrentUser(req));
+    this.ok(res, data);
+  });
 
-  requestSwap = async (req, res, next) => {
-    try {
-      const data = await dutyService.requestSwap(req.body, req.user);
-      res.status(201).json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  cancelRegistration = this.handle(async (req, res) => {
+    const data = await dutyService.cancelRegistration(req.params.id, this.getCurrentUser(req));
+    this.ok(res, data);
+  });
 
-  getSwapRequests = async (req, res, next) => {
-    try {
-      const data = await dutyService.getSwapRequests(req.user, req.parsedQuery);
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  requestSwap = this.handle(async (req, res) => {
+    const data = await dutyService.requestSwap(req.body, this.getCurrentUser(req));
+    this.created(res, data);
+  });
 
-  decideSwap = async (req, res, next) => {
-    try {
-      const data = await dutyService.decideSwap(req.params.id, req.body, req.user);
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  getSwapRequests = this.handle(async (req, res) => {
+    const data = await dutyService.getSwapRequests(req.user, req.parsedQuery);
+    this.ok(res, data);
+  });
 
-  getStats = async (req, res, next) => {
-    try {
-      const data = await dutyService.getStats();
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  decideSwap = this.handle(async (req, res) => {
+    const data = await dutyService.decideSwap(req.params.id, req.body, this.getCurrentUser(req));
+    this.ok(res, data);
+  });
+
+  getStats = this.handle(async (_req, res) => {
+    const data = await dutyService.getStats();
+    this.ok(res, data);
+  });
 }
 
 export default new DutyController();

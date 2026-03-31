@@ -1,10 +1,10 @@
 import express from 'express';
 import notificationController from '@modules/notifications/controllers/notification.controller';
-import { protect } from '@middleware/auth.middleware';
+import { requireAuth } from '@middleware/auth.middleware';
 
 const router = express.Router();
 
-router.use(protect); // All routes need auth
+router.use(requireAuth); // All routes need auth
 
 router.get('/settings', notificationController.getSettings);
 router.put('/settings', notificationController.updateSettings);

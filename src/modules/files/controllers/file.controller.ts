@@ -1,28 +1,21 @@
 import type { Request } from 'express';
 import fileService from '@modules/files/services/file.service';
+import BaseController from '@shared/common/base-controller';
 
-class FileController {
+class FileController extends BaseController {
   shouldIncludeData(req: Request) {
     return fileService.toBoolean(req.query.includeData, false);
   }
 
-  getFiles = async (req, res, next) => {
-    try {
-      const data = await fileService.getAccessibleFiles(req.user, req.parsedQuery, this.shouldIncludeData(req));
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  getFiles = this.handle(async (req, res) => {
+    const data = await fileService.getAccessibleFiles(req.user, req.parsedQuery, this.shouldIncludeData(req));
+    this.ok(res, data);
+  });
 
-  getFileById = async (req, res, next) => {
-    try {
-      const data = await fileService.getAccessibleFileById(req.params.id, req.user, this.shouldIncludeData(req));
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  getFileById = this.handle(async (req, res) => {
+    const data = await fileService.getAccessibleFileById(req.params.id, req.user, this.shouldIncludeData(req));
+    this.ok(res, data);
+  });
 }
 
 export default new FileController();
