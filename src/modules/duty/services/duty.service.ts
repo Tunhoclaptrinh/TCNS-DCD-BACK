@@ -7,23 +7,42 @@ import notificationService from '@modules/notifications/services/notification.se
 
 type Identifier = number | string;
 type GenericRecord = Record<string, any>;
+type DutyUser = GenericRecord & {
+  id: Identifier;
+  role?: string;
+  name?: string;
+  avatar?: string;
+  isActive?: boolean;
+};
+type DutySlotRecord = GenericRecord & {
+  id: Identifier;
+  shiftDate: string;
+  shiftLabel: string;
+  startTime?: string | null;
+  endTime?: string | null;
+  assignedUserIds?: Identifier[];
+  capacity?: number;
+  status?: string;
+};
+type DutySwapRequestRecord = GenericRecord & {
+  id: Identifier;
+  dutySlotId: Identifier;
+  requesterId: Identifier;
+  targetUserId: Identifier;
+  status: string;
+};
 
 function normalizeId(id: unknown): Identifier {
   const parsed = Number(id);
   return Number.isNaN(parsed) ? (id as Identifier) : parsed;
 }
 
-function normalizeIdList(values: unknown[] = []): Identifier[] {
-  if (!Array.isArray(values)) return [];
+function normalizeIdList(values: readonly unknown[] = []): Identifier[] {
   return [...new Set(values.map((item) => normalizeId(item)))];
 }
 
-function getActorId(user: GenericRecord | Identifier): Identifier {
-  if (typeof user === 'object' && user !== null) {
-    return normalizeId(user.id);
-  }
-
-  return normalizeId(user);
+function getActorId(user: DutyUser): Identifier {
+  return normalizeId(user.id);
 }
 
 function getWeekStartISO(input?: string | number | Date) {
@@ -71,6 +90,155 @@ class DutyService extends BaseService {
     super('duty_slots', dutySlotsRepository);
   }
 
+  getAssignedUserIds(slot: DutySlotRecord) {
+    return normalizeIdList(slot.assignedUserIds || []);
+  }
+
+  getSlotCapacity(slot: DutySlotRecord) {
+    return Math.max(1, Number(slot.capacity) || 1);
+  }
+
+  buildScheduleUserMap(users: DutyUser[]) {
+    return new Map(users.map((user) => [normalizeId(user.id), user]));
+  }
+
+  async findSlotOrThrow(slotId: Identifier) {
+    const slot = (await this.repository.findById(slotId)) as DutySlotRecord | null;
+    if (!slot) {
+      throw ApiError.notFound('Duty slot not found');
+    }
+    return slot;
+  }
+
+  async saveAssignedUsers(slotId: Identifier, assignedUserIds: Identifier[], updatedAt = new Date().toISOString()) {
+    return await this.repository.update(slotId, {
+      assignedUserIds,
+      updatedAt,
+    });
+  }
+
+  async notifySlotAssignment(userId: Identifier, slot: DutySlotRecord, action: 'register' | 'cancel') {
+    const title = action === 'register' ? 'Đăng ký ca trực thành công' : 'Hủy ca trực thành công';
+    const message =
+      action === 'register'
+        ? `Bạn đã đăng ký ca '${slot.shiftLabel}' ngày ${new Date(slot.shiftDate).toLocaleDateString('vi-VN')}.`
+        : `Bạn đã hủy ca '${slot.shiftLabel}' ngày ${new Date(slot.shiftDate).toLocaleDateString('vi-VN')}.`;
+
+    await notificationService.notifyUser(userId, {
+      title,
+      message,
+      category: 'shift',
+      type: 'shift',
+      refId: slot.id,
+      metadata: { action },
+    });
+  }
+
+  getApproverIds(users: DutyUser[]) {
+    return users
+      .filter((user) => user.isActive && (user.role === 'admin' || user.role === 'staff'))
+      .map((user) => normalizeId(user.id));
+  }
+
+  parseSwapDecision(payload: GenericRecord = {}) {
+    const decision = String(payload.decision || payload.status || '').toLowerCase();
+    const note = String(payload.note || payload.reason || payload.decisionNote || '').trim();
+
+    if (!['approved', 'rejected'].includes(decision)) {
+      throw ApiError.badRequest("decision must be 'approved' or 'rejected'");
+    }
+
+    return {
+      decision: decision as 'approved' | 'rejected',
+      note,
+    };
+  }
+
+  async applyApprovedSwapRequest(swapRequest: DutySwapRequestRecord, updatedAt: string) {
+    const slot = await this.findSlotOrThrow(swapRequest.dutySlotId);
+    const requesterId = normalizeId(swapRequest.requesterId);
+    const targetUserId = normalizeId(swapRequest.targetUserId);
+    const assigned = this.getAssignedUserIds(slot);
+
+    if (!assigned.includes(requesterId)) {
+      throw ApiError.badRequest('Requester is no longer assigned to this duty slot');
+    }
+
+    if (assigned.includes(targetUserId)) {
+      throw ApiError.badRequest('Target user is already assigned to this duty slot');
+    }
+
+    const nextAssigned = [...assigned.filter((id) => id !== requesterId), targetUserId];
+    await this.saveAssignedUsers(slot.id, nextAssigned, updatedAt);
+  }
+
+  async notifySwapDecision(swapRequest: DutySwapRequestRecord, decision: 'approved' | 'rejected', note: string) {
+    if (decision === 'approved') {
+      await notificationService.notifyUser(swapRequest.requesterId, {
+        title: 'Yêu cầu đổi ca đã được duyệt',
+        message: 'Yêu cầu đổi ca của bạn đã được chấp thuận.',
+        category: 'approval',
+        type: 'approval',
+        refId: swapRequest.id,
+        metadata: { decision: 'approved' },
+      });
+
+      await notificationService.notifyUser(swapRequest.targetUserId, {
+        title: 'Bạn đã được phân ca mới',
+        message: 'Yêu cầu đổi ca đã được duyệt và ca trực đã được cập nhật cho bạn.',
+        category: 'approval',
+        type: 'approval',
+        refId: swapRequest.id,
+        metadata: { decision: 'approved' },
+      });
+      return;
+    }
+
+    await notificationService.notifyUser(swapRequest.requesterId, {
+      title: 'Yêu cầu đổi ca bị từ chối',
+      message: note || 'Yêu cầu đổi ca của bạn đã bị từ chối.',
+      category: 'approval',
+      type: 'approval',
+      refId: swapRequest.id,
+      metadata: { decision: 'rejected' },
+    });
+  }
+
+  async notifySwapRequestCreated(
+    slot: DutySlotRecord,
+    swapRequestId: Identifier,
+    requesterId: Identifier,
+    targetUserId: Identifier,
+    approverIds: Identifier[],
+  ) {
+    await notificationService.notifyUser(requesterId, {
+      title: 'Yêu cầu đổi ca đã gửi',
+      message: `Yêu cầu đổi ca '${slot.shiftLabel}' của bạn đang chờ duyệt.`,
+      category: 'approval',
+      type: 'approval',
+      refId: swapRequestId,
+      metadata: { action: 'swap_request_created' },
+    });
+
+    await notificationService.notifyUser(targetUserId, {
+      title: 'Bạn có yêu cầu nhận ca trực',
+      message: `Bạn vừa nhận được yêu cầu đổi ca '${slot.shiftLabel}'.`,
+      category: 'approval',
+      type: 'approval',
+      refId: swapRequestId,
+      metadata: { action: 'swap_requested_to_you' },
+    });
+
+    await notificationService.notifyUsers(approverIds, {
+      title: 'Yêu cầu duyệt đổi ca',
+      message: `Có yêu cầu đổi ca mới cần duyệt cho ca '${slot.shiftLabel}'.`,
+      category: 'approval',
+      type: 'approval',
+      refId: swapRequestId,
+      metadata: { action: 'swap_pending_review' },
+    });
+  }
+
   buildSlotPayload(data: GenericRecord = {}, createdBy: Identifier | null = null) {
     const now = new Date().toISOString();
     const shiftDate = new Date(data.shiftDate || now).toISOString();
@@ -107,17 +275,18 @@ class DutyService extends BaseService {
       order: options.order || 'asc',
     });
 
-    const users = await usersRepository.findAll();
-    const userMap = new Map(
-      users.map((u) => [normalizeId(u.id), { id: u.id, name: u.name, role: u.role, avatar: u.avatar }]),
-    );
+    const users = (await usersRepository.findAll()) as DutyUser[];
+    const userMap = this.buildScheduleUserMap(users);
 
     const data = result.data.map((slot) => {
-      const assignedUserIds = normalizeIdList(slot.assignedUserIds || []);
+      const assignedUserIds = this.getAssignedUserIds(slot as DutySlotRecord);
       return {
         ...slot,
         assignedUserIds,
-        assignedUsers: assignedUserIds.map((id) => userMap.get(id)).filter(Boolean),
+        assignedUsers: assignedUserIds
+          .map((id) => userMap.get(id))
+          .filter(Boolean)
+          .map((user) => ({ id: user.id, name: user.name, role: user.role, avatar: user.avatar })),
       };
     });
 
@@ -162,19 +331,18 @@ class DutyService extends BaseService {
     return await this.repository.update(slotId, patch);
   }
 
-  async registerToSlot(slotId: Identifier, user: GenericRecord | Identifier) {
-    const slot = await this.repository.findById(slotId);
-    if (!slot) throw ApiError.notFound('Duty slot not found');
+  async registerToSlot(slotId: Identifier, user: DutyUser) {
+    const slot = await this.findSlotOrThrow(slotId);
     if (slot.status === 'locked') throw ApiError.badRequest('Duty slot is locked');
 
     const userId = getActorId(user);
-    const assigned = normalizeIdList(slot.assignedUserIds || []);
+    const assigned = this.getAssignedUserIds(slot);
 
     if (assigned.includes(userId)) {
       throw ApiError.badRequest('You have already registered this duty slot');
     }
 
-    const capacity = Math.max(1, Number(slot.capacity) || 1);
+    const capacity = this.getSlotCapacity(slot);
     if (assigned.length >= capacity) {
       throw ApiError.badRequest('Duty slot is full');
     }
@@ -182,7 +350,7 @@ class DutyService extends BaseService {
     const sameDateSlots = await dutySlotsRepository.findByShiftDate(slot.shiftDate);
     const hasConflict = sameDateSlots.some((item) => {
       if (normalizeId(item.id) === normalizeId(slot.id)) return false;
-      const itemAssigned = normalizeIdList(item.assignedUserIds || []);
+      const itemAssigned = this.getAssignedUserIds(item as DutySlotRecord);
       if (!itemAssigned.includes(userId)) return false;
       return (item.startTime || '') === (slot.startTime || '') && (item.endTime || '') === (slot.endTime || '');
     });
@@ -191,47 +359,27 @@ class DutyService extends BaseService {
       throw ApiError.badRequest('You already have another duty slot at this time');
     }
 
-    const updated = await this.repository.update(slot.id, {
-      assignedUserIds: [...assigned, userId],
-      updatedAt: new Date().toISOString(),
-    });
-
-    await notificationService.notifyUser(userId, {
-      title: 'Đăng ký ca trực thành công',
-      message: `Bạn đã đăng ký ca '${slot.shiftLabel}' ngày ${new Date(slot.shiftDate).toLocaleDateString('vi-VN')}.`,
-      category: 'shift',
-      type: 'shift',
-      refId: slot.id,
-      metadata: { action: 'register' },
-    });
+    const updated = await this.saveAssignedUsers(slot.id, [...assigned, userId]);
+    await this.notifySlotAssignment(userId, slot, 'register');
 
     return updated;
   }
 
-  async cancelRegistration(slotId: Identifier, user: GenericRecord | Identifier) {
-    const slot = await this.repository.findById(slotId);
-    if (!slot) throw ApiError.notFound('Duty slot not found');
+  async cancelRegistration(slotId: Identifier, user: DutyUser) {
+    const slot = await this.findSlotOrThrow(slotId);
 
     const userId = getActorId(user);
-    const assigned = normalizeIdList(slot.assignedUserIds || []);
+    const assigned = this.getAssignedUserIds(slot);
 
     if (!assigned.includes(userId)) {
       throw ApiError.badRequest('You have not registered this duty slot');
     }
 
-    const updated = await this.repository.update(slot.id, {
-      assignedUserIds: assigned.filter((id) => id !== userId),
-      updatedAt: new Date().toISOString(),
-    });
-
-    await notificationService.notifyUser(userId, {
-      title: 'Hủy ca trực thành công',
-      message: `Bạn đã hủy ca '${slot.shiftLabel}' ngày ${new Date(slot.shiftDate).toLocaleDateString('vi-VN')}.`,
-      category: 'shift',
-      type: 'shift',
-      refId: slot.id,
-      metadata: { action: 'cancel' },
-    });
+    const updated = await this.saveAssignedUsers(
+      slot.id,
+      assigned.filter((id) => id !== userId),
+    );
+    await this.notifySlotAssignment(userId, slot, 'cancel');
 
     return updated;
   }
@@ -252,10 +400,9 @@ class DutyService extends BaseService {
       throw ApiError.badRequest('Cannot swap duty slot with yourself');
     }
 
-    const slot = await this.repository.findById(slotId);
-    if (!slot) throw ApiError.notFound('Duty slot not found');
+    const slot = await this.findSlotOrThrow(slotId);
 
-    const assigned = normalizeIdList(slot.assignedUserIds || []);
+    const assigned = this.getAssignedUserIds(slot);
     if (!assigned.includes(requesterId)) {
       throw ApiError.badRequest('You are not assigned to this duty slot');
     }
@@ -290,37 +437,10 @@ class DutyService extends BaseService {
       updatedAt: now,
     });
 
-    const allUsers = await usersRepository.findAll();
-    const approverIds = allUsers
-      .filter((u) => u.isActive && (u.role === 'admin' || u.role === 'staff'))
-      .map((u) => normalizeId(u.id));
+    const allUsers = (await usersRepository.findAll()) as DutyUser[];
+    const approverIds = this.getApproverIds(allUsers);
 
-    await notificationService.notifyUser(requesterId, {
-      title: 'Yêu cầu đổi ca đã gửi',
-      message: `Yêu cầu đổi ca '${slot.shiftLabel}' của bạn đang chờ duyệt.`,
-      category: 'approval',
-      type: 'approval',
-      refId: created.id,
-      metadata: { action: 'swap_request_created' },
-    });
-
-    await notificationService.notifyUser(targetUserId, {
-      title: 'Bạn có yêu cầu nhận ca trực',
-      message: `Bạn vừa nhận được yêu cầu đổi ca '${slot.shiftLabel}'.`,
-      category: 'approval',
-      type: 'approval',
-      refId: created.id,
-      metadata: { action: 'swap_requested_to_you' },
-    });
-
-    await notificationService.notifyUsers(approverIds, {
-      title: 'Yêu cầu duyệt đổi ca',
-      message: `Có yêu cầu đổi ca mới cần duyệt cho ca '${slot.shiftLabel}'.`,
-      category: 'approval',
-      type: 'approval',
-      refId: created.id,
-      metadata: { action: 'swap_pending_review' },
-    });
+    await this.notifySwapRequestCreated(slot, created.id, requesterId, targetUserId, approverIds);
 
     return created;
   }
@@ -357,43 +477,19 @@ class DutyService extends BaseService {
   }
 
   async decideSwap(requestId: Identifier, payload: GenericRecord = {}, approverUser: GenericRecord) {
-    const swapRequest = await dutySwapRequestsRepository.findById(requestId);
+    const swapRequest = (await dutySwapRequestsRepository.findById(requestId)) as DutySwapRequestRecord | null;
     if (!swapRequest) throw ApiError.notFound('Swap request not found');
 
     if (swapRequest.status !== 'pending') {
       throw ApiError.badRequest(`Swap request is already ${swapRequest.status}`);
     }
 
-    const decision = String(payload.decision || payload.status || '').toLowerCase();
-    const note = String(payload.note || payload.reason || payload.decisionNote || '').trim();
-
-    if (!['approved', 'rejected'].includes(decision)) {
-      throw ApiError.badRequest("decision must be 'approved' or 'rejected'");
-    }
+    const { decision, note } = this.parseSwapDecision(payload);
 
     const now = new Date().toISOString();
 
     if (decision === 'approved') {
-      const slot = await this.repository.findById(swapRequest.dutySlotId);
-      if (!slot) throw ApiError.notFound('Duty slot not found');
-
-      const requesterId = normalizeId(swapRequest.requesterId);
-      const targetUserId = normalizeId(swapRequest.targetUserId);
-      const assigned = normalizeIdList(slot.assignedUserIds || []);
-
-      if (!assigned.includes(requesterId)) {
-        throw ApiError.badRequest('Requester is no longer assigned to this duty slot');
-      }
-
-      if (assigned.includes(targetUserId)) {
-        throw ApiError.badRequest('Target user is already assigned to this duty slot');
-      }
-
-      const nextAssigned = [...assigned.filter((id) => id !== requesterId), targetUserId];
-      await this.repository.update(slot.id, {
-        assignedUserIds: nextAssigned,
-        updatedAt: now,
-      });
+      await this.applyApprovedSwapRequest(swapRequest, now);
     }
 
     const updatedRequest = await dutySwapRequestsRepository.update(requestId, {
@@ -404,34 +500,7 @@ class DutyService extends BaseService {
       updatedAt: now,
     });
 
-    if (decision === 'approved') {
-      await notificationService.notifyUser(swapRequest.requesterId, {
-        title: 'Yêu cầu đổi ca đã được duyệt',
-        message: 'Yêu cầu đổi ca của bạn đã được chấp thuận.',
-        category: 'approval',
-        type: 'approval',
-        refId: swapRequest.id,
-        metadata: { decision: 'approved' },
-      });
-
-      await notificationService.notifyUser(swapRequest.targetUserId, {
-        title: 'Bạn đã được phân ca mới',
-        message: 'Yêu cầu đổi ca đã được duyệt và ca trực đã được cập nhật cho bạn.',
-        category: 'approval',
-        type: 'approval',
-        refId: swapRequest.id,
-        metadata: { decision: 'approved' },
-      });
-    } else {
-      await notificationService.notifyUser(swapRequest.requesterId, {
-        title: 'Yêu cầu đổi ca bị từ chối',
-        message: note || 'Yêu cầu đổi ca của bạn đã bị từ chối.',
-        category: 'approval',
-        type: 'approval',
-        refId: swapRequest.id,
-        metadata: { decision: 'rejected' },
-      });
-    }
+    await this.notifySwapDecision(swapRequest, decision, note);
 
     return updatedRequest;
   }

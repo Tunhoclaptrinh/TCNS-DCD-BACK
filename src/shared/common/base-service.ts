@@ -3,119 +3,52 @@ import type { AnyRecord, Identifier } from '@app-types/common';
 import type { QueryOptions } from '@app-types/database';
 import type { SchemaDefinition, SchemaRule } from '@app-types/schema';
 import type { ServiceResult } from '@app-types/service';
+import EntitySchemaService from '@shared/common/entity-schema.service';
 import BaseRepository from '@shared/repositories/base.repository';
 
-import {
-  convertValue as convertValueBySchema,
-  isEmpty as isEmptyBySchema,
-  transformBySchema as transformBySchemaBySchema,
-  validateFieldConstraints as validateFieldConstraintsBySchema,
-  validateType as validateTypeBySchema,
-} from '@utils/schema-utils';
-
 class BaseService {
-  collection: string;
-  schema: SchemaDefinition | null;
-  repository: BaseRepository;
+  protected readonly collection: string;
+  protected readonly repository: BaseRepository;
+  private readonly schemaService: EntitySchemaService;
 
   constructor(collectionName: string, repository: BaseRepository = new BaseRepository(collectionName)) {
     this.collection = collectionName;
-    this.schema = schemas[collectionName] || null;
     this.repository = repository;
+    this.schemaService = new EntitySchemaService(() => this.getSchema(), repository);
   }
 
   // ==================== SCHEMA METHODS ====================
 
   getSchema() {
-    return this.schema;
+    return schemas[this.collection] || null;
   }
 
   getSchemaFields() {
-    if (!this.schema) return [];
-    return Object.keys(this.schema);
+    return this.schemaService.getSchemaFields();
   }
 
   getRequiredFields() {
-    if (!this.schema) return [];
-    return Object.entries(this.schema)
-      .filter(([_, rule]) => rule.required)
-      .map(([field]) => field);
+    return this.schemaService.getRequiredFields();
   }
 
   validateType(field: string, value: any, rule: SchemaRule) {
-    return validateTypeBySchema(field, value, rule);
+    return this.schemaService.validateType(field, value, rule);
   }
 
   convertValue(field: string, value: any, rule: SchemaRule) {
-    return convertValueBySchema(field, value, rule);
+    return this.schemaService.convertValue(field, value, rule);
   }
 
   transformBySchema(data: AnyRecord) {
-    return transformBySchemaBySchema(this.schema, data);
+    return this.schemaService.transformBySchema(data);
   }
 
   validateFieldConstraints(field: string, value: any, rule: SchemaRule) {
-    return validateFieldConstraintsBySchema(field, value, rule);
+    return this.schemaService.validateFieldConstraints(field, value, rule);
   }
 
   async validateBySchema(data: AnyRecord, options: AnyRecord = {}) {
-    if (!this.schema) return { success: true };
-
-    const errors: AnyRecord = {};
-
-    for (const [field, rule] of Object.entries(this.schema)) {
-      const value = data[field];
-
-      if (options.isUpdate && value === undefined) continue;
-
-      if (rule.required && isEmptyBySchema(value)) {
-        errors[field] = `${field} is required`;
-        continue;
-      }
-
-      if (!rule.required && (value === undefined || value === null)) continue;
-
-      const typeError = this.validateType(field, value, rule);
-      if (typeError) {
-        errors[field] = typeError;
-        continue;
-      }
-
-      const constraintError = this.validateFieldConstraints(field, value, rule);
-      if (constraintError) {
-        errors[field] = constraintError;
-        continue;
-      }
-
-      if (rule.unique) {
-        const query: AnyRecord = { [field]: value };
-        if (options.excludeId) {
-          query.id = { $ne: Number(options.excludeId) };
-        }
-        const existing = await this.repository.findOne(query);
-        if (existing) {
-          errors[field] = `${field} '${value}' already exists`;
-        }
-      }
-
-      if (rule.foreignKey) {
-        const relatedEntity = await new BaseRepository(rule.foreignKey).findById(value);
-        if (!relatedEntity) {
-          errors[field] = `${field} references non-existent ${rule.foreignKey} (ID: ${value})`;
-        }
-      }
-
-      if (rule.custom && typeof rule.custom === 'function') {
-        try {
-          const customError = await rule.custom(value, data);
-          if (customError) errors[field] = customError;
-        } catch (err) {
-          errors[field] = `Custom validation failed: ${err.message}`;
-        }
-      }
-    }
-
-    return Object.keys(errors).length === 0 ? { success: true } : { success: false, errors };
+    return this.schemaService.validateBySchema(data, options);
   }
 
   async count(query: AnyRecord = {}) {
@@ -298,52 +231,11 @@ class BaseService {
   // ==================== IMPORT/EXPORT ====================
 
   async validateImportData(data: AnyRecord, _rowIndex?: number) {
-    if (!this.schema) return [];
-
-    const errors: string[] = [];
-
-    for (const [field, rule] of Object.entries(this.schema)) {
-      const value = data[field];
-
-      if (rule.required && isEmptyBySchema(value)) {
-        errors.push(`${field} is required`);
-        continue;
-      }
-
-      if (!rule.required && (value === undefined || value === null)) continue;
-
-      const typeError = this.validateType(field, value, rule);
-      if (typeError) {
-        errors.push(typeError);
-        continue;
-      }
-
-      const constraintError = this.validateFieldConstraints(field, value, rule);
-      if (constraintError) {
-        errors.push(constraintError);
-        continue;
-      }
-
-      if (rule.foreignKey) {
-        const relatedEntity = await new BaseRepository(rule.foreignKey).findById(value);
-        if (!relatedEntity) {
-          errors.push(`${field} references non-existent ${rule.foreignKey} (ID: ${value})`);
-        }
-      }
-
-      if (rule.unique) {
-        const existing = await this.repository.findOne({ [field]: value });
-        if (existing) {
-          errors.push(`${field} '${value}' already exists`);
-        }
-      }
-    }
-
-    return errors;
+    return this.schemaService.validateImportData(data);
   }
 
   async transformImportData(data: AnyRecord) {
-    if (!this.schema) return data;
+    if (!this.getSchema()) return data;
 
     const transformed: AnyRecord = this.transformBySchema(data);
     transformed.createdAt = new Date().toISOString();
@@ -400,23 +292,8 @@ class BaseService {
     const result = await this.findAll(options);
     let data = result.data || [];
 
-    if (options.includeRelations && this.schema) {
-      data = await Promise.all(
-        data.map(async (item) => {
-          const enriched = { ...item };
-
-          for (const [field, rule] of Object.entries(this.schema)) {
-            if (rule.foreignKey && item[field]) {
-              const related = await new BaseRepository(rule.foreignKey).findById(item[field]);
-              if (related) {
-                enriched[`${field}_name`] = related.name || related.email || related.code;
-              }
-            }
-          }
-
-          return enriched;
-        }),
-      );
+    if (options.includeRelations && this.getSchema()) {
+      data = await this.schemaService.enrichRelationFields(data);
     }
 
     if (options.columns && Array.isArray(options.columns)) {

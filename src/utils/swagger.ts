@@ -1,114 +1,27 @@
 import swaggerUi from 'swagger-ui-express';
-import fs from 'fs';
-import path from 'path';
 import schemas from '@schemas';
 import type { AnyRecord } from '@app-types/common';
 import type { SchemaDefinition, SchemaRule } from '@app-types/schema';
 
-type JSDocResult = {
-  summary: string;
-  tags: string[];
-  security: AnyRecord[];
-  requestBody: AnyRecord | null;
-  responses: AnyRecord;
-};
-
-type GlobalMiddlewareInfo = {
-  hasGlobalProtect: boolean;
-  globalProtectLine: number;
-  hasGlobalAuthorize: boolean;
-  globalAuthorizeLine: number;
-  globalAuthorizeRole: string | null;
-};
-
-type RouteMiddlewareInfo = AnyRecord & {
-  hasProtect?: boolean;
-  hasAuthorize?: boolean;
-  authorizeRole?: string;
-  hasCheckPermission?: boolean;
+type SwaggerRouteDoc = {
+  summary?: string;
+  description?: string;
+  tags?: string[];
+  operationId?: string;
+  parameters?: AnyRecord[];
+  requestBody?: AnyRecord | null;
+  responses?: AnyRecord;
+  protected?: boolean;
   permission?: string;
-  hasValidateSchema?: boolean;
-  schemaName?: string;
-  hasUploadMiddleware?: boolean;
-  hasValidateFields?: boolean;
-  validateFieldsSchema?: string;
-  validateFieldNames?: string[];
+  adminRole?: string;
+  internal?: boolean;
 };
 
-// ==================== Helpers ====================
-
-function findExistingFile(basePath: string) {
-  const candidates = [basePath, `${basePath}.ts`, `${basePath}.js`];
-  return candidates.find((candidate) => fs.existsSync(candidate)) || null;
-}
-
-const SOURCE_ALIAS_ROOTS: Record<string, string> = {
-  '@database/': path.join(__dirname, '../database'),
-  '@modules/': path.join(__dirname, '../modules'),
-  '@shared/': path.join(__dirname, '../shared'),
-  '@routes/': path.join(__dirname, '../routes'),
-  '@utils/': path.join(__dirname, '../utils'),
-};
-
-function resolveSourceImportPath(fromFile: string, importPath: string) {
-  const normalizedImportPath = String(importPath || '').trim();
-  if (!normalizedImportPath) return null;
-
-  if (normalizedImportPath.startsWith('.')) {
-    return findExistingFile(path.resolve(path.dirname(fromFile), normalizedImportPath));
-  }
-
-  for (const [aliasPrefix, aliasRoot] of Object.entries(SOURCE_ALIAS_ROOTS)) {
-    if (normalizedImportPath.startsWith(aliasPrefix)) {
-      const relativePath = normalizedImportPath.slice(aliasPrefix.length);
-      return findExistingFile(path.join(aliasRoot, relativePath));
-    }
-  }
-
-  return null;
-}
-
-function buildResolvedImportMap(content: string, fromFile: string) {
-  const importMap: Record<string, string> = {};
-  const importRegex = /import\s+(\w+)\s+from\s+['"`]([^'"`]+)['"`]/g;
-  let importMatch;
-
-  while ((importMatch = importRegex.exec(content)) !== null) {
-    const resolvedPath = resolveSourceImportPath(fromFile, importMatch[2]);
-    if (resolvedPath) {
-      importMap[importMatch[1]] = resolvedPath;
-    }
-  }
-
-  const requireRegex = /const\s+(\w+)\s*=\s*require\s*\(\s*['"`]([^'"`]+)['"`]\s*\)/g;
-  let requireMatch;
-
-  while ((requireMatch = requireRegex.exec(content)) !== null) {
-    const resolvedPath = resolveSourceImportPath(fromFile, requireMatch[2]);
-    if (resolvedPath) {
-      importMap[requireMatch[1]] = resolvedPath;
-    }
-  }
-
-  return importMap;
-}
-
-function capitalize(str: string) {
-  return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
-function toPascalCase(str: string) {
-  return String(str || '')
+function toPascalCase(value: string) {
+  return String(value || '')
     .replace(/[_-]+/g, ' ')
     .replace(/(?:^|\s+)(\w)/g, (_, char: string) => char.toUpperCase())
     .replace(/\s+/g, '');
-}
-
-function normalizeSchemaKey(value: string) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/-/g, '_');
 }
 
 const TYPE_MAP = {
@@ -122,64 +35,26 @@ const TYPE_MAP = {
   object: { type: 'object', additionalProperties: true },
 };
 
-const SCHEMA_RULE_KEYS = new Set([
-  'type',
-  'required',
-  'unique',
-  'default',
-  'enum',
-  'min',
-  'max',
-  'minLength',
-  'maxLength',
-  'foreignKey',
-  'description',
-  'values',
-  'custom',
-]);
-
-function isSchemaRule(value: unknown): value is SchemaRule {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const candidate = value as AnyRecord;
-  const ruleType = candidate.type;
-  const keys = Object.keys(candidate);
-
-  if (keys.length === 0 || keys.some((key) => !SCHEMA_RULE_KEYS.has(key))) {
-    return false;
-  }
-
-  return typeof ruleType === 'string' && Object.prototype.hasOwnProperty.call(TYPE_MAP, ruleType);
-}
-
 function ruleToProperty(rule: SchemaRule) {
   const base = TYPE_MAP[rule.type];
-  const prop: AnyRecord = {
+  const property: AnyRecord = {
     description: rule.description || '',
     ...(typeof base === 'function' ? base(rule) : base || { type: 'string' }),
   };
 
-  if (rule.minLength !== undefined) prop.minLength = rule.minLength;
-  if (rule.maxLength !== undefined) prop.maxLength = rule.maxLength;
-  if (rule.min !== undefined) prop.minimum = rule.min;
-  if (rule.max !== undefined) prop.maximum = rule.max;
-  if (rule.default !== undefined) prop.default = rule.default;
+  if (rule.minLength !== undefined) property.minLength = rule.minLength;
+  if (rule.maxLength !== undefined) property.maxLength = rule.maxLength;
+  if (rule.min !== undefined) property.minimum = rule.min;
+  if (rule.max !== undefined) property.maximum = rule.max;
+  if (rule.default !== undefined) property.default = rule.default;
 
-  return prop;
-}
-
-function normalizeOpenApiProperties(properties: AnyRecord = {}) {
-  return Object.fromEntries(
-    Object.entries(properties).map(([field, value]) => [field, isSchemaRule(value) ? ruleToProperty(value) : value]),
-  );
+  return property;
 }
 
 function buildObjectSchema(properties: AnyRecord, required: string[] = [], description?: string) {
   const schema: AnyRecord = {
     type: 'object',
-    properties: normalizeOpenApiProperties(properties),
+    properties: { ...properties },
   };
 
   if (required.length > 0) schema.required = required;
@@ -187,41 +62,6 @@ function buildObjectSchema(properties: AnyRecord, required: string[] = [], descr
 
   return schema;
 }
-
-function buildMultipartBodyFromFields(
-  fields: Record<string, SchemaRule>,
-  fileFieldName: string,
-  fileDescription: string,
-) {
-  const properties: AnyRecord = {
-    [fileFieldName]: {
-      type: 'string',
-      format: 'binary',
-      description: fileDescription,
-    },
-  };
-
-  for (const [field, rule] of Object.entries(fields) as Array<[string, SchemaRule]>) {
-    properties[field] = ruleToProperty(rule);
-  }
-
-  return {
-    required: false,
-    content: {
-      'multipart/form-data': {
-        schema: {
-          type: 'object',
-          properties,
-        },
-      },
-    },
-  };
-}
-
-const userSchema = schemas.users as SchemaDefinition;
-const notificationSettingsSchema = schemas.notification_settings as SchemaDefinition;
-const dutySlotSchema = schemas.duty_slots as SchemaDefinition;
-const rewardPenaltySchema = schemas.reward_penalties as SchemaDefinition;
 
 function pickFields(schema: SchemaDefinition, fieldNames: string[]) {
   const picked: Record<string, SchemaRule> = {};
@@ -250,6 +90,22 @@ function buildPropertiesFromSchemaFields(fields: Record<string, SchemaRule>) {
   return Object.fromEntries(Object.entries(fields).map(([field, rule]) => [field, ruleToProperty(rule)]));
 }
 
+function buildSchemaRefBody(schemaName: string, required = true, contentType = 'application/json') {
+  return {
+    required,
+    content: {
+      [contentType]: {
+        schema: { $ref: `#/components/schemas/${schemaName}` },
+      },
+    },
+  };
+}
+
+const userSchema = schemas.users as SchemaDefinition;
+const notificationSettingsSchema = schemas.notification_settings as SchemaDefinition;
+const dutySlotSchema = schemas.duty_slots as SchemaDefinition;
+const rewardPenaltySchema = schemas.reward_penalties as SchemaDefinition;
+
 const userProfileFieldNames = [
   'name',
   'lastName',
@@ -265,6 +121,7 @@ const userProfileFieldNames = [
   'bio',
   'avatar',
 ];
+
 const userProfileJsonFields = pickFields(userSchema, userProfileFieldNames);
 const userProfileMultipartFields = omitFields(userProfileJsonFields, ['avatar']);
 const userUpdateJsonFields = userSchema;
@@ -304,30 +161,6 @@ const TAG_METADATA: Record<string, { name: string; description: string }> = {
     description: 'Tổng hợp và xuất báo cáo quản trị.',
   },
 };
-
-function getTagMetadata(basePath: string) {
-  return (
-    TAG_METADATA[basePath] || {
-      name: toPascalCase(basePath),
-      description: `API cho nhóm ${basePath}.`,
-    }
-  );
-}
-
-function getEntityLabel(basePath: string) {
-  return getTagMetadata(basePath).name.toLowerCase();
-}
-
-function buildSchemaRefBody(schemaName: string, required = true, contentType = 'application/json') {
-  return {
-    required,
-    content: {
-      [contentType]: {
-        schema: { $ref: `#/components/schemas/${schemaName}` },
-      },
-    },
-  };
-}
 
 const EXTRA_SCHEMAS: AnyRecord = {
   AuthRegisterRequest: buildObjectSchema(
@@ -687,7 +520,7 @@ const EXTRA_SCHEMAS: AnyRecord = {
   ),
 };
 
-const ROUTE_DOCS: Record<string, AnyRecord> = {
+const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
   'POST /auth/register': {
     summary: 'Đăng ký tài khoản',
     description: 'Tạo tài khoản người dùng mới bằng email và mật khẩu.',
@@ -729,14 +562,17 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
   'GET /auth/me': {
     summary: 'Lấy thông tin tài khoản hiện tại',
     description: 'Trả về thông tin người dùng đang đăng nhập kèm danh sách quyền.',
+    protected: true,
   },
   'POST /auth/logout': {
     summary: 'Đăng xuất',
     description: 'Đăng xuất phiên hiện tại ở phía client.',
+    protected: true,
   },
   'PUT /auth/change-password': {
     summary: 'Đổi mật khẩu',
     description: 'Đổi mật khẩu cho tài khoản đang đăng nhập.',
+    protected: true,
     requestBody: buildSchemaRefBody('AuthChangePasswordRequest'),
     responses: {
       200: { description: 'Đổi mật khẩu thành công' },
@@ -754,10 +590,12 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
       401: { description: 'Refresh token không hợp lệ hoặc đã hết hạn' },
     },
   },
+
   'PUT /users/profile': {
     summary: 'Cập nhật hồ sơ cá nhân',
     description:
       'Cập nhật thông tin hồ sơ của chính bạn. Dùng `application/json` khi cập nhật text hoặc URL avatar, và dùng `multipart/form-data` khi upload file avatar qua field `avatar`.',
+    protected: true,
     requestBody: {
       required: false,
       content: {
@@ -783,6 +621,7 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
   'GET /users/search': {
     summary: 'Tìm kiếm người dùng',
     description: 'Tìm kiếm người dùng theo từ khóa và hỗ trợ phân trang.',
+    protected: true,
     parameters: [
       { name: 'q', in: 'query', required: true, schema: { type: 'string' }, description: 'Từ khóa tìm kiếm.' },
       { name: '_page', in: 'query', schema: { type: 'integer', default: 1 }, description: 'Trang hiện tại.' },
@@ -799,24 +638,38 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
   'GET /users/count': {
     summary: 'Đếm số lượng người dùng',
     description: 'Trả về tổng số người dùng theo bộ lọc hiện tại.',
+    protected: true,
+    permission: 'users:list',
     internal: true,
   },
   'POST /users/bulk': {
     summary: 'Thao tác hàng loạt người dùng',
     description: 'Hỗ trợ tạo, cập nhật hoặc xóa hàng loạt người dùng.',
+    protected: true,
+    permission: 'users:update',
     requestBody: buildSchemaRefBody('UserBulkRequest'),
     internal: true,
   },
   'POST /users/validate': {
     summary: 'Kiểm tra dữ liệu người dùng',
     description: 'Kiểm tra dữ liệu đầu vào theo schema người dùng.',
+    protected: true,
     requestBody: buildSchemaRefBody('Users'),
     internal: true,
+  },
+  'POST /users': {
+    summary: 'Tạo người dùng',
+    description: 'Tạo tài khoản người dùng mới bằng dữ liệu quản trị.',
+    protected: true,
+    permission: 'users:create',
+    requestBody: buildSchemaRefBody('Users'),
   },
   'PUT /users/{id}': {
     summary: 'Cập nhật người dùng',
     description:
       'Cập nhật thông tin người dùng theo ID. Dùng `application/json` khi cập nhật dữ liệu text/URL, và dùng `multipart/form-data` khi upload file avatar qua field `avatar`.',
+    protected: true,
+    permission: 'users:update',
     requestBody: {
       required: false,
       content: {
@@ -834,22 +687,54 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
       },
     },
   },
+  'DELETE /users/{id}': {
+    summary: 'Xóa người dùng',
+    description: 'Xóa mềm người dùng theo ID.',
+    protected: true,
+    permission: 'users:delete',
+  },
+  'GET /users': {
+    summary: 'Danh sách người dùng',
+    description: 'Lấy danh sách người dùng và hỗ trợ phân trang.',
+    protected: true,
+    permission: 'users:list',
+  },
   'GET /users/stats/summary': {
     summary: 'Thống kê người dùng',
     description: 'Lấy thống kê tổng quan người dùng theo trạng thái, vai trò và phòng ban.',
+    protected: true,
+    permission: 'users:view_stats',
+  },
+  'PATCH /users/{id}/status': {
+    summary: 'Cập nhật trạng thái người dùng',
+    description: 'Bật hoặc tắt trạng thái hoạt động của người dùng theo ID.',
+    protected: true,
+    permission: 'users:manage_status',
   },
   'PATCH /users/{id}/promote': {
     summary: 'Cập nhật vai trò người dùng',
     description: 'Thay đổi vai trò của người dùng theo ID.',
+    protected: true,
+    permission: 'users:manage_rank',
     requestBody: buildSchemaRefBody('UserPromoteRequest'),
   },
   'PATCH /users/{id}/expel': {
     summary: 'Khai trừ người dùng',
     description: 'Đánh dấu người dùng bị khai trừ khỏi tổ chức.',
+    protected: true,
+    permission: 'users:expel',
     requestBody: buildSchemaRefBody('UserExpelRequest', false),
+  },
+  'DELETE /users/{id}/permanent': {
+    summary: 'Xóa vĩnh viễn người dùng',
+    description: 'Xóa cứng người dùng khỏi hệ thống.',
+    protected: true,
+    permission: 'users:delete',
   },
   'GET /users/template': {
     summary: 'Tải mẫu import người dùng',
+    protected: true,
+    permission: 'users:import_export',
     parameters: [
       {
         name: 'format',
@@ -872,6 +757,8 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
   'POST /users/import': {
     summary: 'Import người dùng từ file',
     description: 'Import dữ liệu người dùng từ tệp CSV, XLS hoặc XLSX.',
+    protected: true,
+    permission: 'users:import_export',
     requestBody: {
       required: true,
       content: {
@@ -884,6 +771,8 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
   'GET /users/export': {
     summary: 'Xuất danh sách người dùng',
     description: 'Xuất dữ liệu người dùng theo định dạng CSV hoặc XLSX.',
+    protected: true,
+    permission: 'users:import_export',
     parameters: [
       {
         name: 'format',
@@ -910,18 +799,50 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
   },
   'GET /users/{id}/activity': {
     summary: 'Lấy lịch sử hoạt động người dùng',
+    protected: true,
   },
+  'GET /users/{id}': {
+    summary: 'Chi tiết người dùng',
+    description: 'Lấy thông tin chi tiết người dùng theo ID.',
+    protected: true,
+  },
+
   'GET /notifications/settings': {
     summary: 'Lấy cài đặt thông báo',
+    protected: true,
   },
   'PUT /notifications/settings': {
     summary: 'Cập nhật cài đặt thông báo',
+    protected: true,
     requestBody: buildSchemaRefBody('NotificationSettingsUpdateRequest', false),
   },
+  'GET /notifications': {
+    summary: 'Lấy danh sách thông báo',
+    description: 'Trả về danh sách thông báo của người dùng hiện tại.',
+    protected: true,
+  },
+  'PATCH /notifications/{id}/read': {
+    summary: 'Đánh dấu thông báo đã đọc',
+    protected: true,
+  },
+  'PATCH /notifications/read-all': {
+    summary: 'Đánh dấu tất cả thông báo đã đọc',
+    protected: true,
+  },
+  'DELETE /notifications/{id}': {
+    summary: 'Xóa thông báo',
+    protected: true,
+  },
+  'DELETE /notifications': {
+    summary: 'Xóa tất cả thông báo',
+    protected: true,
+  },
+
   'POST /upload/avatar': {
     summary: 'Tải ảnh avatar lên Cloudinary',
     description:
       'Tải một ảnh avatar mới. API chấp nhận field file tên `avatar` hoặc `image`. Có thể truyền thêm `storeData` để lưu base64 vào metadata.',
+    protected: true,
     requestBody: {
       required: true,
       content: {
@@ -935,6 +856,7 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
     summary: 'Tải tệp chung lên Cloudinary',
     description:
       'Tải tệp dùng chung lên Cloudinary. API chấp nhận field file tên `file` hoặc `image`, hỗ trợ ảnh và các tài liệu phổ biến. Có thể truyền thêm `storeData` để lưu base64 vào metadata.',
+    protected: true,
     requestBody: {
       required: true,
       content: {
@@ -947,6 +869,8 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
   'DELETE /upload/file': {
     summary: 'Xóa tệp trên Cloudinary',
     description: 'Xóa tệp theo `publicId` hoặc `url`.',
+    protected: true,
+    adminRole: 'admin',
     parameters: [
       { name: 'publicId', in: 'query', schema: { type: 'string' }, description: 'Public ID của asset.' },
       { name: 'url', in: 'query', schema: { type: 'string' }, description: 'URL đầy đủ của asset.' },
@@ -954,19 +878,26 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
   },
   'GET /upload/file/info': {
     summary: 'Lấy thông tin tệp trên Cloudinary',
+    protected: true,
+    adminRole: 'admin',
+    internal: true,
     parameters: [
       { name: 'publicId', in: 'query', schema: { type: 'string' }, description: 'Public ID của asset.' },
       { name: 'url', in: 'query', schema: { type: 'string' }, description: 'URL đầy đủ của asset.' },
     ],
-    internal: true,
   },
   'GET /upload/stats': {
     summary: 'Thống kê dung lượng tệp',
     description: 'Thống kê số lượng và dung lượng tệp trên Cloudinary theo từng thư mục.',
+    protected: true,
+    adminRole: 'admin',
     internal: true,
   },
   'POST /upload/cleanup': {
     summary: 'Dọn dẹp tệp cũ trên Cloudinary',
+    protected: true,
+    adminRole: 'admin',
+    internal: true,
     parameters: [
       {
         name: 'days',
@@ -976,11 +907,12 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
       },
     ],
     requestBody: buildSchemaRefBody('UploadCleanupRequest', false),
-    internal: true,
   },
+
   'GET /files': {
     summary: 'Lấy danh sách metadata tệp',
     description: 'Trả về danh sách metadata tệp mà người dùng hiện tại được phép xem.',
+    protected: true,
     parameters: [
       {
         name: 'includeData',
@@ -993,6 +925,7 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
   'GET /files/{id}': {
     summary: 'Lấy chi tiết metadata tệp',
     description: 'Trả về chi tiết một bản ghi file theo ID nếu người dùng có quyền truy cập.',
+    protected: true,
     parameters: [
       {
         name: 'includeData',
@@ -1002,9 +935,12 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
       },
     ],
   },
+
   'GET /duty/week': {
     summary: 'Lấy lịch trực theo tuần',
     description: 'Lấy danh sách ca trực trong tuần theo `weekStart` và hỗ trợ phân trang.',
+    protected: true,
+    permission: 'duty:view',
     parameters: [
       {
         name: 'weekStart',
@@ -1025,9 +961,13 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
   },
   'GET /duty/stats/summary': {
     summary: 'Thống kê ca trực',
+    protected: true,
+    permission: 'duty:view',
   },
   'POST /duty/slots': {
     summary: 'Tạo ca trực',
+    protected: true,
+    permission: 'duty:manage',
     requestBody: buildSchemaRefBody('DutySlotRequest'),
     responses: {
       201: { description: 'Tạo ca trực thành công' },
@@ -1036,18 +976,26 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
   },
   'PUT /duty/slots/{id}': {
     summary: 'Cập nhật ca trực',
+    protected: true,
+    permission: 'duty:manage',
     requestBody: buildSchemaRefBody('DutySlotUpdateRequest', false),
   },
   'PATCH /duty/slots/{id}/register': {
     summary: 'Đăng ký vào ca trực',
     description: 'Đăng ký người dùng hiện tại vào ca trực theo ID.',
+    protected: true,
+    permission: 'duty:register',
   },
   'PATCH /duty/slots/{id}/cancel': {
     summary: 'Hủy đăng ký ca trực',
     description: 'Hủy đăng ký ca trực của người dùng hiện tại.',
+    protected: true,
+    permission: 'duty:update',
   },
   'POST /duty/swaps': {
     summary: 'Tạo yêu cầu đổi ca',
+    protected: true,
+    permission: 'duty:update',
     requestBody: buildSchemaRefBody('DutySwapRequest'),
     responses: {
       201: { description: 'Tạo yêu cầu đổi ca thành công' },
@@ -1056,6 +1004,8 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
   },
   'GET /duty/swaps': {
     summary: 'Lấy danh sách yêu cầu đổi ca',
+    protected: true,
+    permission: 'duty:view',
     parameters: [
       { name: 'status', in: 'query', schema: { type: 'string' }, description: 'Lọc theo trạng thái yêu cầu.' },
       { name: '_page', in: 'query', schema: { type: 'integer', default: 1 }, description: 'Trang hiện tại.' },
@@ -1071,13 +1021,20 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
   },
   'PATCH /duty/swaps/{id}/decision': {
     summary: 'Duyệt hoặc từ chối yêu cầu đổi ca',
+    protected: true,
+    permission: 'duty:approve_swap',
     requestBody: buildSchemaRefBody('DutySwapDecisionRequest'),
   },
+
   'GET /reward-penalties': {
     summary: 'Lấy lịch sử thưởng phạt',
+    protected: true,
+    permission: 'reward_penalty:view',
   },
   'POST /reward-penalties': {
     summary: 'Tạo bản ghi thưởng phạt',
+    protected: true,
+    permission: 'reward_penalty:manage',
     requestBody: buildSchemaRefBody('RewardPenaltyCreateRequest'),
     responses: {
       201: { description: 'Tạo bản ghi thành công' },
@@ -1086,6 +1043,8 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
   },
   'GET /reward-penalties/stats/financial': {
     summary: 'Thống kê tài chính thưởng phạt',
+    protected: true,
+    permission: 'reward_penalty:view',
     parameters: [
       {
         name: 'from',
@@ -1108,11 +1067,16 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
       { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date-time' }, description: 'Alias của `to`.' },
     ],
   },
+
   'GET /reports/overview': {
     summary: 'Lấy báo cáo tổng quan',
+    protected: true,
+    permission: 'reports:view',
   },
   'GET /reports/export': {
     summary: 'Xuất báo cáo tổng quan',
+    protected: true,
+    permission: 'reports:export',
     parameters: [
       {
         name: 'format',
@@ -1134,323 +1098,85 @@ const ROUTE_DOCS: Record<string, AnyRecord> = {
   },
 };
 
-// ==================== JSDoc Parser ====================
-
-function parseJSDocFromController(controllerPath: string | null, methodName: string): JSDocResult | null {
-  try {
-    if (!controllerPath || !fs.existsSync(controllerPath)) return null;
-
-    const content = fs.readFileSync(controllerPath, 'utf-8');
-    const jsdocBlockRegex = /\/\*\*([\s\S]*?)\*\//g;
-    let jsdocMatch;
-
-    while ((jsdocMatch = jsdocBlockRegex.exec(content)) !== null) {
-      const afterJsdoc = content.substring(jsdocMatch.index + jsdocMatch[0].length).trimStart();
-
-      if (
-        afterJsdoc.startsWith(`exports.${methodName}`) ||
-        (/^(\w+)\s*=/.test(afterJsdoc) && afterJsdoc.startsWith(`${methodName} `)) ||
-        afterJsdoc.startsWith(`${methodName}=`)
-      ) {
-        return parseJSDocContent(jsdocMatch[1]);
-      }
-    }
-
-    return null;
-  } catch (err: any) {
-    console.error(`Error parsing JSDoc for ${methodName}:`, err.message);
-    return null;
-  }
-}
-
-function parseJSDocContent(raw: string): JSDocResult {
-  const result: JSDocResult = { summary: '', tags: [], security: [], requestBody: null, responses: {} };
-  const lines = raw.split('\n').map((l) => l.trim().replace(/^\*\s?/, ''));
-  let foundSummary = false;
-
-  for (const line of lines) {
-    if (line.startsWith('@swagger.summary')) {
-      result.summary = line.replace('@swagger.summary', '').trim();
-      foundSummary = true;
-    } else if (line.startsWith('@swagger.tag')) {
-      result.tags.push(line.replace('@swagger.tag', '').trim());
-    } else if (line.startsWith('@swagger.security')) {
-      result.security.push({ bearerAuth: [] });
-    } else if (line.startsWith('@swagger.body')) {
-      const bodyType = line.replace('@swagger.body', '').trim();
-      result.requestBody = {
-        required: true,
-        content: { 'application/json': { schema: { $ref: `#/components/schemas/${bodyType}` } } },
-      };
-    } else if (line.startsWith('@swagger.response')) {
-      const parts = line.replace('@swagger.response', '').trim().split(' ');
-      result.responses[parts[0]] = { description: parts.slice(1).join(' ') };
-    } else if (!line.startsWith('@') && line && !foundSummary && line.length > 3) {
-      result.summary = line;
-      foundSummary = true;
-    }
-  }
-
-  return result;
-}
-
-// ==================== Route Scanner ====================
-
-function getMountPaths(routesDir: string) {
-  const indexPath = findExistingFile(path.join(routesDir, 'index'));
-  if (!indexPath) return {};
-
-  const content = fs.readFileSync(indexPath, 'utf-8');
-  const mountMap: AnyRecord = {};
-  const importMap = buildResolvedImportMap(content, indexPath);
-
-  // Parse router.use('/path', varName)
-  const useRegex = /router\.use\s*\(\s*['"`]\/([^'"`]+)['"`]\s*,\s*(\w+)\s*\)/g;
-  let useMatch;
-  while ((useMatch = useRegex.exec(content)) !== null) {
-    const mountPath = useMatch[1];
-    const varName = useMatch[2];
-    const filePath = importMap[varName];
-    if (filePath) mountMap[filePath] = mountPath;
-  }
-
-  // Fallback: require() syntax
-  const requireRegex = /router\.use\s*\(\s*['"`]\/([^'"`]+)['"`]\s*,\s*require\s*\(\s*['"`]\.\/([^'"`]+)['"`]\s*\)/g;
-  let reqMatch;
-  while ((reqMatch = requireRegex.exec(content)) !== null) {
-    const filePath = resolveSourceImportPath(indexPath, reqMatch[2]);
-    if (filePath) {
-      mountMap[filePath] = reqMatch[1];
-    }
-  }
-
-  return mountMap;
-}
-
-function detectGlobalMiddleware(content: string): GlobalMiddlewareInfo {
-  const result: GlobalMiddlewareInfo = {
-    hasGlobalProtect: false,
-    globalProtectLine: -1,
-    hasGlobalAuthorize: false,
-    globalAuthorizeLine: -1,
-    globalAuthorizeRole: null,
-  };
-  const lines = content.split('\n');
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-
-    if (/router\.use\s*\(\s*protect\s*\)/.test(line)) {
-      result.hasGlobalProtect = true;
-      result.globalProtectLine = i;
-    }
-
-    const authMatch = line.match(/router\.use\s*\(\s*authorize\s*\(\s*['"`](\w+)['"`]\s*\)\s*\)/);
-    if (authMatch) {
-      result.hasGlobalAuthorize = true;
-      result.globalAuthorizeLine = i;
-      result.globalAuthorizeRole = authMatch[1];
-    }
-  }
-
-  return result;
-}
-
-const MIDDLEWARE_PATTERNS = [
-  { key: 'hasProtect', regex: /\bprotect\b/ },
-  { key: 'hasAuthorize', regex: /authorize\s*\(\s*['"`](\w+)['"`]\s*\)/, capture: 'authorizeRole' },
-  { key: 'hasCheckPermission', regex: /checkPermission\s*\(\s*['"`]([^'"`]+)['"`]\s*\)/, capture: 'permission' },
-  { key: 'hasValidateSchema', regex: /validateSchema\s*\(\s*['"`](\w+)['"`]\s*\)/, capture: 'schemaName' },
-  { key: 'hasUploadMiddleware', regex: /getUploadMiddleware|getAvatarUploadMiddleware/ },
-];
-
-function detectRouteMiddleware(routeText) {
-  const mw: RouteMiddlewareInfo = {};
-
-  for (const { key, regex, capture } of MIDDLEWARE_PATTERNS) {
-    const match = routeText.match(regex);
-    mw[key] = !!match;
-    if (capture && match) mw[capture] = match[1];
-  }
-
-  // validateFields — more complex
-  const fieldsMatch = routeText.match(/validateFields\s*\(\s*['"`](\w+)['"`]\s*,\s*\[([^\]]+)\]/);
-  if (fieldsMatch) {
-    mw.hasValidateFields = true;
-    mw.validateFieldsSchema = fieldsMatch[1];
-    mw.validateFieldNames = fieldsMatch[2]
-      .split(',')
-      .map((f) => f.trim().replace(/['"`]/g, ''))
-      .filter(Boolean);
-  }
-
-  return mw;
-}
-
-function scanRoutes(routesDir = path.join(__dirname, '../routes')) {
-  const paths: AnyRecord = {};
-  const mountMap = getMountPaths(routesDir);
-
-  for (const [routeFilePath, mountPath] of Object.entries(mountMap)) {
-    if (!routeFilePath || !fs.existsSync(routeFilePath)) continue;
-
-    const content = fs.readFileSync(routeFilePath, 'utf-8');
-    Object.assign(paths, parseRoutesFromFile(content, mountPath, routeFilePath));
-  }
-
-  return paths;
-}
-
-function parseRoutesFromFile(content: string, basePath: string, routeFilePath: string) {
-  const paths: AnyRecord = {};
-  const cleanContent = content.replace(/^\s*\/\/.*$/gm, '');
-  const globalMw = detectGlobalMiddleware(cleanContent);
-  const importMap = buildResolvedImportMap(cleanContent, routeFilePath);
-
-  const routeRegex =
-    /router\.(get|post|put|patch|delete)\s*\(\s*['"`]([^'"`]+)['"`]([\s\S]*?(\w+Controller)\.([\w]+))/g;
-  let match;
-
-  while ((match = routeRegex.exec(cleanContent)) !== null) {
-    const [, method, routePath, routeText, controllerName, methodName] = match;
-    const routeLineIndex = cleanContent.substring(0, match.index).split('\n').length - 1;
-    const fullPath = routePath === '/' ? `/${basePath}` : `/${basePath}${routePath}`;
-    const openApiPath = fullPath.replace(/:(\w+)/g, '{$1}');
-
-    const routeMw = detectRouteMiddleware(routeText);
-    const isProtected =
-      routeMw.hasProtect || (globalMw.hasGlobalProtect && routeLineIndex > globalMw.globalProtectLine);
-    const isAdminOnly =
-      routeMw.hasAuthorize || (globalMw.hasGlobalAuthorize && routeLineIndex > globalMw.globalAuthorizeLine);
-
-    const controllerFile = controllerName.replace(/Controller$/, '') + '.controller';
-    const controllerPath = findExistingFile(path.join(__dirname, '../controllers', controllerFile));
-    const jsdoc = parseJSDocFromController(controllerPath, methodName);
-
-    if (!paths[openApiPath]) paths[openApiPath] = {};
-    paths[openApiPath][method] = buildOperation({
-      method,
-      routePath,
-      basePath,
-      openApiPath,
-      jsdoc,
-      isProtected,
-      isAdminOnly,
-      adminRole: routeMw.authorizeRole || globalMw.globalAuthorizeRole,
-      routeMw,
-      methodName,
-    });
-  }
-
-  return paths;
-}
-
-// ==================== Operation Builder ====================
+const LIST_ROUTE_KEYS = new Set([
+  'GET /users',
+  'GET /files',
+  'GET /notifications',
+  'GET /reward-penalties',
+  'GET /duty/swaps',
+]);
 
 const SUMMARY_MAP: Array<[RegExp, string, (entity: string) => string]> = [
-  [/^\/$/, 'get', (e) => `Danh sách ${e}`],
-  [/^\/$/, 'post', (e) => `Tạo ${e}`],
-  [/^\/$/, 'delete', (e) => `Xoá tất cả ${e}`],
-  [/^\/:id$/, 'get', (e) => `Chi tiết ${e}`],
-  [/^\/:id$/, 'put', (e) => `Cập nhật ${e}`],
-  [/^\/:id$/, 'delete', (e) => `Xoá ${e}`],
-  [/^\/:id\/status$/, 'patch', (e) => `Cập nhật trạng thái ${e}`],
-  [/^\/:id\/permanent$/, 'delete', (e) => `Xoá vĩnh viễn ${e}`],
-  [/^\/:id\/activity$/, 'get', (e) => `Lịch sử hoạt động ${e}`],
+  [/^\/$/, 'get', (entity) => `Danh sách ${entity}`],
+  [/^\/$/, 'post', (entity) => `Tạo ${entity}`],
+  [/^\/$/, 'delete', (entity) => `Xoá tất cả ${entity}`],
+  [/^\/:id$/, 'get', (entity) => `Chi tiết ${entity}`],
+  [/^\/:id$/, 'put', (entity) => `Cập nhật ${entity}`],
+  [/^\/:id$/, 'delete', (entity) => `Xoá ${entity}`],
+  [/^\/:id\/status$/, 'patch', (entity) => `Cập nhật trạng thái ${entity}`],
+  [/^\/:id\/permanent$/, 'delete', (entity) => `Xoá vĩnh viễn ${entity}`],
+  [/^\/:id\/activity$/, 'get', (entity) => `Lịch sử hoạt động ${entity}`],
   [/^\/:id\/read$/, 'patch', () => 'Đánh dấu đã đọc'],
   [/^\/read-all$/, 'patch', () => 'Đánh dấu tất cả đã đọc'],
   [/^\/profile$/, 'put', () => 'Cập nhật profile'],
-  [/^\/schema$/, 'get', (e) => `Xem schema ${e}`],
-  [/^\/template$/, 'get', (e) => `Tải template import ${e}`],
-  [/^\/import$/, 'post', (e) => `Import ${e} từ file`],
-  [/^\/export$/, 'get', (e) => `Export ${e}`],
-  [/^\/stats/, 'get', (e) => `Thống kê ${e}`],
-  [/^\/cleanup$/, 'post', (e) => `Dọn dẹp ${e}`],
+  [/^\/schema$/, 'get', (entity) => `Xem schema ${entity}`],
+  [/^\/template$/, 'get', (entity) => `Tải template import ${entity}`],
+  [/^\/import$/, 'post', (entity) => `Import ${entity} từ file`],
+  [/^\/export$/, 'get', (entity) => `Export ${entity}`],
+  [/^\/stats/, 'get', (entity) => `Thống kê ${entity}`],
+  [/^\/cleanup$/, 'post', (entity) => `Dọn dẹp ${entity}`],
   [/^\/me$/, 'get', () => 'Thông tin tài khoản hiện tại'],
 ];
 
-function generateSmartSummary(method: string, routePath: string, basePath: string) {
-  const entity = getEntityLabel(basePath);
-  for (const [pattern, m, fn] of SUMMARY_MAP) {
-    if (pattern.test(routePath) && m === method) return fn(entity);
-  }
-  return `${method.toUpperCase()} ${routePath}`;
+function getTagMetadata(basePath: string) {
+  return (
+    TAG_METADATA[basePath] || {
+      name: toPascalCase(basePath),
+      description: `API cho nhóm ${basePath}.`,
+    }
+  );
 }
 
-function resolveSchemaRef(schemaKey: string) {
-  const normalized = normalizeSchemaKey(schemaKey);
-  if (schemas[normalized]) return toPascalCase(normalized);
-  if (schemas[`${normalized}s`]) return toPascalCase(`${normalized}s`);
-  return null;
-}
+function buildDefaultSummary(method: string, routePattern: string, basePath: string) {
+  const entity = getTagMetadata(basePath).name.toLowerCase();
 
-function buildFieldsSubsetSchema(schemaKey: string, fieldNames: string[]) {
-  const normalized = normalizeSchemaKey(schemaKey);
-  const schema = (schemas[normalized.endsWith('s') ? normalized : `${normalized}s`] || schemas[normalized]) as
-    | SchemaDefinition
-    | undefined;
-  if (!schema) return null;
-
-  const properties: AnyRecord = {};
-  const required = [];
-
-  for (const name of fieldNames) {
-    if (!schema[name]) continue;
-    properties[name] = ruleToProperty(schema[name]);
-    if (schema[name].required) {
-      required.push(name);
+  for (const [pattern, expectedMethod, getSummary] of SUMMARY_MAP) {
+    if (pattern.test(routePattern) && expectedMethod === method) {
+      return getSummary(entity);
     }
   }
 
-  const result: AnyRecord = { type: 'object', properties };
-  if (required.length > 0) result.required = required;
-  return result;
+  return `${method.toUpperCase()} ${routePattern}`;
 }
 
-function buildRequestBody(method: string, basePath: string, routeMw: RouteMiddlewareInfo, routeKey?: string) {
-  const routeDoc = routeKey ? ROUTE_DOCS[routeKey] : null;
-  if (routeDoc?.requestBody) {
-    return routeDoc.requestBody;
+function parseRouteKey(routeKey: string) {
+  const match = routeKey.match(/^([A-Z]+)\s+(.+)$/);
+  if (!match) {
+    throw new Error(`Invalid route key: ${routeKey}`);
   }
 
-  if (routeMw.hasValidateSchema && routeMw.schemaName) {
-    const ref = resolveSchemaRef(routeMw.schemaName);
-    if (ref)
-      return { required: true, content: { 'application/json': { schema: { $ref: `#/components/schemas/${ref}` } } } };
-  }
+  const method = match[1].toLowerCase();
+  const openApiPath = match[2];
+  const pathParts = openApiPath.split('/').filter(Boolean);
+  const basePath = pathParts[0] || '';
+  const routePath = pathParts.length > 1 ? `/${pathParts.slice(1).join('/')}` : '/';
+  const routePattern = routePath.replace(/\{(\w+)\}/g, ':$1');
 
-  if (routeMw.hasValidateFields && routeMw.validateFieldsSchema) {
-    const subset = buildFieldsSubsetSchema(routeMw.validateFieldsSchema, routeMw.validateFieldNames);
-    if (subset) return { required: true, content: { 'application/json': { schema: subset } } };
-  }
-
-  if (routeMw.hasUploadMiddleware) {
-    return {
-      required: true,
-      content: {
-        'multipart/form-data': {
-          schema: {
-            $ref: '#/components/schemas/ImportFileRequest',
-          },
-        },
-      },
-    };
-  }
-
-  if (method === 'post' || method === 'put') {
-    const ref = resolveSchemaRef(basePath);
-    if (ref) return { content: { 'application/json': { schema: { $ref: `#/components/schemas/${ref}` } } } };
-  }
-
-  return null;
+  return { method, openApiPath, basePath, routePattern };
 }
 
-function buildPathParameters(routePath: string) {
-  const params = routePath.match(/:(\w+)/g);
-  if (!params) return [];
+function buildOperationId(method: string, openApiPath: string) {
+  const normalizedPath = openApiPath
+    .replace(/[{}]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
 
-  return params.map((item) => {
-    const name = item.slice(1);
+  return `${method}_${normalizedPath}`;
+}
+
+function buildPathParameters(openApiPath: string) {
+  return Array.from(openApiPath.matchAll(/\{(\w+)\}/g)).map((match) => {
+    const name = match[1];
     return {
       name,
       in: 'path',
@@ -1462,15 +1188,7 @@ function buildPathParameters(routePath: string) {
 }
 
 function buildDefaultListParameters(routeKey: string) {
-  const listRouteKeys = new Set([
-    'GET /users',
-    'GET /files',
-    'GET /notifications',
-    'GET /reward-penalties',
-    'GET /duty/swaps',
-  ]);
-
-  if (!listRouteKeys.has(routeKey)) return [];
+  if (!LIST_ROUTE_KEYS.has(routeKey)) return [];
 
   return [
     { name: '_page', in: 'query', schema: { type: 'integer', default: 1 }, description: 'Trang hiện tại.' },
@@ -1486,133 +1204,113 @@ function mergeParameters(...groups: AnyRecord[][]) {
   const seen = new Set();
 
   for (const group of groups) {
-    for (const param of group || []) {
-      const key = `${param.in}:${param.name}`;
+    for (const parameter of group || []) {
+      const key = `${parameter.in}:${parameter.name}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      merged.push(param);
+      merged.push(parameter);
     }
   }
 
   return merged;
 }
 
-function buildDefaultResponses(method: string, routePath: string) {
-  const successCode = method === 'post' && (routePath === '/' || routePath === '/register') ? 201 : 200;
+function buildDefaultResponses(method: string, routePattern: string) {
+  const successCode = method === 'post' && (routePattern === '/' || routePattern === '/register') ? 201 : 200;
+
   return {
     [successCode]: { description: successCode === 201 ? 'Tạo mới thành công' : 'Thành công' },
     400: { description: 'Dữ liệu không hợp lệ' },
   };
 }
 
-function buildOperation({
-  method,
-  routePath,
-  basePath,
-  openApiPath,
-  jsdoc,
-  isProtected,
-  isAdminOnly,
-  adminRole,
-  routeMw,
-  methodName,
-}: AnyRecord) {
-  const routeKey = `${method.toUpperCase()} ${openApiPath}`;
-  const routeDoc = ROUTE_DOCS[routeKey] || {};
-  const tagMeta = getTagMetadata(basePath);
-  const operation: AnyRecord = {
-    tags: [tagMeta.name],
-    summary: routeDoc.summary || generateSmartSummary(method, routePath, basePath),
-    operationId: methodName || `${method}_${basePath}_${routePath}`,
-    responses: buildDefaultResponses(method, routePath),
-  };
-
-  // Security
-  if (isProtected || isAdminOnly) {
-    operation.security = [{ bearerAuth: [] }];
-    operation.responses['401'] = { description: 'Chưa đăng nhập' };
-  }
-  if (isAdminOnly || routeMw.hasCheckPermission) {
-    operation.responses['403'] = { description: 'Không có quyền truy cập' };
-  }
-
-  // Description
-  const descParts = [];
-  if (routeDoc.description) descParts.push(routeDoc.description);
-  if (isProtected || isAdminOnly) descParts.push('Yêu cầu xác thực bằng Bearer token.');
-  if (isAdminOnly) descParts.push(`Yêu cầu vai trò: \`${adminRole || 'admin'}\`.`);
-  if (routeMw.hasCheckPermission && routeMw.permission)
-    descParts.push(`Yêu cầu permission: \`${routeMw.permission}\`.`);
-  if (routeDoc.internal) descParts.push('API nội bộ/hỗ trợ vận hành. Mặc định được ẩn khỏi Swagger public.');
-  if (descParts.length > 0) operation.description = descParts.join(' | ');
-
-  // Request body
-  const body = buildRequestBody(method, basePath, routeMw, routeKey);
-  if (body) operation.requestBody = body;
-
-  const parameters = mergeParameters(
-    buildPathParameters(routePath),
-    routeDoc.parameters || [],
-    buildDefaultListParameters(routeKey),
-  );
-  if (parameters.length > 0) {
-    operation.parameters = parameters;
-  }
-
-  if (routeDoc.responses) {
-    operation.responses = { ...operation.responses, ...routeDoc.responses };
-  }
-
-  // JSDoc overrides
-  if (jsdoc) {
-    if (jsdoc.tags.length > 0) operation.tags = jsdoc.tags;
-    if (jsdoc.summary) operation.summary = jsdoc.summary;
-    if (jsdoc.security.length > 0) operation.security = jsdoc.security;
-    if (jsdoc.requestBody) operation.requestBody = jsdoc.requestBody;
-    if (Object.keys(jsdoc.responses).length > 0) operation.responses = jsdoc.responses;
-  }
-
-  if (routeDoc.internal) {
-    operation['x-internal'] = true;
-  }
-
-  return operation;
-}
-
-// ==================== Spec Builder ====================
-
-function buildSwaggerSpec() {
-  const rawPaths = scanRoutes();
-  const includeInternal = String(process.env.SWAGGER_INCLUDE_INTERNAL || 'false') === 'true';
+function buildSwaggerPaths(includeInternal: boolean) {
   const paths: AnyRecord = {};
 
-  for (const [pathKey, methods] of Object.entries(rawPaths)) {
-    const filteredMethods: AnyRecord = {};
+  for (const [routeKey, doc] of Object.entries(ROUTE_DOCS)) {
+    if (!includeInternal && doc.internal) {
+      continue;
+    }
 
-    for (const [method, operation] of Object.entries(methods as AnyRecord)) {
-      if (!includeInternal && operation['x-internal']) {
-        continue;
+    const { method, openApiPath, basePath, routePattern } = parseRouteKey(routeKey);
+    const tag = getTagMetadata(basePath);
+    const requiresAuth = Boolean(doc.protected || doc.permission || doc.adminRole);
+    const operation: AnyRecord = {
+      tags: doc.tags || [tag.name],
+      summary: doc.summary || buildDefaultSummary(method, routePattern, basePath),
+      operationId: doc.operationId || buildOperationId(method, openApiPath),
+      responses: {
+        ...buildDefaultResponses(method, routePattern),
+        ...(doc.responses || {}),
+      },
+    };
+
+    if (requiresAuth) {
+      operation.security = [{ bearerAuth: [] }];
+      if (!operation.responses['401']) {
+        operation.responses['401'] = { description: 'Chưa đăng nhập' };
       }
-      filteredMethods[method] = operation;
     }
 
-    if (Object.keys(filteredMethods).length > 0) {
-      paths[pathKey] = filteredMethods;
+    if (doc.permission || doc.adminRole) {
+      if (!operation.responses['403']) {
+        operation.responses['403'] = { description: 'Không có quyền truy cập' };
+      }
     }
+
+    const descriptionParts = [];
+    if (doc.description) descriptionParts.push(doc.description);
+    if (requiresAuth) descriptionParts.push('Yêu cầu xác thực bằng Bearer token.');
+    if (doc.adminRole) descriptionParts.push(`Yêu cầu vai trò: \`${doc.adminRole}\`.`);
+    if (doc.permission) descriptionParts.push(`Yêu cầu permission: \`${doc.permission}\`.`);
+    if (doc.internal) descriptionParts.push('API nội bộ/hỗ trợ vận hành. Mặc định được ẩn khỏi Swagger public.');
+    if (descriptionParts.length > 0) {
+      operation.description = descriptionParts.join(' | ');
+    }
+
+    if (doc.requestBody) {
+      operation.requestBody = doc.requestBody;
+    }
+
+    const parameters = mergeParameters(
+      buildPathParameters(openApiPath),
+      doc.parameters || [],
+      buildDefaultListParameters(routeKey),
+    );
+
+    if (parameters.length > 0) {
+      operation.parameters = parameters;
+    }
+
+    if (!paths[openApiPath]) {
+      paths[openApiPath] = {};
+    }
+
+    paths[openApiPath][method] = operation;
   }
 
-  const tagSet = new Set();
+  return paths;
+}
+
+function buildSwaggerSpec() {
+  const includeInternal = String(process.env.SWAGGER_INCLUDE_INTERNAL || 'false') === 'true';
+  const paths = buildSwaggerPaths(includeInternal);
+  const tagSet = new Set<string>();
+
   for (const pathMethods of Object.values(paths)) {
-    for (const op of Object.values(pathMethods as AnyRecord)) {
-      if (op.tags) op.tags.forEach((t) => tagSet.add(t));
+    for (const operation of Object.values(pathMethods as AnyRecord)) {
+      if (operation.tags) {
+        operation.tags.forEach((tagName: string) => tagSet.add(tagName));
+      }
     }
   }
 
   const generatedSchemas: AnyRecord = {};
-  for (const [key, schemaDef] of Object.entries(schemas) as Array<[string, SchemaDefinition]>) {
-    const schemaName = toPascalCase(key);
+
+  for (const [schemaKey, schemaDef] of Object.entries(schemas) as Array<[string, SchemaDefinition]>) {
+    const schemaName = toPascalCase(schemaKey);
     const properties: AnyRecord = {};
-    const required = [];
+    const required: string[] = [];
 
     for (const [field, rule] of Object.entries(schemaDef) as Array<[string, SchemaRule]>) {
       properties[field] = ruleToProperty(rule);
@@ -1622,7 +1320,7 @@ function buildSwaggerSpec() {
     generatedSchemas[schemaName] = {
       type: 'object',
       properties,
-      ...(required.length > 0 && { required }),
+      ...(required.length > 0 ? { required } : {}),
     };
   }
 
@@ -1633,16 +1331,15 @@ function buildSwaggerSpec() {
     info: {
       title: 'TCNS Backend API',
       version: '1.0.0',
-      description:
-        'Tài liệu OpenAPI cho hệ thống TCNS. Swagger được sinh tự động từ route, controller và schema, đồng bộ theo hành vi API thực tế.',
+      description: 'Tài liệu OpenAPI cho hệ thống TCNS. Swagger được khai báo tĩnh để bám sát tài liệu mong muốn.',
     },
     servers: [
       ...(process.env.BASE_URL ? [{ url: `${process.env.BASE_URL}/api`, description: 'Máy chủ production' }] : []),
       { url: `http://localhost:${process.env.PORT || 3000}/api`, description: 'Máy chủ local' },
     ],
-    tags: Array.from(tagSet).map((name) => {
-      const matched = Object.values(TAG_METADATA).find((item) => item.name === name);
-      return matched ? { name, description: matched.description } : { name };
+    tags: Array.from(tagSet).map((tagName) => {
+      const matched = Object.values(TAG_METADATA).find((item) => item.name === tagName);
+      return matched ? { name: tagName, description: matched.description } : { name: tagName };
     }),
     paths,
     components: {
@@ -1654,12 +1351,10 @@ function buildSwaggerSpec() {
   };
 }
 
-// ==================== Setup ====================
-
 function setupSwagger(app: AnyRecord) {
   const spec = buildSwaggerSpec();
 
-  app.get('/api-docs.json', (req, res) => res.json(spec));
+  app.get('/api-docs.json', (_req, res) => res.json(spec));
 
   app.use(
     '/api-docs',
@@ -1674,9 +1369,9 @@ function setupSwagger(app: AnyRecord) {
     }),
   );
 
-  console.log('📚 Swagger Generator initialized');
-  console.log(`   - Scanned ${Object.keys(spec.paths).length} endpoints`);
-  console.log(`   - Tags: ${spec.tags.map((t) => t.name).join(', ')}`);
+  console.log('📚 Swagger initialized');
+  console.log(`   - Declared ${Object.keys(spec.paths).length} paths`);
+  console.log(`   - Tags: ${spec.tags.map((tag: { name: string }) => tag.name).join(', ')}`);
 }
 
 export { setupSwagger, buildSwaggerSpec };
