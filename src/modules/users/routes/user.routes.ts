@@ -1,55 +1,55 @@
 import express from 'express';
 import userController from '@modules/users/controllers/user.controller';
-import { protect } from '@middleware/auth.middleware';
-import { checkPermission } from '@middleware/rbac.middleware';
+import { requireAuth } from '@middleware/auth.middleware';
+import { requirePermission } from '@middleware/rbac.middleware';
 import { getSchemaDoc, validateSchema } from '@middleware/schema-validation.middleware';
 import importExportController from '@shared/import-export/controllers/import-export.controller';
 
 const router = express.Router();
 
 // === USER PROFILE ROUTES (Must be before :id routes) ===
-router.put('/profile', protect, userController.getAvatarUploadMiddleware(), userController.updateProfile);
+router.put('/profile', requireAuth, userController.getAvatarUploadMiddleware(), userController.updateProfile);
 
 // === BASE & SEARCH ROUTES ===
-router.get('/search', protect, userController.search);
-router.get('/count', protect, checkPermission('users:list'), userController.count);
-router.post('/bulk', protect, checkPermission('users:update'), userController.bulk);
-router.post('/validate', protect, userController.validate);
+router.get('/search', requireAuth, userController.search);
+router.get('/count', requireAuth, requirePermission('users:list'), userController.count);
+router.post('/bulk', requireAuth, requirePermission('users:update'), userController.bulk);
+router.post('/validate', requireAuth, userController.validate);
 
 // === ADMIN ROUTES ===
 // Quản lý user, stats, status
-router.post('/', protect, checkPermission('users:create'), validateSchema('user'), userController.create);
+router.post('/', requireAuth, requirePermission('users:create'), validateSchema('user'), userController.create);
 
 router.put(
   '/:id',
-  protect,
-  checkPermission('users:update'),
+  requireAuth,
+  requirePermission('users:update'),
   userController.getAvatarUploadMiddleware(),
   userController.update,
 );
 
-router.delete('/:id', protect, checkPermission('users:delete'), userController.delete);
+router.delete('/:id', requireAuth, requirePermission('users:delete'), userController.delete);
 
-router.get('/', protect, checkPermission('users:list'), userController.getAll);
+router.get('/', requireAuth, requirePermission('users:list'), userController.getAll);
 
-router.get('/stats/summary', protect, checkPermission('users:view_stats'), userController.getUserStats);
+router.get('/stats/summary', requireAuth, requirePermission('users:view_stats'), userController.getUserStats);
 
-router.patch('/:id/status', protect, checkPermission('users:manage_status'), userController.toggleUserStatus);
-router.patch('/:id/promote', protect, checkPermission('users:manage_rank'), userController.promoteUser);
-router.patch('/:id/expel', protect, checkPermission('users:expel'), userController.expelUser);
+router.patch('/:id/status', requireAuth, requirePermission('users:manage_status'), userController.toggleUserStatus);
+router.patch('/:id/promote', requireAuth, requirePermission('users:manage_rank'), userController.promoteUser);
+router.patch('/:id/expel', requireAuth, requirePermission('users:expel'), userController.expelUser);
 
-router.delete('/:id/permanent', protect, checkPermission('users:delete'), userController.permanentDeleteUser);
+router.delete('/:id/permanent', requireAuth, requirePermission('users:delete'), userController.permanentDeleteUser);
 
 // === IMPORT/EXPORT (ADMIN ONLY) ===
-router.get('/template', protect, checkPermission('users:import_export'), (req, res, next) => {
+router.get('/template', requireAuth, requirePermission('users:import_export'), (req, res, next) => {
   (req.params as Record<string, string>).entity = 'users';
   importExportController.downloadTemplate(req, res, next);
 });
 
 router.post(
   '/import',
-  protect,
-  checkPermission('users:import_export'),
+  requireAuth,
+  requirePermission('users:import_export'),
   importExportController.getUploadMiddleware(),
   (req, res, next) => {
     (req.params as Record<string, string>).entity = 'users';
@@ -57,7 +57,7 @@ router.post(
   },
 );
 
-router.get('/export', protect, checkPermission('users:import_export'), (req, res, next) => {
+router.get('/export', requireAuth, requirePermission('users:import_export'), (req, res, next) => {
   (req.params as Record<string, string>).entity = 'users';
   importExportController.exportData(req, res, next);
 });
@@ -69,7 +69,7 @@ router.get('/schema', (req, res, next) => {
 });
 
 // User xem profile chính mình hoặc Admin xem profile người khác
-router.get('/:id/activity', protect, userController.getUserActivity);
-router.get('/:id', protect, userController.getById);
+router.get('/:id/activity', requireAuth, userController.getUserActivity);
+router.get('/:id', requireAuth, userController.getById);
 
 export default router;
