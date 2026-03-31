@@ -3,120 +3,112 @@ import type { AnyRecord } from '@app-types/common';
 import type { CrudService } from '@app-types/service';
 
 class BaseController {
-  service: CrudService;
+  protected readonly service: CrudService | null;
 
-  constructor(service: CrudService) {
+  constructor(service: CrudService | null = null) {
     this.service = service;
   }
 
-  getAll = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const result = await this.service.findAll(req.parsedQuery);
-      res.json(result);
-    } catch (error) {
-      next(error);
-    }
-  };
-
-  getById = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const data = await this.service.findById(req.params.id);
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
-
-  create = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const data = await this.service.create(req.body);
-      res.status(201).json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
-
-  update = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const data = await this.service.update(req.params.id, req.body);
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
-
-  delete = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const result = await this.service.delete(req.params.id);
-      res.json(result);
-    } catch (error) {
-      next(error);
-    }
-  };
-
-  search = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const { q } = req.query;
-      if (!q) {
-        return res.status(400).json({ message: 'Search query is required' });
+  protected handle(handler: (req: Request, res: Response, next: NextFunction) => Promise<unknown> | unknown) {
+    return async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        await handler(req, res, next);
+      } catch (error) {
+        next(error);
       }
-      const searchQuery = Array.isArray(q) ? String(q[0]) : String(q);
-      const result = await this.service.search(searchQuery, req.parsedQuery);
-      res.json(result);
-    } catch (error) {
-      next(error);
+    };
+  }
+
+  protected ok(res: Response, data: unknown) {
+    return res.json(data);
+  }
+
+  protected created(res: Response, data: unknown) {
+    return res.status(201).json(data);
+  }
+
+  protected requireService() {
+    if (!this.service) {
+      throw new Error('BaseController requires a service for CRUD handlers');
     }
-  };
 
-  count = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const count = await this.service.count(req.parsedQuery?.filter || {});
-      res.json({ count });
-    } catch (error) {
-      next(error);
+    return this.service;
+  }
+
+  getAll = this.handle(async (req: Request, res: Response) => {
+    const result = await this.requireService().findAll(req.parsedQuery);
+    this.ok(res, result);
+  });
+
+  getById = this.handle(async (req: Request, res: Response) => {
+    const data = await this.requireService().findById(req.params.id);
+    this.ok(res, data);
+  });
+
+  create = this.handle(async (req: Request, res: Response) => {
+    const data = await this.requireService().create(req.body);
+    this.created(res, data);
+  });
+
+  update = this.handle(async (req: Request, res: Response) => {
+    const data = await this.requireService().update(req.params.id, req.body);
+    this.ok(res, data);
+  });
+
+  delete = this.handle(async (req: Request, res: Response) => {
+    const result = await this.requireService().delete(req.params.id);
+    this.ok(res, result);
+  });
+
+  search = this.handle(async (req: Request, res: Response) => {
+    const { q } = req.query;
+    if (!q) {
+      return res.status(400).json({ message: 'Search query is required' });
     }
-  };
 
-  bulk = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const { operation, items, updates, ids } = req.body;
-      let result: AnyRecord;
+    const searchQuery = Array.isArray(q) ? String(q[0]) : String(q);
+    const result = await this.requireService().search(searchQuery, req.parsedQuery);
+    this.ok(res, result);
+  });
 
-      switch (operation) {
-        case 'create':
-          result = await this.service.bulkCreate(items || []);
-          break;
-        case 'update':
-          result = await this.service.bulkUpdate(updates || []);
-          break;
-        case 'delete':
-          result = await this.service.bulkDelete(ids || items || []);
-          break;
-        default:
-          return res.status(400).json({ message: 'Invalid bulk operation' });
-      }
+  count = this.handle(async (req: Request, res: Response) => {
+    const count = await this.requireService().count(req.parsedQuery?.filter || {});
+    this.ok(res, { count });
+  });
 
-      res.json({
-        success: result.failed === 0,
-        message: `Bulk ${operation} completed: ${result.success} succeeded, ${result.failed} failed`,
-        data: result,
-      });
-    } catch (error) {
-      next(error);
+  bulk = this.handle(async (req: Request, res: Response) => {
+    const { operation, items, updates, ids } = req.body;
+    const service = this.requireService();
+    let result: AnyRecord;
+
+    switch (operation) {
+      case 'create':
+        result = await service.bulkCreate(items || []);
+        break;
+      case 'update':
+        result = await service.bulkUpdate(updates || []);
+        break;
+      case 'delete':
+        result = await service.bulkDelete(ids || items || []);
+        break;
+      default:
+        return res.status(400).json({ message: 'Invalid bulk operation' });
     }
-  };
 
-  validate = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const result = await this.service.validateBySchema(req.body);
-      res.json({
-        valid: result.success,
-        errors: result.errors,
-      });
-    } catch (error) {
-      next(error);
-    }
-  };
+    this.ok(res, {
+      success: result.failed === 0,
+      message: `Bulk ${operation} completed: ${result.success} succeeded, ${result.failed} failed`,
+      data: result,
+    });
+  });
+
+  validate = this.handle(async (req: Request, res: Response) => {
+    const result = await this.requireService().validateBySchema(req.body);
+    this.ok(res, {
+      valid: result.success,
+      errors: result.errors,
+    });
+  });
 }
 
 export default BaseController;
