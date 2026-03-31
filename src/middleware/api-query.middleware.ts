@@ -14,8 +14,27 @@ function buildPaginationLink(baseUrl: string, query: Record<string, any>, page: 
 
 export const parseApiQuery = (req, _res, next) => {
   const query = req.query || {};
-  const page = Math.max(1, parsePositiveInteger(query._page || query.page, 1));
-  const limit = Math.min(Math.max(1, parsePositiveInteger(query._limit || query.limit, 10)), 100);
+  const rawPage = query._page ?? query.page;
+  const rawLimit = query._limit ?? query.limit;
+  const parsedPage = parsePositiveInteger(rawPage, NaN);
+  const parsedLimit = parsePositiveInteger(rawLimit, NaN);
+
+  if (rawPage !== undefined && (Number.isNaN(parsedPage) || parsedPage < 1)) {
+    return _res.status(400).json({
+      success: false,
+      message: 'Invalid page number. Must be a positive integer.',
+    });
+  }
+
+  if (rawLimit !== undefined && (Number.isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 100)) {
+    return _res.status(400).json({
+      success: false,
+      message: 'Invalid limit. Must be between 1 and 100.',
+    });
+  }
+
+  const page = Math.max(1, Number.isNaN(parsedPage) ? 1 : parsedPage);
+  const limit = Math.min(Math.max(1, Number.isNaN(parsedLimit) ? 10 : parsedLimit), 100);
   const order = String(query._order || query.order || 'asc').toLowerCase();
   const sort = normalizeCommaList(query._sort || query.sort, (field) => normalizeKeyWithSuffix(field, []));
   const embed = normalizeCommaList(query._embed || query.embed, (field) => normalizeKeyWithSuffix(field, []));
@@ -86,27 +105,6 @@ export const appendPaginationHeaders = (req, res, next) => {
 
     return originalJson(data);
   };
-
-  next();
-};
-
-export const validatePaginationQuery = (req, res, next) => {
-  const pageNum = parsePositiveInteger(req.query._page || req.query.page, NaN);
-  const limitNum = parsePositiveInteger(req.query._limit || req.query.limit, NaN);
-
-  if (req.query._page && (Number.isNaN(pageNum) || pageNum < 1)) {
-    return res.status(400).json({
-      success: false,
-      message: 'Invalid page number. Must be a positive integer.',
-    });
-  }
-
-  if (req.query._limit && (Number.isNaN(limitNum) || limitNum < 1 || limitNum > 100)) {
-    return res.status(400).json({
-      success: false,
-      message: 'Invalid limit. Must be between 1 and 100.',
-    });
-  }
 
   next();
 };
