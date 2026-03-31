@@ -1,10 +1,11 @@
+import type { NextFunction, Request, Response } from 'express';
 import { getRolePermissions as resolveRolePermissions, hasPermission } from '@shared/security/permission-policy';
 
-const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+const ROLE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 type RateLimitRecord = { count: number; resetTime: number };
 
-export const checkPermission = (permission) => {
-  return (req, res, next) => {
+export const requirePermission = (permission: string) => {
+  return (req: Request, res: Response, next: NextFunction) => {
     const userRole = req.user?.role;
 
     if (!userRole) {
@@ -31,35 +32,35 @@ export const getRolePermissions = (role) => {
 
 const rateLimitStore = new Map<string, RateLimitRecord>();
 
-export const roleBasedRateLimit = (limits) => {
-  return (req, res, next) => {
+export const roleRateLimit = (limitsByRole: Record<string, number>) => {
+  return (req: Request, res: Response, next: NextFunction) => {
     const userRole = req.user?.role || 'guest';
     const userId = req.user?.id || req.ip;
     const key = `${userRole}:${userId}`;
     const now = Date.now();
 
-    let record = rateLimitStore.get(key);
+    let rateLimitRecord = rateLimitStore.get(key);
 
-    if (!record || now > record.resetTime) {
-      record = { count: 0, resetTime: now + RATE_LIMIT_WINDOW_MS };
-      rateLimitStore.set(key, record);
+    if (!rateLimitRecord || now > rateLimitRecord.resetTime) {
+      rateLimitRecord = { count: 0, resetTime: now + ROLE_RATE_LIMIT_WINDOW_MS };
+      rateLimitStore.set(key, rateLimitRecord);
     }
 
-    const limit = limits[userRole] || limits.guest || 100;
+    const requestLimit = limitsByRole[userRole] || limitsByRole.guest || 100;
 
-    if (record.count >= limit) {
+    if (rateLimitRecord.count >= requestLimit) {
       return res.status(429).json({
         success: false,
         message: 'Rate limit exceeded',
       });
     }
 
-    record.count++;
+    rateLimitRecord.count++;
     next();
   };
 };
 
-export const getUserPermissions = (req, res) => {
+export const getPermissions = (req: Request, res: Response) => {
   const userRole = req.user?.role;
   res.json({
     success: true,

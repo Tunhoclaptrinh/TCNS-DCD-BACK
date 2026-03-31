@@ -4,14 +4,15 @@ import type { AnyRecord } from '@app-types/common';
 import type { SchemaDefinition, SchemaRule } from '@app-types/schema';
 import { camelizeObjectKeys } from '@utils/case';
 
-const BOOL_VALUES = new Set(['true', 'false', '1', '0', 'yes', 'no']);
+const BOOLEAN_STRING_VALUES = new Set(['true', 'false', '1', '0', 'yes', 'no']);
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+type FieldSelection = readonly string[];
 
-function isEmpty(value: any) {
+function isEmptyInput(value: any) {
   return value === undefined || value === null || value === '';
 }
 
-function findSchemaByEntityName(entity: string) {
+function resolveEntitySchema(entity: string) {
   if (!entity) return null;
 
   const key = String(entity).trim();
@@ -31,7 +32,7 @@ function findSchemaByEntityName(entity: string) {
   return null;
 }
 
-function validateType(field: string, value: any, rule: SchemaRule) {
+function getFieldTypeValidationError(field: string, value: any, rule: SchemaRule) {
   switch (rule.type) {
     case 'string':
       if (typeof value !== 'string') return `${field} must be a string`;
@@ -48,7 +49,7 @@ function validateType(field: string, value: any, rule: SchemaRule) {
       break;
     }
     case 'boolean':
-      if (typeof value !== 'boolean' && !BOOL_VALUES.has(String(value).toLowerCase())) {
+      if (typeof value !== 'boolean' && !BOOLEAN_STRING_VALUES.has(String(value).toLowerCase())) {
         return `${field} must be true/false`;
       }
       break;
@@ -65,68 +66,71 @@ function validateType(field: string, value: any, rule: SchemaRule) {
   return null;
 }
 
-function collectValidationErrors(schema: SchemaDefinition, body: AnyRecord, fieldFilter?: string[]) {
-  const errors: Record<string, string> = {};
+function collectSchemaValidationErrors(
+  schema: SchemaDefinition,
+  requestBody: AnyRecord,
+  fieldSelection?: FieldSelection,
+) {
+  const validationErrors: Record<string, string> = {};
 
   for (const [field, rule] of Object.entries(schema) as Array<[string, SchemaRule]>) {
-    if (fieldFilter && !fieldFilter.includes(field)) continue;
+    if (fieldSelection && !fieldSelection.includes(field)) continue;
 
-    const value = body[field];
+    const fieldValue = requestBody[field];
 
-    if (rule.required && isEmpty(value)) {
-      errors[field] = `${field} is required`;
+    if (rule.required && isEmptyInput(fieldValue)) {
+      validationErrors[field] = `${field} is required`;
       continue;
     }
 
-    if (!rule.required && isEmpty(value)) continue;
+    if (!rule.required && isEmptyInput(fieldValue)) continue;
 
-    const error = validateType(field, value, rule);
-    if (error) errors[field] = error;
+    const fieldError = getFieldTypeValidationError(field, fieldValue, rule);
+    if (fieldError) validationErrors[field] = fieldError;
   }
 
-  return errors;
+  return validationErrors;
 }
 
-function sendValidationErrorResponse(res: Response, errors: Record<string, string>) {
-  if (Object.keys(errors).length === 0) return false;
+function respondWithValidationErrors(res: Response, validationErrors: Record<string, string>) {
+  if (Object.keys(validationErrors).length === 0) return false;
 
   res.status(400).json({
     success: false,
     message: 'Validation failed',
-    errors: Object.entries(errors).map(([field, message]) => ({ field, message })),
+    errors: Object.entries(validationErrors).map(([field, message]) => ({ field, message })),
   });
   return true;
 }
 
-export const validateSchema = (entity: string) => {
+function normalizeRequestBodyKeys(req: Request) {
+  req.body = camelizeObjectKeys(req.body);
+}
+
+function normalizeFieldSelection(fields: string | string[]): FieldSelection {
+  return Array.isArray(fields) ? fields : [fields];
+}
+
+function createValidator(entity: string, fieldSelection?: FieldSelection) {
   return (req: Request, res: Response, next: NextFunction) => {
-    const schema = findSchemaByEntityName(entity);
+    const schema = resolveEntitySchema(entity);
     if (!schema) return next();
 
-    req.body = camelizeObjectKeys(req.body);
-    const errors = collectValidationErrors(schema, req.body);
-    if (sendValidationErrorResponse(res, errors)) return;
+    normalizeRequestBodyKeys(req);
+    const validationErrors = collectSchemaValidationErrors(schema, req.body, fieldSelection);
+    if (respondWithValidationErrors(res, validationErrors)) return;
 
     next();
   };
-};
+}
 
-export const validateFields = (entity: string, fields: string | string[]) => {
-  return (req: Request, res: Response, next: NextFunction) => {
-    const schema = findSchemaByEntityName(entity);
-    if (!schema) return next();
+export const validateSchema = (entity: string) => createValidator(entity);
 
-    req.body = camelizeObjectKeys(req.body);
-    const fieldFilter = Array.isArray(fields) ? fields : [fields];
-    const errors = collectValidationErrors(schema, req.body, fieldFilter);
-    if (sendValidationErrorResponse(res, errors)) return;
+export const validateFields = (entity: string, fields: string | string[]) =>
+  createValidator(entity, normalizeFieldSelection(fields));
 
-    next();
-  };
-};
-
-function buildFieldDoc(rule: SchemaRule) {
-  const doc = {
+function buildSchemaFieldDocumentation(rule: SchemaRule) {
+  const fieldDocumentation = {
     type: rule.type,
     required: rule.required || false,
     description: rule.description || '',
@@ -142,15 +146,23 @@ function buildFieldDoc(rule: SchemaRule) {
   if (rule.foreignKey) constraints.foreignKey = rule.foreignKey;
 
   if (Object.keys(constraints).length > 0) {
-    (doc as AnyRecord).constraints = constraints;
+    (fieldDocumentation as AnyRecord).constraints = constraints;
   }
 
-  return doc;
+  return fieldDocumentation;
+}
+
+function buildSchemaFieldSummary(rule: SchemaRule) {
+  return {
+    type: rule.type,
+    required: rule.required || false,
+    description: rule.description || '',
+  };
 }
 
 export const getSchemaDoc = (req: Request, res: Response) => {
   const { entity } = req.params;
-  const schema = findSchemaByEntityName(entity);
+  const schema = resolveEntitySchema(entity);
 
   if (!schema) {
     return res.status(404).json({
@@ -161,7 +173,7 @@ export const getSchemaDoc = (req: Request, res: Response) => {
 
   const fields: AnyRecord = {};
   for (const [field, rule] of Object.entries(schema) as Array<[string, SchemaRule]>) {
-    fields[field] = buildFieldDoc(rule);
+    fields[field] = buildSchemaFieldDocumentation(rule);
   }
 
   res.json({
@@ -170,23 +182,19 @@ export const getSchemaDoc = (req: Request, res: Response) => {
   });
 };
 
-export const getAllSchemas = (_req: Request, res: Response) => {
-  const allSchemas: AnyRecord = {};
+export const getSchemas = (_req: Request, res: Response) => {
+  const schemaDocumentation: AnyRecord = {};
 
   for (const [entity, schema] of Object.entries(schemas) as Array<[string, SchemaDefinition]>) {
     const fields: AnyRecord = {};
     for (const [field, rule] of Object.entries(schema) as Array<[string, SchemaRule]>) {
-      fields[field] = {
-        type: rule.type,
-        required: rule.required || false,
-        description: rule.description || '',
-      };
+      fields[field] = buildSchemaFieldSummary(rule);
     }
-    allSchemas[entity] = { entity, fields };
+    schemaDocumentation[entity] = { entity, fields };
   }
 
   res.json({
     success: true,
-    data: allSchemas,
+    data: schemaDocumentation,
   });
 };

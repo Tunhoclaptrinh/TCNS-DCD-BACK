@@ -8,9 +8,82 @@ import { sanitizeUser, hashPassword } from '@utils/helpers';
 import ApiError from '@utils/api-error';
 import userSchema from '@modules/users/schemas/user.schema';
 import notificationService from '@modules/notifications/services/notification.service';
+import type { AnyRecord, Identifier } from '@app-types/common';
 
-function generateAvatarUrl(name) {
+function generateAvatarUrl(name: string) {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
+}
+
+type UserRecord = {
+  id: Identifier;
+  role?: string;
+  expelled?: boolean;
+  isActive?: boolean;
+  position?: string;
+  status?: string;
+  department?: string;
+  createdAt?: string;
+  lastLogin?: string;
+  name?: string;
+  avatar?: string;
+  firstName?: string;
+  lastName?: string;
+};
+type UserStatItem = {
+  total: number;
+  active: number;
+  inactive: number;
+  dismissed: number;
+  ctv: number;
+  official: number;
+  management: number;
+  recentSignups: number;
+  byRole: Record<string, number>;
+  byPosition: Record<string, number>;
+};
+type UserStats = {
+  global: UserStatItem;
+  byDepartment: Record<string, UserStatItem>;
+};
+
+function createUserStatItem(): UserStatItem {
+  return {
+    total: 0,
+    active: 0,
+    inactive: 0,
+    dismissed: 0,
+    ctv: 0,
+    official: 0,
+    management: 0,
+    recentSignups: 0,
+    byRole: {},
+    byPosition: {},
+  };
+}
+
+function processUserStats(item: UserStatItem, user: UserRecord, weekAgo: Date) {
+  item.total++;
+  if (user.status === 'active') item.active++;
+  else if (user.status === 'inactive') item.inactive++;
+  else if (user.status === 'dismissed') item.dismissed++;
+
+  if (user.position === 'tvb') item.ctv++;
+  else if (user.position === 'tv') item.official++;
+  else if (user.position === 'ctc') item.management++;
+
+  if (new Date(user.createdAt) >= weekAgo) item.recentSignups++;
+
+  if (user.role) {
+    item.byRole[user.role] = (item.byRole[user.role] || 0) + 1;
+  }
+
+  if (user.position) {
+    item.byPosition[user.position] = (item.byPosition[user.position] || 0) + 1;
+  }
+}
+
+function getAssignedUserIds(slot: { assignedUserIds?: Identifier[] }): Identifier[] {
+  return slot.assignedUserIds || [];
 }
 
 class UserService extends BaseService {
@@ -18,11 +91,79 @@ class UserService extends BaseService {
     super('users', usersRepository);
   }
 
+  normalizeUserId(userId: Identifier) {
+    const parsedUserId = Number(userId);
+    return Number.isNaN(parsedUserId) ? userId : parsedUserId;
+  }
+
+  async findUserOrThrow(userId: Identifier) {
+    const user = (await this.repository.findById(userId)) as UserRecord | null;
+    if (!user) {
+      throw ApiError.notFound('User not found');
+    }
+    return user;
+  }
+
+  async deleteUserNotifications(userId: Identifier) {
+    const notifications = await notificationsRepository.findAllByUserId(userId);
+    await Promise.all(notifications.map((item) => notificationsRepository.delete(item.id)));
+    await notificationsRepository.deleteAllSettingsByUserId(userId);
+    return notifications.length;
+  }
+
+  async deleteUserRewardPenalties(userId: Identifier) {
+    const rewardPenaltiesByUser = await rewardPenaltiesRepository.findByUserId(userId);
+    const rewardPenaltiesByCreator = await rewardPenaltiesRepository.findByCreatorId(userId);
+    const rewardPenaltyMap = new Map<Identifier, AnyRecord>();
+
+    for (const item of [...rewardPenaltiesByUser, ...rewardPenaltiesByCreator]) {
+      rewardPenaltyMap.set(item.id, item);
+    }
+
+    await Promise.all([...rewardPenaltyMap.values()].map((item) => rewardPenaltiesRepository.delete(item.id)));
+  }
+
+  async deleteUserSwapRequests(userId: Identifier) {
+    const swapByRequester = await dutySwapRequestsRepository.findMany({ requesterId: userId });
+    const swapByTarget = await dutySwapRequestsRepository.findMany({ targetUserId: userId });
+    const swapByApprover = await dutySwapRequestsRepository.findMany({ approvedBy: userId });
+    const swapMap = new Map<Identifier, AnyRecord>();
+
+    for (const item of [...swapByRequester, ...swapByTarget, ...swapByApprover]) {
+      swapMap.set(item.id, item);
+    }
+
+    await Promise.all([...swapMap.values()].map((item) => dutySwapRequestsRepository.delete(item.id)));
+  }
+
+  async removeUserFromDutySlots(userId: Identifier) {
+    const dutySlots = await dutySlotsRepository.findAll();
+    const slotUpdates: Promise<unknown>[] = [];
+
+    for (const slot of dutySlots) {
+      const assignedUserIds = getAssignedUserIds(slot);
+      const filtered = assignedUserIds.filter((id) => Number(id) !== Number(userId));
+
+      if (filtered.length !== assignedUserIds.length) {
+        slotUpdates.push(
+          dutySlotsRepository.update(slot.id, {
+            assignedUserIds: filtered,
+            updatedAt: new Date().toISOString(),
+          }),
+        );
+      }
+    }
+
+    if (slotUpdates.length > 0) {
+      await Promise.all(slotUpdates);
+    }
+  }
+
   getSchema() {
     return userSchema;
   }
 
-  async transformImportData(data) {
+  async transformImportData(data: AnyRecord) {
     const transformed = await super.transformImportData(data);
 
     if (transformed.password) {
@@ -36,7 +177,7 @@ class UserService extends BaseService {
     return transformed;
   }
 
-  async beforeCreate(data) {
+  async beforeCreate(data: AnyRecord) {
     const transformed = this.transformBySchema(data);
 
     if (transformed.password) {
@@ -60,7 +201,7 @@ class UserService extends BaseService {
     };
   }
 
-  async beforeUpdate(id, data) {
+  async beforeUpdate(id: Identifier, data: AnyRecord) {
     const payload = { ...data };
 
     if (payload.newPassword) {
@@ -71,7 +212,7 @@ class UserService extends BaseService {
     }
 
     if (payload.firstName || payload.lastName) {
-      const current = await this.repository.findById(id);
+      const current = (await this.repository.findById(id)) as UserRecord;
       const lastName = payload.lastName !== undefined ? payload.lastName : current.lastName;
       const firstName = payload.firstName !== undefined ? payload.firstName : current.firstName;
       payload.name = `${lastName || ''} ${firstName || ''}`.trim();
@@ -87,68 +228,31 @@ class UserService extends BaseService {
   }
 
   async getUserStats() {
-    const users = await this.repository.findAll();
+    const users = (await this.repository.findAll()) as UserRecord[];
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
 
-    const createUserStatItem = () => ({
-      total: 0,
-      active: 0,
-      inactive: 0,
-      dismissed: 0,
-      ctv: 0,
-      official: 0,
-      management: 0,
-      recentSignups: 0,
-      byRole: {},
-      byPosition: {},
-    });
-
-    const stats = {
+    const stats: UserStats = {
       global: createUserStatItem(),
       byDepartment: {},
     };
 
-    const processUser = (item, user) => {
-      item.total++;
-      if (user.status === 'active') item.active++;
-      else if (user.status === 'inactive') item.inactive++;
-      else if (user.status === 'dismissed') item.dismissed++;
-
-      // CTV: tvb, Official: tv, Management: ctc
-      if (user.position === 'tvb') item.ctv++;
-      else if (user.position === 'tv') item.official++;
-      else if (user.position === 'ctc') item.management++;
-
-      if (new Date(user.createdAt) >= weekAgo) item.recentSignups++;
-
-      if (user.role) {
-        item.byRole[user.role] = (item.byRole[user.role] || 0) + 1;
-      }
-      if (user.position) {
-        item.byPosition[user.position] = (item.byPosition[user.position] || 0) + 1;
-      }
-    };
-
     for (const user of users) {
-      // Global stats
-      processUser(stats.global, user);
+      processUserStats(stats.global, user, weekAgo);
 
-      // Department stats
       if (user.department) {
         if (!stats.byDepartment[user.department]) {
           stats.byDepartment[user.department] = createUserStatItem();
         }
-        processUser(stats.byDepartment[user.department], user);
+        processUserStats(stats.byDepartment[user.department], user, weekAgo);
       }
     }
 
     return stats;
   }
 
-  async getUserActivity(userId) {
-    const user = await this.repository.findById(userId);
-    if (!user) throw ApiError.notFound('User not found');
+  async getUserActivity(userId: Identifier) {
+    const user = await this.findUserOrThrow(userId);
 
     return {
       user: sanitizeUser(user),
@@ -157,9 +261,8 @@ class UserService extends BaseService {
     };
   }
 
-  async toggleUserStatus(userId) {
-    const user = await this.repository.findById(userId);
-    if (!user) throw ApiError.notFound('User not found');
+  async toggleUserStatus(userId: Identifier) {
+    const user = await this.findUserOrThrow(userId);
 
     const updated = await this.repository.update(userId, {
       isActive: !user.isActive,
@@ -169,14 +272,19 @@ class UserService extends BaseService {
     return sanitizeUser(updated);
   }
 
-  async promoteUser(userId, role, reason, actorId, actorRole) {
+  async promoteUser(
+    userId: Identifier,
+    role: string,
+    reason: string | null | undefined,
+    actorId: Identifier,
+    actorRole: string,
+  ) {
     const allowedRoles = ['customer', 'staff', 'admin'];
     if (!allowedRoles.includes(role)) {
       throw ApiError.badRequest(`Invalid role. Allowed roles: ${allowedRoles.join(', ')}`);
     }
 
-    const user = await this.repository.findById(userId);
-    if (!user) throw ApiError.notFound('User not found');
+    const user = await this.findUserOrThrow(userId);
     if (user.expelled) throw ApiError.badRequest('Cannot promote expelled user');
     if (Number(actorId) === Number(user.id)) throw ApiError.badRequest('Cannot change your own role');
 
@@ -212,9 +320,8 @@ class UserService extends BaseService {
     return sanitizeUser(updated);
   }
 
-  async expelUser(userId, reason, actorId, actorRole) {
-    const user = await this.repository.findById(userId);
-    if (!user) throw ApiError.notFound('User not found');
+  async expelUser(userId: Identifier, reason: string | null | undefined, actorId: Identifier, actorRole: string) {
+    const user = await this.findUserOrThrow(userId);
     if (Number(actorId) === Number(user.id)) throw ApiError.badRequest('Cannot expel your own account');
 
     if (actorRole !== 'admin' && user.role === 'admin') {
@@ -248,62 +355,23 @@ class UserService extends BaseService {
     return sanitizeUser(updated);
   }
 
-  async permanentDeleteUser(userId, actorId, actorRole) {
-    const user = await this.repository.findById(userId);
-    if (!user) throw ApiError.notFound('User not found');
+  async permanentDeleteUser(userId: Identifier, actorId: Identifier, actorRole: string) {
+    const user = await this.findUserOrThrow(userId);
     if (Number(actorId) === Number(user.id)) throw ApiError.badRequest('Cannot delete your own account');
 
     if (actorRole !== 'admin' && user.role === 'admin') {
       throw ApiError.forbidden('Only admin can delete admin account');
     }
 
-    const parsedUserId = Number(userId);
-    const normalizedUserId = Number.isNaN(parsedUserId) ? userId : parsedUserId;
-
-    const notifications = await notificationsRepository.findAllByUserId(normalizedUserId);
-    const rewardPenaltiesByUser = await rewardPenaltiesRepository.findByUserId(normalizedUserId);
-    const rewardPenaltiesByCreator = await rewardPenaltiesRepository.findByCreatorId(normalizedUserId);
-    const swapByRequester = await dutySwapRequestsRepository.findMany({ requesterId: normalizedUserId });
-    const swapByTarget = await dutySwapRequestsRepository.findMany({ targetUserId: normalizedUserId });
-    const swapByApprover = await dutySwapRequestsRepository.findMany({ approvedBy: normalizedUserId });
-    const dutySlots = await dutySlotsRepository.findAll();
-
-    await Promise.all(notifications.map((item) => notificationsRepository.delete(item.id)));
-    await notificationsRepository.deleteAllSettingsByUserId(normalizedUserId);
-
-    const rewardPenaltyMap = new Map();
-    for (const item of [...rewardPenaltiesByUser, ...rewardPenaltiesByCreator]) {
-      rewardPenaltyMap.set(item.id, item);
-    }
-    await Promise.all([...rewardPenaltyMap.values()].map((item) => rewardPenaltiesRepository.delete(item.id)));
-
-    const swapMap = new Map();
-    for (const item of [...swapByRequester, ...swapByTarget, ...swapByApprover]) {
-      swapMap.set(item.id, item);
-    }
-    await Promise.all([...swapMap.values()].map((item) => dutySwapRequestsRepository.delete(item.id)));
-
-    const slotUpdates = dutySlots
-      .map((slot) => {
-        const assignedUserIds = Array.isArray(slot.assignedUserIds) ? slot.assignedUserIds : [];
-        const filtered = assignedUserIds.filter((id) => Number(id) !== Number(normalizedUserId));
-        if (filtered.length === assignedUserIds.length) {
-          return null;
-        }
-        return dutySlotsRepository.update(slot.id, {
-          assignedUserIds: filtered,
-          updatedAt: new Date().toISOString(),
-        });
-      })
-      .filter(Boolean);
-
-    if (slotUpdates.length > 0) {
-      await Promise.all(slotUpdates);
-    }
+    const normalizedUserId = this.normalizeUserId(userId);
+    const notificationCount = await this.deleteUserNotifications(normalizedUserId);
+    await this.deleteUserRewardPenalties(normalizedUserId);
+    await this.deleteUserSwapRequests(normalizedUserId);
+    await this.removeUserFromDutySlots(normalizedUserId);
 
     await this.repository.delete(userId);
 
-    return { user: 1, notifications: notifications.length };
+    return { user: 1, notifications: notificationCount };
   }
 }
 

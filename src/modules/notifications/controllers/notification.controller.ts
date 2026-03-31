@@ -1,5 +1,3 @@
-import type { NextFunction, Request, Response } from 'express';
-
 import BaseController from '@shared/common/base-controller';
 import notificationService from '@modules/notifications/services/notification.service';
 
@@ -8,68 +6,40 @@ class NotificationController extends BaseController {
     super(notificationService);
   }
 
-  getNotifications = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const data = await this.service.getNotifications(req.user.id, req.parsedQuery);
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  getNotifications = this.handle(async (req, res) => {
+    const data = await this.service.getNotifications(req.user.id, req.parsedQuery);
+    this.ok(res, data);
+  });
 
-  markAsRead = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const data = await this.service.markAsRead(req.params.id, req.user.id);
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  markAsRead = this.handle(async (req, res) => {
+    const data = await this.service.markAsRead(req.params.id, req.user.id);
+    this.ok(res, data);
+  });
 
-  markAllAsRead = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const data = await this.service.markAllAsRead(req.user.id);
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  markAllAsRead = this.handle(async (req, res) => {
+    const data = await this.service.markAllAsRead(req.user.id);
+    this.ok(res, data);
+  });
 
-  deleteNotification = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const data = await this.service.deleteForUser(req.params.id, req.user.id);
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  deleteNotification = this.handle(async (req, res) => {
+    const data = await this.service.deleteForUser(req.params.id, req.user.id);
+    this.ok(res, data);
+  });
 
-  clearAll = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const data = await this.service.deleteAll(req.user.id);
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  clearAll = this.handle(async (req, res) => {
+    const data = await this.service.deleteAll(req.user.id);
+    this.ok(res, data);
+  });
 
-  getSettings = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const data = await this.service.getSettings(req.user.id);
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  getSettings = this.handle(async (req, res) => {
+    const data = await this.service.getSettings(req.user.id);
+    this.ok(res, data);
+  });
 
-  updateSettings = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const data = await this.service.updateSettings(req.user.id, req.body);
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  updateSettings = this.handle(async (req, res) => {
+    const data = await this.service.updateSettings(req.user.id, req.body);
+    this.ok(res, data);
+  });
 }
 
 export default new NotificationController();

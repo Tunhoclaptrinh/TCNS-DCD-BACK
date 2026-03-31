@@ -1,40 +1,48 @@
+import type { NextFunction, Request, Response } from 'express';
+
 const SENSITIVE_FIELDS = ['password', 'token', 'refreshToken', 'accessToken'];
 const MAX_BODY_LOG_LENGTH = 500;
 
-function maskSensitiveFields(payload) {
+function redactSensitiveFields(payload: unknown) {
   if (!payload || typeof payload !== 'object') return payload;
-  const clean = { ...payload };
+
+  const redactedPayload = { ...payload };
   for (const key of SENSITIVE_FIELDS) {
-    if (key in clean) clean[key] = '***';
+    if (key in redactedPayload) redactedPayload[key] = '***';
   }
-  return clean;
+
+  return redactedPayload;
 }
 
-function truncateForLog(data) {
-  const str = typeof data === 'string' ? data : JSON.stringify(data);
-  if (!str || str.length <= MAX_BODY_LOG_LENGTH) return data;
-  return str.slice(0, MAX_BODY_LOG_LENGTH) + `... (${str.length} chars)`;
+function truncateLoggedPayload(payload: unknown) {
+  const serializedPayload = typeof payload === 'string' ? payload : JSON.stringify(payload);
+  if (!serializedPayload || serializedPayload.length <= MAX_BODY_LOG_LENGTH) {
+    return payload;
+  }
+
+  return serializedPayload.slice(0, MAX_BODY_LOG_LENGTH) + `... (${serializedPayload.length} chars)`;
 }
 
 function shouldLogDetails() {
   return (process.env.NODE_ENV || 'development') !== 'production';
 }
 
-export default function requestLogger(req, res, next) {
-  const start = Date.now();
+export default function logRequest(req: Request, res: Response, next: NextFunction) {
+  const requestStartedAt = Date.now();
+  const verbose = shouldLogDetails();
 
   console.log(`[HTTP] ${req.method} ${req.originalUrl}`);
 
-  if (shouldLogDetails() && Object.keys(req.query || {}).length > 0) {
+  if (verbose && Object.keys(req.query).length > 0) {
     console.log('[HTTP] Query:', req.query);
   }
 
-  if (shouldLogDetails() && req.body && Object.keys(req.body).length > 0) {
-    console.log('[HTTP] Body:', truncateForLog(maskSensitiveFields(req.body)));
+  if (verbose && req.body && Object.keys(req.body).length > 0) {
+    console.log('[HTTP] Body:', truncateLoggedPayload(redactSensitiveFields(req.body)));
   }
 
   res.on('finish', () => {
-    const durationMs = Date.now() - start;
+    const durationMs = Date.now() - requestStartedAt;
     console.log(`[HTTP] ${res.statusCode} ${req.method} ${req.originalUrl} ${durationMs}ms`);
   });
 

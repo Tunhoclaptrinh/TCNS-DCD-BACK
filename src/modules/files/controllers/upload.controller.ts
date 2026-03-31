@@ -1,7 +1,8 @@
 import uploadService from '@modules/files/services/upload.service';
 import type { UploadCategory } from '@app-types/upload';
+import BaseController from '@shared/common/base-controller';
 
-class UploadController {
+class UploadController extends BaseController {
   getUploadMiddleware(type: UploadCategory = 'temp') {
     if (type === 'avatar') {
       return uploadService.getFlexibleSingleUpload(['image', 'avatar'], 'avatar');
@@ -34,68 +35,44 @@ class UploadController {
     return files.file?.[0] || files.image?.[0] || files.avatar?.[0] || null;
   }
 
-  uploadAvatar = async (req, res, next) => {
-    try {
-      const file = this.getUploadedFile(req);
-      if (!file) {
-        return res.status(400).json({ message: 'No file uploaded' });
-      }
-      const data = await uploadService.uploadAvatar(file, req.user.id, this.buildUploadOptions(req));
-      res.json(data);
-    } catch (error) {
-      next(error);
+  uploadAvatar = this.handle(async (req, res) => {
+    const file = this.getUploadedFile(req);
+    if (!file) {
+      return res.status(400).json({ message: 'No file uploaded' });
     }
-  };
+    const data = await uploadService.uploadAvatar(file, req.user.id, this.buildUploadOptions(req));
+    this.ok(res, data);
+  });
 
-  uploadGeneralFile = async (req, res, next) => {
-    try {
-      const file = this.getUploadedFile(req);
-      if (!file) {
-        return res.status(400).json({ message: 'No file uploaded' });
-      }
-      const data = await uploadService.uploadGeneralFile(file, this.buildUploadOptions(req));
-      res.json(data);
-    } catch (error) {
-      next(error);
+  uploadGeneralFile = this.handle(async (req, res) => {
+    const file = this.getUploadedFile(req);
+    if (!file) {
+      return res.status(400).json({ message: 'No file uploaded' });
     }
-  };
+    const data = await uploadService.uploadGeneralFile(file, this.buildUploadOptions(req));
+    this.ok(res, data);
+  });
 
-  deleteFile = async (req, res, next) => {
-    try {
-      const data = await uploadService.deleteFile(this.getFileInput(req));
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  deleteFile = this.handle(async (req, res) => {
+    const data = await uploadService.deleteFile(this.getFileInput(req));
+    this.ok(res, data);
+  });
 
-  getFileInfo = async (req, res, next) => {
-    try {
-      const data = await uploadService.getFileInfo(this.getFileInput(req));
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  getFileInfo = this.handle(async (req, res) => {
+    const data = await uploadService.getFileInfo(this.getFileInput(req));
+    this.ok(res, data);
+  });
 
-  getStorageStats = async (req, res, next) => {
-    try {
-      const data = await uploadService.getStorageStats();
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  getStorageStats = this.handle(async (_req, res) => {
+    const data = await uploadService.getStorageStats();
+    this.ok(res, data);
+  });
 
-  cleanupOldFiles = async (req, res, next) => {
-    try {
-      const days = parseInt(req.body.days || req.query.days) || 30;
-      const data = await uploadService.cleanupOldFiles(days);
-      res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  };
+  cleanupOldFiles = this.handle(async (req, res) => {
+    const days = parseInt(req.body.days || req.query.days) || 30;
+    const data = await uploadService.cleanupOldFiles(days);
+    this.ok(res, data);
+  });
 }
 
 export default new UploadController();
