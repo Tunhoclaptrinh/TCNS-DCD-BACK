@@ -3,7 +3,7 @@ import { defineSchema } from '@app-types/schema';
 export default defineSchema({
   id: {
     type: 'number',
-    required: true,
+    required: false,
     unique: true,
     description: 'ID định danh duy nhất (Numeric)',
   },

@@ -21,6 +21,7 @@ const SCHEMA_MODEL_MAP = {
   'duty-day.schema': 'duty_days',
   'duty-template.schema': 'duty_templates',
   'duty-template-assignment.schema': 'duty_template_assignments',
+  'duty-log.schema': 'duty_logs',
 };
 const FILTER_SUFFIXES = ['_not_like', '_ilike', '_like', '_gte', '_lte', '_gt', '_lt', '_ne', '_in', '_nin'];
 

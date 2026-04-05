@@ -3,7 +3,7 @@ import { defineSchema } from '@app-types/schema';
 export default defineSchema({
   idFile: {
     type: 'string',
-    required: true,
+    required: false,
     unique: true,
     description: 'ID file tren he thong luu tru',
   },

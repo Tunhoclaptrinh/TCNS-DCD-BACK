@@ -13,6 +13,24 @@ class DutyController {
     }
   };
 
+  getSettings = async (req, res, next) => {
+    try {
+      const data = await dutyService.getSettings();
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updateSettings = async (req, res, next) => {
+    try {
+      const data = await dutyService.updateSettings(req.body);
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   createSlot = async (req, res, next) => {
     try {
       const data = await dutyService.createSlot(req.body, req.user.id);
@@ -24,7 +42,7 @@ class DutyController {
 
   updateSlot = async (req, res, next) => {
     try {
-      const data = await dutyService.updateSlot(req.params.id, req.body);
+      const data = await dutyService.updateSlot(req.params.id, req.body, req.user.id);
       res.json(data);
     } catch (error) {
       next(error);
@@ -33,7 +51,7 @@ class DutyController {
 
   deleteSlot = async (req, res, next) => {
     try {
-      const data = await dutyService.delete(req.params.id);
+      const data = await dutyService.deleteSlot(req.params.id, req.user.id);
       res.json(data);
     } catch (error) {
       next(error);
@@ -43,7 +61,7 @@ class DutyController {
   deleteShiftSlots = async (req, res, next) => {
     try {
       const { date, shiftId } = req.body;
-      const data = await dutyService.deleteShiftSlots(date, shiftId);
+      const data = await dutyService.deleteShiftSlots(date, shiftId, req.user.id);
       res.json({ success: true, count: data });
     } catch (error) {
       next(error);
@@ -90,6 +108,33 @@ class DutyController {
     try {
       const data = await dutyService.decideSwap(req.params.id, req.body, req.user);
       res.json(data);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  createSwapManual = async (req, res, next) => {
+    try {
+      const data = await dutyService.createSwapManual(req.body, req.user.id);
+      res.status(201).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updateSwapRequest = async (req, res, next) => {
+    try {
+      const data = await dutyService.updateSwapRequest(req.params.id, req.body, req.user.id);
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  deleteSwapRequest = async (req, res, next) => {
+    try {
+      const data = await dutyService.deleteSwapRequest(req.params.id);
+      res.json({ success: true, data });
     } catch (error) {
       next(error);
     }
@@ -267,7 +312,7 @@ class DutyController {
   deleteRangeSlots = async (req, res, next) => {
     try {
       const { startDate, endDate } = req.body;
-      const data = await dutyService.deleteRangeSlots(startDate, endDate);
+      const data = await dutyService.deleteRangeSlots(startDate, endDate, req.user.id);
       res.json({ success: true, data });
     } catch (error) {
       next(error);
@@ -279,7 +324,7 @@ class DutyController {
   markAttendance = async (req, res, next) => {
     try {
       const { ids } = req.body;
-      const data = await dutyService.markAttendance(req.params.id, ids);
+      const data = await dutyService.markAttendance(req.params.id, ids, req.user.id);
       res.json({ success: true, data });
     } catch (error) {
       next(error);
@@ -309,6 +354,33 @@ class DutyController {
     try {
       const { status, rejectionReason } = req.body;
       const data = await dutyService.resolveLeaveRequest(req.params.id, status, req.user.id, rejectionReason);
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  createLeaveManual = async (req, res, next) => {
+    try {
+      const data = await dutyService.createLeaveManual(req.body, req.user.id);
+      res.status(201).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updateLeaveRequest = async (req, res, next) => {
+    try {
+      const data = await dutyService.updateLeaveRequest(req.params.id, req.body, req.user.id);
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  deleteLeaveRequest = async (req, res, next) => {
+    try {
+      const data = await dutyService.deleteLeaveRequest(req.params.id);
       res.json({ success: true, data });
     } catch (error) {
       next(error);

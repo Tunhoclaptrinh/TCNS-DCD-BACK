@@ -98,6 +98,35 @@ class DutyService extends BaseService {
     };
   }
 
+  // ==================== SETTINGS MANAGEMENT ====================
+
+  async getSettings() {
+    const settings = await db.findAll('duty_settings');
+    if (settings.length === 0) {
+      // Return default settings
+      return {
+        weeklyKipLimit: 0, // 0 means no limit
+        allowUnregisterWhenFull: true,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    return settings[0];
+  }
+
+  async updateSettings(data: GenericRecord) {
+    const settings = await db.findAll('duty_settings');
+    const payload = {
+      weeklyKipLimit: Number(data.weeklyKipLimit) || 0,
+      allowUnregisterWhenFull: data.allowUnregisterWhenFull !== false,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (settings.length === 0) {
+      return await db.create('duty_settings', payload);
+    }
+    return await db.update('duty_settings', settings[0].id, payload);
+  }
+
   // ==================== TEMPLATE MANAGEMENT ====================
 
   async getTemplates() {
@@ -505,18 +534,44 @@ class DutyService extends BaseService {
       shiftDate_lte: e.toISOString(),
     });
 
-    return await db.insertMany('duty_slots', allSlots);
+    const created = await db.insertMany('duty_slots', allSlots);
+
+    // --- LOGGING ---
+    await db.create('duty_logs', {
+      type: 'manual_update',
+      action: 'system',
+      slotId: 0, // Batch creation
+      userId: actorId,
+      performerId: normalizeId(actorId),
+      details: `Admin tạo hàng loạt kíp trực (Range: ${startDate} - ${endDate}). Số lượng: ${created.length}`,
+      createdAt: new Date(),
+    });
+
+    return created;
   }
 
-  async deleteRangeSlots(startDate: string, endDate: string) {
+  async deleteRangeSlots(startDate: string, endDate: string, performerId: Identifier) {
     const s = toUTCMidnight(startDate);
     const e = toUTCMidnight(endDate);
     e.setUTCHours(23, 59, 59, 999);
 
-    return await db.deleteMany('duty_slots', {
+    const deletedCount = await db.deleteMany('duty_slots', {
       shiftDate_gte: s.toISOString(),
       shiftDate_lte: e.toISOString(),
     });
+
+    // --- LOGGING ---
+    await db.create('duty_logs', {
+      type: 'unassigned',
+      action: 'removed',
+      slotId: 0, // Batch action
+      userId: performerId,
+      performerId: normalizeId(performerId),
+      details: `Admin xóa hàng loạt kíp trực từ ${startDate} đến ${endDate}. Số lượng: ${deletedCount}`,
+      createdAt: new Date(),
+    });
+
+    return deletedCount;
   }
 
   async copyWeekSchedule(sourceWeekStart: string, targetWeekStart: string, actorId: Identifier) {
@@ -626,7 +681,20 @@ class DutyService extends BaseService {
       );
     });
 
-    return await db.insertMany('duty_slots', newSlots);
+    const created = await db.insertMany('duty_slots', newSlots);
+
+    // --- LOGGING ---
+    await db.create('duty_logs', {
+      type: 'manual_update',
+      action: 'system',
+      slotId: 0,
+      userId: actorId,
+      performerId: normalizeId(actorId),
+      details: `Admin sao chép lịch trực từ tuần ${sourceWeekStart} sang tuần ${targetWeekStart}. Số lượng kíp: ${created.length}`,
+      createdAt: new Date(),
+    });
+
+    return { success: true, count: created.length };
   }
 
   async deleteWeeklySlots(weekStart: string) {
@@ -771,12 +839,36 @@ class DutyService extends BaseService {
     }
 
     const data = this.buildSlotPayload({ ...payload, dayId: dayRecord.id, shiftId: finalShiftId }, actorId);
-    return await db.create('duty_slots', data);
+    const created = await db.create('duty_slots', data);
+
+    // --- LOGGING ---
+    await db.create('duty_logs', {
+      type: 'manual_update',
+      action: 'system',
+      slotId: created.id,
+      userId: actorId, // In this case, the actor is the one created/assigned? Or just log the action.
+      performerId: actorId,
+      details: `Admin tạo kíp trực mới: ${created.shiftLabel}`,
+      createdAt: new Date(),
+    });
+
+    return created;
   }
 
-  async deleteSlot(id: Identifier) {
+  async deleteSlot(id: Identifier, performerId: Identifier) {
     const slot = await db.findById('duty_slots', id);
     if (!slot) throw ApiError.notFound('Slot not found');
+
+    // --- LOGGING ---
+    await db.create('duty_logs', {
+      type: 'unassigned',
+      action: 'removed',
+      slotId: normalizeId(id),
+      userId: performerId, // We just know it's deleted
+      performerId: normalizeId(performerId),
+      details: `Admin xóa kíp trực: ${slot.shiftLabel} ngày ${new Date(slot.shiftDate).toLocaleDateString()}`,
+      createdAt: new Date(),
+    });
 
     // Simplified: Delete ONLY the requested slot, no cascading
     await db.delete('duty_slots', id);
@@ -784,13 +876,26 @@ class DutyService extends BaseService {
     return { success: true };
   }
 
-  async deleteShiftSlots(date: string, shiftId: number) {
+  async deleteShiftSlots(date: string, shiftId: number, performerId: Identifier) {
     const d = new Date(date);
     d.setUTCHours(0, 0, 0, 0);
-    return await db.deleteMany('duty_slots', { shiftDate: d, shiftId: Number(shiftId) });
+    const deletedCount = await db.deleteMany('duty_slots', { shiftDate: d, shiftId: Number(shiftId) });
+
+    // --- LOGGING ---
+    await db.create('duty_logs', {
+      type: 'unassigned',
+      action: 'removed',
+      slotId: normalizeId(shiftId),
+      userId: performerId,
+      performerId: normalizeId(performerId),
+      details: `Admin xóa tất cả kíp của ca ID ${shiftId} ngày ${date}`,
+      createdAt: new Date(),
+    });
+
+    return deletedCount;
   }
 
-  async updateSlot(slotId: Identifier, payload: GenericRecord = {}) {
+  async updateSlot(slotId: Identifier, payload: GenericRecord = {}, performerId: Identifier) {
     const slot = await db.findById('duty_slots', slotId);
     if (!slot) throw ApiError.notFound('Slot not found');
 
@@ -802,7 +907,21 @@ class DutyService extends BaseService {
       patch.weekStart = new Date(getWeekStartISO(payload.weekStart || sDate));
     }
     if (payload.assignedUserIds) patch.assignedUserIds = normalizeIdList(payload.assignedUserIds);
-    return await db.update('duty_slots', slotId, patch);
+
+    const updated = await db.update('duty_slots', slotId, patch);
+
+    // --- LOGGING ---
+    await db.create('duty_logs', {
+      type: 'manual_update',
+      action: 'system',
+      slotId: normalizeId(slotId),
+      userId: performerId,
+      performerId: normalizeId(performerId),
+      details: `Admin cập nhật thông tin kíp trực: ${slot.shiftLabel}`,
+      createdAt: new Date(),
+    });
+
+    return updated;
   }
 
   async registerToSlot(slotId: Identifier, user: GenericRecord | Identifier) {
@@ -814,6 +933,26 @@ class DutyService extends BaseService {
     const assigned = normalizeIdList(slot.assignedUserIds || []);
     if (assigned.includes(userId)) throw ApiError.badRequest('Already registered');
 
+    // --- WEEKLY LIMIT CHECK ---
+    const settings = await this.getSettings();
+    const weeklyLimit = settings.weeklyKipLimit;
+    if (weeklyLimit !== null && weeklyLimit !== undefined && Number(weeklyLimit) > 0) {
+      const weekStartStr = new Date(slot.weekStart).toISOString();
+      // Manual filter since DB count is basic
+      const allSlotsInWeek = await db.findMany('duty_slots', {
+        weekStart: weekStartStr,
+      });
+
+      const userTotalInWeek = allSlotsInWeek.filter((s: any) => {
+        const ids = normalizeIdList(s.assignedUserIds || []);
+        return ids.includes(userId);
+      }).length;
+
+      if (userTotalInWeek >= settings.weeklyKipLimit) {
+        throw ApiError.badRequest(`Bạn đã đạt giới hạn đăng ký trong tuần (${settings.weeklyKipLimit} kíp).`);
+      }
+    }
+
     // Get capacity: use slot override if present, otherwise associated Kip
     let maxCapacity = Number(slot.capacity);
     if (!maxCapacity || isNaN(maxCapacity)) {
@@ -824,7 +963,7 @@ class DutyService extends BaseService {
     if (assigned.length >= maxCapacity) throw ApiError.badRequest('Full');
 
     const updated = await db.update('duty_slots', slot.id, {
-      assignedUserIds: [...assigned, userId],
+      assignedUserIds: [...assigned, userId].map(Number),
       updatedAt: new Date().toISOString(),
     });
 
@@ -845,6 +984,22 @@ class DutyService extends BaseService {
     const assigned = normalizeIdList(slot.assignedUserIds || []);
     if (!assigned.includes(userId)) throw ApiError.badRequest('Not registered');
 
+    // --- POLICY CHECK ---
+    const settings = await this.getSettings();
+    const isAdmin = typeof user === 'object' && (user as any).role === 'admin';
+
+    // Get capacity
+    let maxCapacity = Number(slot.capacity);
+    if (!maxCapacity || isNaN(maxCapacity)) {
+      const kip = await db.findById('duty_kips', slot.kipId);
+      maxCapacity = Number(kip?.capacity) || 1;
+    }
+
+    const isFull = assigned.length >= maxCapacity;
+    if (!settings.allowUnregisterWhenFull && isFull && !isAdmin) {
+      throw ApiError.badRequest('Kíp đã đủ người, không thể tự ý hủy. Hãy liên hệ Admin.');
+    }
+
     const updated = await db.update('duty_slots', slot.id, {
       assignedUserIds: assigned.filter((id) => id !== userId),
       updatedAt: new Date().toISOString(),
@@ -860,6 +1015,7 @@ class DutyService extends BaseService {
 
     const created = await db.create('duty_swap_requests', {
       dutySlotId: slotId,
+      fromSlotId: payload.fromSlotId || null,
       requesterId: normalizeId(requesterUser.id),
       targetUserId: targetUserId,
       status: 'pending',
@@ -878,53 +1034,68 @@ class DutyService extends BaseService {
     return created;
   }
 
-  async getSwapRequests(user: GenericRecord, options: GenericRecord = {}) {
-    const userId = normalizeId(user.id);
-    const isApprover = user.role === 'admin' || user.role === 'staff';
-    const all = await db.findAll('duty_swap_requests');
-    let filtered = isApprover ? all : all.filter((r) => r.requesterId === userId || r.targetUserId === userId);
-    return paginate(filtered, options.page, options.limit);
-  }
-
-  async decideSwap(requestId: Identifier, payload: GenericRecord = {}, approverUser: GenericRecord) {
+  async decideSwap(requestId: Identifier, payload: GenericRecord = {}, approver: any) {
     const req = await db.findById('duty_swap_requests', requestId);
     if (!req) throw ApiError.notFound('Yêu cầu không tồn tại');
 
     const status = payload.status || payload.decision;
-    const approverId = normalizeId(approverUser.id);
+    const approverId = normalizeId(approver?.id || approver);
+    const approverObj =
+      typeof approver === 'object' && approver.role ? approver : await db.findById('users', approverId);
+    if (!approverObj) throw ApiError.notFound('Người duyệt không tồn tại');
 
     // Permission check: Admin/Staff can always decide. TargetUser can also decide (Accept/Reject).
     const isTargetUser = normalizeId(req.targetUserId) === approverId;
-    const isAdminOrStaff = ['admin', 'staff'].includes(approverUser.role);
+    const isAdminOrStaff = ['admin', 'staff'].includes(approverObj.role);
 
     if (!isTargetUser && !isAdminOrStaff) {
       throw ApiError.forbidden('Bạn không có quyền xử lý yêu cầu này');
     }
 
     if (status === 'approved') {
-      const slot = await db.findById('duty_slots', req.dutySlotId);
-      if (!slot) throw ApiError.notFound('Kíp trực không tồn tại');
+      const targetSlot = await db.findById('duty_slots', req.dutySlotId);
+      if (!targetSlot) throw ApiError.notFound('Kíp trực đích không tồn tại');
 
-      const assigned = normalizeIdList(slot.assignedUserIds);
-      // Ensure Requester is still in the slot
-      if (!assigned.includes(normalizeId(req.requesterId))) {
-        throw ApiError.badRequest('Người yêu cầu không còn trong kíp trực này');
+      // 1. Remove from source slot (if any)
+      if (req.fromSlotId) {
+        const sourceSlot = await db.findById('duty_slots', req.fromSlotId);
+        if (sourceSlot) {
+          const sourceAssigned = normalizeIdList(sourceSlot.assignedUserIds || []);
+          await db.update('duty_slots', sourceSlot.id, {
+            assignedUserIds: sourceAssigned.filter((id) => normalizeId(id) !== normalizeId(req.requesterId)),
+            updatedAt: new Date().toISOString(),
+          });
+        }
       }
 
-      const next = [
-        ...assigned.filter((id) => normalizeId(id) !== normalizeId(req.requesterId)),
-        normalizeId(req.targetUserId),
-      ];
-      await db.update('duty_slots', slot.id, {
-        assignedUserIds: next,
+      // 2. Add to target slot
+      const targetAssigned = normalizeIdList(targetSlot.assignedUserIds || []);
+      if (!targetAssigned.includes(normalizeId(req.requesterId))) {
+        targetAssigned.push(normalizeId(req.requesterId));
+      }
+
+      await db.update('duty_slots', targetSlot.id, {
+        assignedUserIds: targetAssigned,
         updatedAt: new Date().toISOString(),
       });
 
-      // Notify the requester
+      // --- LOGGING ---
+      await db.create('duty_logs', {
+        type: 'swap_transfer',
+        action: 'transfer',
+        requestId: normalizeId(requestId),
+        slotId: targetSlot.id,
+        userId: req.requesterId,
+        performerId: approverId,
+        details: `Điều chuyển nhân sự: ${req.requesterId}. Lộ trình: ${req.fromSlotId ? `Kíp #${req.fromSlotId}` : 'N/A'} -> ${targetSlot.shiftLabel} (#${targetSlot.id})`,
+        createdAt: new Date(),
+      });
+
+      // Notifications
       await notificationService.notifyUser(req.requesterId, {
-        title: 'Yêu cầu đổi ca được chấp thuận',
-        message: `Yêu cầu đổi ca cho: ${slot.shiftLabel} của bạn đã được chấp thuận.`,
-        category: 'swap',
+        title: 'Điều chuyển kíp trực thành công',
+        message: `Bạn đã được điều chuyển sang kíp trực: ${targetSlot.shiftLabel}.`,
+        category: 'duty',
         type: 'swap',
         refId: req.id,
       });
@@ -932,8 +1103,8 @@ class DutyService extends BaseService {
       // Notify the requester about rejection
       await notificationService.notifyUser(req.requesterId, {
         title: 'Yêu cầu đổi ca bị từ chối',
-        message: `Yêu cầu đổi ca của bạn đã bị từ chối.`,
-        category: 'swap',
+        message: `Yêu cầu đổi ca của bạn đã được từ chối.`,
+        category: 'duty',
         type: 'swap',
         refId: req.id,
       });
@@ -942,12 +1113,29 @@ class DutyService extends BaseService {
     return await db.update('duty_swap_requests', requestId, {
       status,
       approvedBy: approverId,
+      decisionNote: payload.reason || payload.decisionNote || '',
       updatedAt: new Date().toISOString(),
     });
   }
 
-  async markAttendance(slotId: Identifier, userIds: Identifier[]) {
-    return await db.update('duty_slots', slotId, { attendedUserIds: userIds });
+  async markAttendance(slotId: Identifier, userIds: Identifier[], performerId: Identifier) {
+    const slot = await db.findById('duty_slots', slotId);
+    if (!slot) throw ApiError.notFound('Slot not found');
+
+    const updated = await db.update('duty_slots', slotId, { attendedUserIds: userIds });
+
+    // --- LOGGING ---
+    await db.create('duty_logs', {
+      type: 'manual_update',
+      action: 'system',
+      slotId: normalizeId(slotId),
+      userId: performerId,
+      performerId: normalizeId(performerId),
+      details: `Điểm danh cho kíp: ${slot.shiftLabel}. Số người có mặt: ${userIds.length}`,
+      createdAt: new Date(),
+    });
+
+    return updated;
   }
 
   async requestLeave(slotId: Identifier, userId: Identifier, reason: string) {
@@ -957,6 +1145,49 @@ class DutyService extends BaseService {
       reason,
       status: 'pending',
     });
+  }
+
+  async createLeaveManual(data: GenericRecord, performerId: Identifier) {
+    const { userId, slotId, reason, status = 'pending', rejectionReason = '' } = data;
+
+    const request = await db.create('duty_leave_requests', {
+      userId: normalizeId(userId),
+      slotId: normalizeId(slotId),
+      reason: reason || 'Admin tạo thủ công',
+      status,
+      rejectionReason,
+      approvedBy: status === 'approved' ? normalizeId(performerId) : undefined,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    // Nếu status là approved, thực hiện luôn logic gỡ nhân sự
+    if (status === 'approved') {
+      await this.resolveLeaveRequest(request.id, 'approved', performerId, rejectionReason);
+    }
+
+    return request;
+  }
+
+  async updateLeaveRequest(id: Identifier, data: GenericRecord, performerId: Identifier) {
+    const old = await db.findById('duty_leave_requests', id);
+    if (!old) throw ApiError.notFound('Mục không tồn tại');
+
+    const updated = await db.update('duty_leave_requests', id, {
+      ...data,
+      updatedAt: new Date().toISOString(),
+    });
+
+    // Nếu trạng thái thay đổi sang approved mà trước đó chưa approved
+    if (data.status === 'approved' && old.status !== 'approved') {
+      await this.resolveLeaveRequest(id, 'approved', performerId, data.rejectionReason || '');
+    }
+
+    return updated;
+  }
+
+  async deleteLeaveRequest(id: Identifier) {
+    return await db.delete('duty_leave_requests', id);
   }
 
   async getLeaveRequests(options: GenericRecord = {}) {
@@ -1008,24 +1239,47 @@ class DutyService extends BaseService {
           updatedAt: now,
         });
 
+        // --- LOGGING ---
+        await db.create('duty_logs', {
+          type: 'leave',
+          action: 'approved',
+          requestId: normalizeId(requestId),
+          slotId: slot.id,
+          userId: request.userId,
+          performerId: normalizeId(approverId),
+          details: `Duyệt đơn nghỉ kíp: ${slot.shiftLabel || slot.id}`,
+          createdAt: new Date(),
+        });
+
         // Notify member
         await notificationService.notifyUser(request.userId, {
           title: 'Đơn xin nghỉ đã được duyệt',
-          message: `Yêu cầu xin nghỉ cho ca ${slot.shiftLabel || ''} đã được chấp thuận.`,
-          category: 'shift',
-          type: 'shift',
-          status: 'unread',
-          refId: slot.id,
+          message: `Yêu cầu xin nghỉ cho kíp ${slot.shiftLabel || ''} của bạn đã được chấp thuận.`,
+          category: 'duty',
+          type: 'leave',
+          refId: request.id,
         });
       }
     } else if (status === 'rejected') {
+      // --- LOGGING ---
+      await db.create('duty_logs', {
+        type: 'leave',
+        action: 'rejected',
+        requestId: normalizeId(requestId),
+        slotId: request.slotId,
+        userId: request.userId,
+        performerId: normalizeId(approverId),
+        details: `Từ chối đơn nghỉ. Lý do: ${rejectionReason || 'Không có'}`,
+        createdAt: new Date(),
+      });
+
       // Notify member about rejection
       await notificationService.notifyUser(request.userId, {
         title: 'Đơn xin nghỉ bị từ chối',
-        message: `Yêu cầu xin nghỉ của bạn bị từ chối. Lý do: ${rejectionReason || 'Không có'}`,
-        category: 'shift',
-        type: 'shift',
-        status: 'unread',
+        message: `Yêu cầu xin nghỉ của bạn đã bị từ chối. Lý do: ${rejectionReason || 'Không có'}`,
+        category: 'duty',
+        type: 'leave',
+        refId: request.id,
       });
     }
 
@@ -1034,12 +1288,22 @@ class DutyService extends BaseService {
 
   async getStats() {
     const slots = (await db.findAll('duty_slots')) || [];
+    const leaves = (await db.findAll('duty_leave_requests')) || [];
+    const swaps = (await db.findAll('duty_swap_requests')) || [];
+
     return {
       global: {
         total: slots.length,
         open: slots.filter((s: any) => s.status === 'open').length,
         locked: slots.filter((s: any) => s.status === 'locked').length,
         totalAssigned: slots.reduce((acc: number, s: any) => acc + (s.assignedUserIds?.length || 0), 0),
+      },
+      requests: {
+        leavePending: leaves.filter((r: any) => r.status === 'pending').length,
+        leaveApproved: leaves.filter((r: any) => r.status === 'approved').length,
+        leaveRejected: leaves.filter((r: any) => r.status === 'rejected').length,
+        swapPending: swaps.filter((r: any) => r.status === 'pending').length,
+        swapApproved: swaps.filter((r: any) => r.status === 'approved').length,
       },
     };
   }
@@ -1225,6 +1489,79 @@ class DutyService extends BaseService {
     }
 
     return { success: true, slots };
+  }
+
+  async createSwapManual(data: GenericRecord, performerId: Identifier) {
+    const { requesterId, fromSlotId, dutySlotId, status = 'pending', reason = '' } = data;
+
+    const request = await db.create('duty_swap_requests', {
+      requesterId: normalizeId(requesterId),
+      fromSlotId: normalizeId(fromSlotId) || null,
+      dutySlotId: normalizeId(dutySlotId),
+      status,
+      reason,
+      approvedBy: status === 'approved' ? normalizeId(performerId) : undefined,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    if (status === 'approved') {
+      await this.decideSwap(request.id, { decision: 'approved', reason }, performerId);
+    }
+
+    return request;
+  }
+
+  async updateSwapRequest(id: Identifier, data: GenericRecord, performerId: Identifier) {
+    const old = await db.findById('duty_swap_requests', id);
+    if (!old) throw ApiError.notFound('Mục không tồn tại');
+
+    const updated = await db.update('duty_swap_requests', id, {
+      ...data,
+      updatedAt: new Date().toISOString(),
+    });
+
+    if (data.status === 'approved' && old.status !== 'approved') {
+      await this.decideSwap(id, { decision: 'approved', reason: data.reason || '' }, performerId);
+    }
+
+    return updated;
+  }
+
+  async deleteSwapRequest(id: Identifier) {
+    return await db.delete('duty_swap_requests', id);
+  }
+
+  async getSwapRequests(user: GenericRecord, options: GenericRecord = {}) {
+    const userId = normalizeId(user.id);
+    const isApprover = ['admin', 'staff'].includes(user.role);
+
+    const result = await db.findAllAdvanced('duty_swap_requests', {
+      ...options,
+      sort: options.sort || 'createdAt',
+      order: options.order || 'desc',
+      filter: isApprover
+        ? options.filter
+        : {
+            ...options.filter,
+            $or: [{ requesterId: userId }, { targetUserId: userId }],
+          },
+    });
+
+    const users = await db.findAll('users');
+    const userMap = new Map(users.map((u) => [normalizeId(u.id), { id: u.id, name: u.name, avatar: u.avatar }]));
+
+    const slots = await db.findAll('duty_slots');
+    const slotMap = new Map(slots.map((s) => [normalizeId(s.id), s]));
+
+    const data = result.data.map((req: any) => ({
+      ...req,
+      requester: userMap.get(normalizeId(req.requesterId)),
+      targetUser: userMap.get(normalizeId(req.targetUserId)),
+      slot: slotMap.get(normalizeId(req.dutySlotId)),
+    }));
+
+    return { ...result, data };
   }
 
   async removeShiftFromDay(date: string, shiftId: number) {

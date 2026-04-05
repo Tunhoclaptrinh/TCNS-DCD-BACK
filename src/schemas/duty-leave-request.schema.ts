@@ -3,7 +3,7 @@ import { defineSchema } from '@app-types/schema';
 export default defineSchema({
   slotId: {
     type: 'number',
-    required: true,
+    required: false,
     foreignKey: 'duty_slots',
     description: 'ID kíp trực cần xin nghỉ',
   },

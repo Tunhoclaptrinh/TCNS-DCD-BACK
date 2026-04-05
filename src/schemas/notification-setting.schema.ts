@@ -3,7 +3,7 @@ import { defineSchema } from '@app-types/schema';
 export default defineSchema({
   userId: {
     type: 'number',
-    required: true,
+    required: false,
     unique: true,
     foreignKey: 'users',
     description: 'User sở hữu cài đặt',
