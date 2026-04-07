@@ -1,7 +1,7 @@
 import express from 'express';
 import authController from '@modules/auth/controllers/auth.controller';
 import { requireAuth } from '@middleware/auth.middleware';
-import { mapNewPassword, requireResetTarget } from '@middleware/normalize-auth-payload.middleware';
+import { mapNewPassword, requireResetEmail } from '@middleware/normalize-auth-payload.middleware';
 import { validateFields, validateSchema } from '@middleware/schema-validation.middleware';
 
 const router = express.Router();
@@ -13,10 +13,16 @@ router.post('/register', validateSchema('user'), authController.register);
 router.post('/login', validateFields('user', ['email', 'password']), authController.login);
 
 // Forgot password
-router.post('/forgot-password', requireResetTarget, authController.forgotPassword);
+router.post('/forgot-password', requireResetEmail, validateFields('user', ['email']), authController.forgotPassword);
 
 // Reset password
-router.post('/reset-password', mapNewPassword, validateFields('user', ['password']), authController.resetPassword);
+router.post(
+  '/reset-password',
+  requireResetEmail,
+  mapNewPassword,
+  validateFields('user', ['email', 'password']),
+  authController.resetPassword,
+);
 
 // Get me
 router.get('/me', requireAuth, authController.getMe);

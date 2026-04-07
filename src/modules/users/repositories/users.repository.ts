@@ -10,17 +10,6 @@ class UsersRepository extends BaseRepository {
     return await this.findOne({ email });
   }
 
-  async findByPhoneCandidates(phoneCandidates: string[] = []) {
-    for (const candidate of [...new Set(phoneCandidates.map((item) => String(item || '').trim()).filter(Boolean))]) {
-      const user = await this.findOne({ phone: candidate });
-      if (user) {
-        return user;
-      }
-    }
-
-    return null;
-  }
-
   async updateLastLogin(userId: Identifier, loginTime: string) {
     return await this.update(userId, {
       lastLogin: loginTime,

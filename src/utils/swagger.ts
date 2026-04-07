@@ -185,19 +185,13 @@ const EXTRA_SCHEMAS: AnyRecord = {
         email: {
           type: 'string',
           format: 'email',
-          description: 'Email tài khoản. Cần truyền email hoặc phone.',
-        },
-        phone: {
-          type: 'string',
-          description: 'Số điện thoại tài khoản. Cần truyền email hoặc phone.',
+          description: 'Email tài khoản dùng để nhận OTP đặt lại mật khẩu.',
         },
       },
-      [],
-      'Yêu cầu gửi OTP quên mật khẩu.',
+      ['email'],
+      'Yêu cầu gửi OTP quên mật khẩu qua email.',
     ),
-    {
-      anyOf: [{ required: ['email'] }, { required: ['phone'] }],
-    },
+    {},
   ),
   AuthResetPasswordRequest: Object.assign(
     buildObjectSchema(
@@ -205,11 +199,7 @@ const EXTRA_SCHEMAS: AnyRecord = {
         email: {
           type: 'string',
           format: 'email',
-          description: 'Email tài khoản. Cần truyền email hoặc phone.',
-        },
-        phone: {
-          type: 'string',
-          description: 'Số điện thoại tài khoản. Cần truyền email hoặc phone.',
+          description: 'Email tài khoản dùng để xác định OTP reset password.',
         },
         otp: {
           type: 'string',
@@ -225,14 +215,11 @@ const EXTRA_SCHEMAS: AnyRecord = {
           description: 'Mật khẩu mới.',
         },
       },
-      ['newPassword'],
-      'Đặt lại mật khẩu bằng OTP. Có thể truyền mã qua field `otp` hoặc alias `token`.',
+      ['email', 'newPassword'],
+      'Đặt lại mật khẩu bằng OTP gửi qua email. Có thể truyền mã qua field `otp` hoặc alias `token`.',
     ),
     {
-      allOf: [
-        { anyOf: [{ required: ['email'] }, { required: ['phone'] }] },
-        { anyOf: [{ required: ['otp'] }, { required: ['token'] }] },
-      ],
+      allOf: [{ anyOf: [{ required: ['otp'] }, { required: ['token'] }] }],
     },
   ),
   AuthChangePasswordRequest: buildObjectSchema(
@@ -541,11 +528,11 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
   },
   'POST /auth/forgot-password': {
     summary: 'Gửi OTP quên mật khẩu',
-    description: 'Gửi mã OTP qua email hoặc SMS để đặt lại mật khẩu.',
+    description: 'Gửi mã OTP qua email để đặt lại mật khẩu.',
     requestBody: buildSchemaRefBody('AuthForgotPasswordRequest'),
     responses: {
       200: { description: 'Yêu cầu gửi OTP đã được tiếp nhận' },
-      400: { description: 'Thiếu email hoặc phone' },
+      400: { description: 'Thiếu email hoặc email không hợp lệ' },
       429: { description: 'Yêu cầu OTP quá nhiều lần trong thời gian ngắn' },
     },
   },
