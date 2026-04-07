@@ -36,25 +36,25 @@ function addTimestamp<T extends AnyRecord & { timestamp?: string }>(payload: T) 
 }
 
 function buildWrappedResponse(res: Response, responseBody: unknown) {
-  const wrapped: AnyRecord = {
+  const wrappedResponse: AnyRecord = {
     success: res.statusCode < 400,
     statusCode: res.statusCode,
   };
 
   if (hasPaginationPayload(responseBody)) {
-    wrapped.data = responseBody.data;
-    wrapped.pagination = responseBody.pagination;
+    wrappedResponse.data = responseBody.data;
+    wrappedResponse.pagination = responseBody.pagination;
 
     for (const key of Object.keys(responseBody)) {
       if (key !== 'data' && key !== 'pagination') {
-        wrapped[key] = responseBody[key];
+        wrappedResponse[key] = responseBody[key];
       }
     }
   } else {
-    wrapped.data = responseBody;
+    wrappedResponse.data = responseBody;
   }
 
-  return addTimestamp(wrapped);
+  return addTimestamp(wrappedResponse);
 }
 
 function logUnexpectedError(error: ErrorLike, req: Request) {
@@ -66,6 +66,7 @@ function logUnexpectedError(error: ErrorLike, req: Request) {
   });
 }
 
+// Bọc mọi `res.json()` theo format chuẩn `{ success, data, ... }` của API.
 export const wrapJson = (_req: Request, res: Response, next: NextFunction) => {
   const originalJson = res.json.bind(res);
 
@@ -84,6 +85,7 @@ export const wrapJson = (_req: Request, res: Response, next: NextFunction) => {
   next();
 };
 
+// Chuẩn hóa response lỗi và chỉ log stack với lỗi không chủ đích.
 export const handleError = (error: ErrorLike, req: Request, res: Response, _next: NextFunction) => {
   const statusCode = error.statusCode || 500;
   const isOperationalError = error.isOperational || false;
@@ -106,6 +108,7 @@ export const handleError = (error: ErrorLike, req: Request, res: Response, _next
   res.status(statusCode).json(addTimestamp(response));
 };
 
+// Trả về 404 thống nhất khi không route nào match request hiện tại.
 export const notFound = (req: Request, res: Response) => {
   res.status(404).json({
     success: false,

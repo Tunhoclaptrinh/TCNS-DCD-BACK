@@ -13,7 +13,6 @@ export type SchemaRule = {
   minLength?: number;
   maxLength?: number;
   foreignKey?: string;
-  description?: string;
   values?: any[];
   custom?: (value: any, data: AnyRecord) => string | void | Promise<string | void>;
 };
