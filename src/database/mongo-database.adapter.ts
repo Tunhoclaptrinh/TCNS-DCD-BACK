@@ -50,7 +50,7 @@ class MongoConnect implements DatabaseAdapter {
 
   castQueryValue(val: any) {
     if (val === null || val === undefined) return val;
-    if (typeof val === 'number' || typeof val === 'boolean' || val instanceof Date) return val;
+    if (val instanceof Date) return val;
 
     const text = String(val).trim();
     if (text === '') return text;
@@ -87,8 +87,6 @@ class MongoConnect implements DatabaseAdapter {
 
   async loadSchemasAsModels() {
     for (const [entityName, schemaDef] of Object.entries(schemas) as Array<[string, SchemaDefinition]>) {
-      if (!schemaDef || typeof schemaDef !== 'object') continue;
-
       const mongooseFields: Record<string, any> = {};
 
       // Auto-increment numeric id field
@@ -235,7 +233,7 @@ class MongoConnect implements DatabaseAdapter {
       try {
         queryBuilder = queryBuilder.populate(field);
       } catch (e) {
-        console.warn(`⚠️ Cannot populate ${field}`);
+        console.warn(`Cannot populate ${field}`);
       }
     }
 
@@ -405,7 +403,7 @@ async function initDatabase() {
   if (dbInstance) return dbInstance;
 
   if (!process.env.DATABASE_URL) {
-    throw new Error('⚠️ DATABASE_URL is missing. Cannot connect to MongoDB.');
+    throw new Error('DATABASE_URL is missing. Cannot connect to MongoDB.');
   }
 
   const adapter = new MongoConnect();
