@@ -1,4 +1,3 @@
-import http from 'http';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -6,7 +5,6 @@ import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import path from 'path';
 import axios from 'axios';
-import { Server as SocketIOServer } from 'socket.io';
 
 import logRequest from './middleware/request-logger.middleware';
 import { handleError, notFound, wrapJson } from './middleware/http-response.middleware';
@@ -14,7 +12,6 @@ import { appendPaginationHeaders, parseApiQuery } from './middleware/api-query.m
 import { camelizeBody } from './middleware/normalize-request-body.middleware';
 import { setupSwagger } from './utils/swagger';
 import routes from './routes';
-import { initSocket } from './socket';
 import { initDatabase } from '@database';
 
 dotenv.config();
@@ -131,18 +128,7 @@ function startKeepAlive() {
 async function bootstrap() {
   await initDatabase();
 
-  const httpServer = http.createServer(app);
-
-  const io = new SocketIOServer(httpServer, {
-    cors: {
-      origin: process.env.CORS_ORIGIN || '*',
-      credentials: true,
-    },
-  });
-
-  initSocket(io);
-
-  httpServer.listen(PORT, () => {
+  app.listen(PORT, () => {
     const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
     console.log(`Local: http://localhost:${PORT}`);
     console.log(`API Docs: ${baseUrl}/api-docs`);

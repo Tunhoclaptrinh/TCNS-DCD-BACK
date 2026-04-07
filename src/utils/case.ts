@@ -41,13 +41,3 @@ export function normalizeKeyWithSuffix(key: string, suffixes: string[]) {
   const { field, suffix } = splitKeyBySuffix(key, suffixes);
   return suffix ? `${toCamelCase(field)}${suffix}` : toCamelCase(key);
 }
-
-export function normalizeCommaList(value: unknown, formatter: (item: string) => string = (item) => item) {
-  if (!value) return value;
-
-  return String(value)
-    .split(',')
-    .map((item) => formatter(item.trim()))
-    .filter(Boolean)
-    .join(',');
-}

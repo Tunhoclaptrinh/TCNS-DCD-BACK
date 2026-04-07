@@ -27,6 +27,7 @@ function shouldLogDetails() {
   return (process.env.NODE_ENV || 'development') !== 'production';
 }
 
+// Ghi log request/response cơ bản và ẩn các field nhạy cảm trong body.
 export default function logRequest(req: Request, res: Response, next: NextFunction) {
   const requestStartedAt = Date.now();
   const verbose = shouldLogDetails();
