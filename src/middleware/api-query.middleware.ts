@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import { normalizeCommaList, normalizeKeyWithSuffix } from '@utils/case';
+import { normalizeKeyWithSuffix } from '@utils/case';
 import { castQueryValue, hasQueryOperator, QUERY_OPERATOR_SUFFIXES, SPECIAL_QUERY_PARAMS } from '@utils/query-helpers';
 
 type QueryParams = Record<string, any>;
@@ -55,8 +55,15 @@ function buildFilterFromQuery(query: QueryParams) {
 }
 
 function normalizeListQueryValue(queryValue: unknown) {
-  const normalizedValue = normalizeCommaList(queryValue, (field) => normalizeKeyWithSuffix(field, []));
-  return typeof normalizedValue === 'string' ? normalizedValue : undefined;
+  if (!queryValue) {
+    return undefined;
+  }
+
+  return String(queryValue)
+    .split(',')
+    .map((item) => normalizeKeyWithSuffix(item.trim(), []))
+    .filter(Boolean)
+    .join(',');
 }
 
 function setPaginationResponseHeaders(
@@ -90,6 +97,7 @@ function setPaginationResponseHeaders(
   res.set('Link', paginationLinks.join(', '));
 }
 
+// Chuẩn hóa query filter/sort/paging từ URL rồi gắn vào `req.parsedQuery`.
 export const parseApiQuery = (req: Request, res: Response, next: NextFunction) => {
   const query = req.query as QueryParams;
   const rawPage = query._page ?? query.page;
@@ -119,6 +127,7 @@ export const parseApiQuery = (req: Request, res: Response, next: NextFunction) =
   next();
 };
 
+// Tự động thêm header phân trang nếu response có `pagination`.
 export const appendPaginationHeaders = (req: Request, res: Response, next: NextFunction) => {
   const originalJson = res.json.bind(res);
 
