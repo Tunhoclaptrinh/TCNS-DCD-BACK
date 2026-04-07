@@ -38,7 +38,6 @@ const TYPE_MAP = {
 function ruleToProperty(rule: SchemaRule) {
   const base = TYPE_MAP[rule.type];
   const property: AnyRecord = {
-    description: rule.description || '',
     ...(typeof base === 'function' ? base(rule) : base || { type: 'string' }),
   };
 
@@ -459,7 +458,7 @@ const EXTRA_SCHEMAS: AnyRecord = {
       password: {
         type: 'string',
         format: 'password',
-        description: userSchema.password.description || 'Mật khẩu mới.',
+        description: 'Mật khẩu mới.',
       },
       newPassword: {
         type: 'string',
@@ -476,7 +475,7 @@ const EXTRA_SCHEMAS: AnyRecord = {
       password: {
         type: 'string',
         format: 'password',
-        description: userSchema.password.description || 'Mật khẩu mới.',
+        description: 'Mật khẩu mới.',
       },
       newPassword: {
         type: 'string',
@@ -791,11 +790,6 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
         },
       },
     },
-  },
-  'GET /users/schema': {
-    summary: 'Xem schema người dùng',
-    description: 'Xem tài liệu schema validation của entity người dùng.',
-    internal: true,
   },
   'GET /users/{id}/activity': {
     summary: 'Lấy lịch sử hoạt động người dùng',
@@ -1119,7 +1113,6 @@ const SUMMARY_MAP: Array<[RegExp, string, (entity: string) => string]> = [
   [/^\/:id\/read$/, 'patch', () => 'Đánh dấu đã đọc'],
   [/^\/read-all$/, 'patch', () => 'Đánh dấu tất cả đã đọc'],
   [/^\/profile$/, 'put', () => 'Cập nhật profile'],
-  [/^\/schema$/, 'get', (entity) => `Xem schema ${entity}`],
   [/^\/template$/, 'get', (entity) => `Tải template import ${entity}`],
   [/^\/import$/, 'post', (entity) => `Import ${entity} từ file`],
   [/^\/export$/, 'get', (entity) => `Export ${entity}`],
@@ -1369,7 +1362,7 @@ function setupSwagger(app: AnyRecord) {
     }),
   );
 
-  console.log('📚 Swagger initialized');
+  console.log('Swagger initialized');
   console.log(`   - Declared ${Object.keys(spec.paths).length} paths`);
   console.log(`   - Tags: ${spec.tags.map((tag: { name: string }) => tag.name).join(', ')}`);
 }

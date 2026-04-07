@@ -2,7 +2,7 @@ import express from 'express';
 import userController from '@modules/users/controllers/user.controller';
 import { requireAuth } from '@middleware/auth.middleware';
 import { requirePermission } from '@middleware/rbac.middleware';
-import { getSchemaDoc, validateSchema } from '@middleware/schema-validation.middleware';
+import { validateSchema } from '@middleware/schema-validation.middleware';
 import importExportController from '@shared/import-export/controllers/import-export.controller';
 
 const router = express.Router();
@@ -60,12 +60,6 @@ router.post(
 router.get('/export', requireAuth, requirePermission('users:import_export'), (req, res, next) => {
   (req.params as Record<string, string>).entity = 'users';
   importExportController.exportData(req, res, next);
-});
-
-// === PUBLIC/USER ROUTES ===
-router.get('/schema', (req, res, next) => {
-  (req.params as Record<string, string>).entity = 'user';
-  getSchemaDoc(req, res);
 });
 
 // User xem profile chính mình hoặc Admin xem profile người khác

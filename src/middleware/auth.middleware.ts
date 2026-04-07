@@ -14,7 +14,7 @@ type AuthenticatedUser = Record<string, any> & {
   lastLogin?: string | null;
 };
 
-function unauthorized(res: Response, message: string) {
+function sendUnauthorizedResponse(res: Response, message: string) {
   return res.status(401).json({
     success: false,
     message,
@@ -23,7 +23,7 @@ function unauthorized(res: Response, message: string) {
 
 function getBearerToken(req: Request) {
   const authorizationHeader = req.headers.authorization;
-  if (authorizationHeader && authorizationHeader.startsWith('Bearer')) {
+  if (authorizationHeader && authorizationHeader.startsWith('Bearer ')) {
     return authorizationHeader.split(' ')[1];
   }
 
@@ -46,33 +46,34 @@ async function findUser(userId: Identifier) {
   return (await db.findById('users', userId)) as AuthenticatedUser | null;
 }
 
+// Kiểm tra JWT, nạp thông tin user hiện tại và gắn vào `req.user`.
 export const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const token = getBearerToken(req);
 
     if (!token) {
-      return unauthorized(res, 'Not authorized to access this route');
+      return sendUnauthorizedResponse(res, 'Not authorized to access this route');
     }
 
     let decoded: AuthTokenPayload;
     try {
       decoded = verifyAuthToken(token);
     } catch {
-      return unauthorized(res, 'Token is invalid or expired');
+      return sendUnauthorizedResponse(res, 'Token is invalid or expired');
     }
 
     const user = await findUser(decoded.id);
 
     if (!user) {
-      return unauthorized(res, 'User not found');
+      return sendUnauthorizedResponse(res, 'User not found');
     }
 
     if (!user.isActive) {
-      return unauthorized(res, 'User account is inactive');
+      return sendUnauthorizedResponse(res, 'User account is inactive');
     }
 
     if (isTokenOutdated(decoded, user)) {
-      return unauthorized(res, 'Token has been invalidated. Please login again.');
+      return sendUnauthorizedResponse(res, 'Token has been invalidated. Please login again.');
     }
 
     req.user = user;
@@ -82,6 +83,7 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
   }
 };
 
+// Chặn truy cập nếu role hiện tại không nằm trong danh sách cho phép.
 export const requireRole = (...allowedRoles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
     const userRole = req.user?.role;
