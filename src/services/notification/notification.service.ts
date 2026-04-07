@@ -28,18 +28,33 @@ class NotificationService extends BaseService {
 
   async getSettings(userId: Identifier) {
     const normalizedUserId = normalizeId(userId);
+    if (!normalizedUserId || isNaN(Number(normalizedUserId))) {
+      // If we don't have a valid user ID, we can't get or create settings.
+      // Returning a default object instead of crashing or creating a null record.
+      return { ...DEFAULT_SETTINGS, isFallback: true };
+    }
+
     let settings = await db.findOne('notification_settings', { userId: normalizedUserId });
 
     if (!settings) {
-      settings = await db.create('notification_settings', {
-        userId: normalizedUserId,
-        ...DEFAULT_SETTINGS,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+      try {
+        settings = await db.create('notification_settings', {
+          userId: normalizedUserId,
+          ...DEFAULT_SETTINGS,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (err: any) {
+        // Handle race condition: if another process created it concurrently
+        if (err.code === 11000) {
+          settings = await db.findOne('notification_settings', { userId: normalizedUserId });
+        } else {
+          throw err;
+        }
+      }
     }
 
-    return settings;
+    return settings || { ...DEFAULT_SETTINGS, isFallback: true };
   }
 
   async updateSettings(userId: Identifier, payload: Record<string, any> = {}) {
@@ -72,6 +87,11 @@ class NotificationService extends BaseService {
 
   async notifyUser(userId: Identifier, payload: NotificationPayload = {}, options: NotificationOptions = {}) {
     const normalizedUserId = normalizeId(userId);
+    if (!normalizedUserId || isNaN(Number(normalizedUserId))) {
+      // Cannot notify a user that doesn't exist
+      return { skipped: true, reason: 'Invalid user ID' };
+    }
+
     const category = payload.category || 'system';
     const force = options.force === true;
 

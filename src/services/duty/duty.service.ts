@@ -477,7 +477,9 @@ class DutyService extends BaseService {
           kipMap.set(k.id, newKip.id);
         }
 
-        if (mode === 'shifts' || mode === 'all') {
+        // Create a Shift-level slot (kipId: null) ONLY if there are no kips for this shift
+        // OR if explicitly requested via 'shifts' mode (but 'all' should only show kips if present)
+        if (mode === 'shifts' || (mode === 'all' && templateKips.length === 0)) {
           allSlots.push(
             this.buildSlotPayload(
               {
@@ -931,7 +933,10 @@ class DutyService extends BaseService {
 
     const userId = getActorId(user);
     const assigned = normalizeIdList(slot.assignedUserIds || []);
-    if (assigned.includes(userId)) throw ApiError.badRequest('Already registered');
+    if (assigned.some((id) => String(id) === String(userId))) {
+      // Idempotent: If already registered, return the slot without error
+      return slot;
+    }
 
     // --- WEEKLY LIMIT CHECK ---
     const settings = await this.getSettings();
@@ -1008,14 +1013,16 @@ class DutyService extends BaseService {
   }
 
   async requestSwap(payload: GenericRecord, requesterUser: GenericRecord) {
-    const slotId = normalizeId(payload.slotId || payload.dutySlotId);
-    const targetUserId = normalizeId(payload.targetUserId);
-    const slot = await db.findById('duty_slots', slotId);
-    if (!slot) throw ApiError.notFound('Slot not found');
+    const toSlotId = normalizeId(payload.slotId || payload.dutySlotId || payload.toSlotId);
+    const fromSlotId = normalizeId(payload.fromSlotId);
+    const targetUserId = payload.targetUserId ? normalizeId(payload.targetUserId) : null;
+
+    const toSlot = await db.findById('duty_slots', toSlotId);
+    if (!toSlot) throw ApiError.notFound('Mục tiêu chuyển kíp không tồn tại');
 
     const created = await db.create('duty_swap_requests', {
-      dutySlotId: slotId,
-      fromSlotId: payload.fromSlotId || null,
+      dutySlotId: toSlotId,
+      fromSlotId: fromSlotId,
       requesterId: normalizeId(requesterUser.id),
       targetUserId: targetUserId,
       status: 'pending',
@@ -1023,13 +1030,28 @@ class DutyService extends BaseService {
       updatedAt: new Date().toISOString(),
     });
 
-    await notificationService.notifyUser(targetUserId, {
-      title: 'Yêu cầu đổi ca trực',
-      message: `${requesterUser.name} muốn đổi ca với bạn: ${slot.shiftLabel}`,
-      category: 'swap',
-      type: 'swap',
-      refId: created.id,
-    });
+    if (targetUserId) {
+      // Notification for mutual swap/replacement
+      await notificationService.notifyUser(targetUserId, {
+        title: 'Yêu cầu đổi ca trực',
+        message: `${requesterUser.name} muốn đổi ca với bạn: ${toSlot.shiftLabel}`,
+        category: 'swap',
+        type: 'swap',
+        refId: created.id,
+      });
+    } else {
+      // General transfer request (Notify Admin)
+      const admins = await db.findMany('users', { role: 'admin' });
+      for (const admin of admins) {
+        await notificationService.notifyUser(admin.id, {
+          title: 'Yêu cầu chuyển ca trực',
+          message: `${requesterUser.name} xin chuyển sang: ${toSlot.shiftLabel}`,
+          category: 'approval',
+          type: 'approval',
+          refId: created.id,
+        });
+      }
+    }
 
     return created;
   }
