@@ -29,31 +29,19 @@ class OtpDeliveryService {
       message: text,
     };
 
-    return this.send('email', payload);
+    return this.sendEmail(payload);
   }
 
-  async sendSmsOtp({ to, otp, expiresMinutes }: AnyRecord) {
-    const message = `${this.senderName}: Ma OTP cua ban la ${otp}. Hieu luc ${expiresMinutes} phut.`;
-    const payload = {
-      to,
-      sender: this.senderName,
-      message,
-    };
-
-    return this.send('sms', payload);
-  }
-
-  async send(channel: string, payload: AnyRecord) {
-    const isSms = channel === 'sms';
-    const url = isSms ? process.env.OTP_SMS_API_URL : process.env.OTP_EMAIL_API_URL;
-    const token = isSms ? process.env.OTP_SMS_API_TOKEN : process.env.OTP_EMAIL_API_TOKEN;
+  async sendEmail(payload: AnyRecord) {
+    const url = process.env.OTP_EMAIL_API_URL;
+    const token = process.env.OTP_EMAIL_API_TOKEN;
 
     if (!url) {
       if (!isProduction()) {
-        console.log(`[OTP MOCK][${channel}]`, payload);
+        console.log('[OTP MOCK][email]', payload);
         return { delivered: true, mocked: true };
       }
-      throw new Error(`${channel.toUpperCase()} gateway is not configured`);
+      throw new Error('EMAIL gateway is not configured');
     }
 
     await axios.post(url, payload, {

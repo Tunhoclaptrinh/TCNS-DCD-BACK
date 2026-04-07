@@ -13,7 +13,6 @@ const OTP_LENGTH = 6;
 type OtpState = {
   otpHash: string;
   attempts: number;
-  channel: 'sms' | 'email';
   target: string;
   sentAtTs: number;
   expiresAtTs: number;
@@ -31,20 +30,6 @@ class PasswordResetService {
     return String(email || '')
       .toLowerCase()
       .trim();
-  }
-
-  normalizePhone(phone: unknown) {
-    const raw = String(phone || '').trim();
-    if (!raw) return '';
-
-    const digits = raw.replace(/\D/g, '');
-    if (!digits) return '';
-
-    if (digits.startsWith('84')) {
-      return `0${digits.slice(2)}`;
-    }
-
-    return digits;
   }
 
   hashOtp(token: string) {
@@ -94,54 +79,36 @@ class PasswordResetService {
     this.otpStateStore.delete(String(userId));
   }
 
-  async findUserByIdentifier({ email, phone }: { email?: string; phone?: string }) {
-    if (email) {
-      const byEmail = await usersRepository.findByEmail(email);
-      if (byEmail) return byEmail;
-    }
+  async findUserByEmail(email?: string) {
+    if (!email) return null;
+    return await usersRepository.findByEmail(email);
+  }
 
-    if (phone) {
-      const normalizedPhone = this.normalizePhone(phone);
-      const candidates = [String(phone).trim(), normalizedPhone].filter(Boolean);
+  resolveOtpTarget(user: AnyRecord) {
+    const userEmail = this.normalizeEmail(user?.email);
 
-      return await usersRepository.findByPhoneCandidates(candidates);
+    if (userEmail) {
+      return userEmail;
     }
 
     return null;
   }
 
-  resolveOtpTarget(user: AnyRecord) {
-    const userPhone = String(user?.phone || '').trim();
-    const userEmail = this.normalizeEmail(user?.email);
-
-    if (userPhone) {
-      return { channel: 'sms' as const, target: userPhone };
-    }
-
-    if (userEmail) {
-      return { channel: 'email' as const, target: userEmail };
-    }
-
-    return { channel: null, target: null };
-  }
-
   async forgotPassword(payload: AnyRecord) {
     const normalizedEmail = this.normalizeEmail(payload.email);
-    const rawPhone = String(payload.phone || '').trim();
-    const normalizedPhone = this.normalizePhone(rawPhone);
 
-    if (!normalizedEmail && !normalizedPhone) {
-      throw ApiError.badRequest('Email hoặc số điện thoại là bắt buộc');
+    if (!normalizedEmail) {
+      throw ApiError.badRequest('Email là bắt buộc');
     }
 
     const genericMessage = 'Nếu tài khoản tồn tại, mã OTP đã được gửi';
-    const user = await this.findUserByIdentifier({ email: normalizedEmail, phone: rawPhone || normalizedPhone });
+    const user = await this.findUserByEmail(normalizedEmail);
     if (!user || !user.isActive) {
       return { message: genericMessage };
     }
 
-    const { channel, target } = this.resolveOtpTarget(user);
-    if (!channel || !target) {
+    const target = this.resolveOtpTarget(user);
+    if (!target) {
       return { message: genericMessage };
     }
 
@@ -159,30 +126,20 @@ class PasswordResetService {
     this.setOtpState(user.id, {
       otpHash: this.hashOtp(otp),
       attempts: 0,
-      channel,
       target,
       sentAtTs: Date.now(),
       expiresAtTs: new Date(expiresAt).getTime(),
     });
 
-    if (channel === 'sms') {
-      await otpDeliveryService.sendSmsOtp({
-        to: target,
-        otp,
-        expiresMinutes: OTP_EXPIRE_MINUTES,
-      });
-    } else {
-      await otpDeliveryService.sendEmailOtp({
-        to: target,
-        otp,
-        expiresMinutes: OTP_EXPIRE_MINUTES,
-      });
-    }
+    await otpDeliveryService.sendEmailOtp({
+      to: target,
+      otp,
+      expiresMinutes: OTP_EXPIRE_MINUTES,
+    });
 
     if ((process.env.NODE_ENV || 'development') !== 'production') {
       return {
         message: genericMessage,
-        channel,
         target: this.maskTarget(target),
         otpPreview: otp,
         otpExpiresAt: expiresAt,
@@ -194,20 +151,18 @@ class PasswordResetService {
 
   async resetPassword(payload: AnyRecord) {
     const normalizedEmail = this.normalizeEmail(payload.email);
-    const rawPhone = String(payload.phone || '').trim();
-    const normalizedPhone = this.normalizePhone(rawPhone);
     const otp = String(payload.otp || payload.token || '').trim();
     const newPassword = payload.newPassword;
 
-    if (!normalizedEmail && !normalizedPhone) {
-      throw ApiError.badRequest('Email hoặc số điện thoại là bắt buộc');
+    if (!normalizedEmail) {
+      throw ApiError.badRequest('Email là bắt buộc');
     }
 
     if (!otp || !newPassword) {
       throw ApiError.badRequest('OTP và mật khẩu mới là bắt buộc');
     }
 
-    const user = await this.findUserByIdentifier({ email: normalizedEmail, phone: rawPhone || normalizedPhone });
+    const user = await this.findUserByEmail(normalizedEmail);
     const otpState = user ? this.getOtpState(user.id) : null;
     const attempts = Number(otpState?.attempts || 0);
 
