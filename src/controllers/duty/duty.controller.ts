@@ -392,7 +392,7 @@ class DutyController {
   getTemplateAssignments = async (req, res, next) => {
     try {
       const data = await dutyService.getTemplateAssignments();
-      res.json({ success: true, data });
+      res.json(data);
     } catch (error) {
       next(error);
     }
@@ -401,7 +401,7 @@ class DutyController {
   createTemplateAssignment = async (req, res, next) => {
     try {
       const data = await dutyService.createTemplateAssignment(req.body, req.user.id);
-      res.status(201).json({ success: true, data });
+      res.status(201).json(data);
     } catch (error) {
       next(error);
     }
@@ -410,7 +410,7 @@ class DutyController {
   updateTemplateAssignment = async (req, res, next) => {
     try {
       const data = await dutyService.updateTemplateAssignment(req.params.id, req.body);
-      res.json({ success: true, data });
+      res.json(data);
     } catch (error) {
       next(error);
     }
@@ -419,7 +419,7 @@ class DutyController {
   deleteTemplateAssignment = async (req, res, next) => {
     try {
       const data = await dutyService.deleteTemplateAssignment(req.params.id);
-      res.json({ success: true, data });
+      res.json(data);
     } catch (error) {
       next(error);
     }

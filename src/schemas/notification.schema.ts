@@ -23,13 +23,13 @@ export default defineSchema({
   },
   type: {
     type: 'enum',
-    enum: ['system', 'general', 'account', 'security', 'shift', 'approval'],
+    enum: ['system', 'general', 'account', 'security', 'shift', 'approval', 'leave', 'swap'],
     required: true,
     description: 'Loại thông báo',
   },
   category: {
     type: 'enum',
-    enum: ['system', 'shift', 'approval'],
+    enum: ['system', 'shift', 'approval', 'duty'],
     required: false,
     default: 'system',
     description: 'Nhóm thông báo để áp rule settings',

@@ -46,6 +46,14 @@ const RELATION_MAP = {
     slot: { collection: 'duty_slots', localField: 'slotId', justOne: true },
     approver: { collection: 'users', localField: 'approvedBy', justOne: true },
   },
+  duty_logs: {
+    slot: { collection: 'duty_slots', localField: 'slotId', justOne: true },
+    user: { collection: 'users', localField: 'userId', justOne: true },
+    performer: { collection: 'users', localField: 'performerId', justOne: true },
+  },
+  duty_template_assignments: {
+    template: { collection: 'duty_templates', localField: 'templateId', justOne: true },
+  },
 };
 
 class JsonAdapter implements DatabaseAdapter {
@@ -102,6 +110,8 @@ class JsonAdapter implements DatabaseAdapter {
       duty_kips: [],
       duty_days: [],
       duty_leave_requests: [],
+      duty_template_assignments: [],
+      duty_logs: [],
     };
   }
 
@@ -324,8 +334,9 @@ class JsonAdapter implements DatabaseAdapter {
     if (!this.data[collection]) {
       this.data[collection] = [];
     }
-    const id = this.getNextId(collection);
-    const newItem = { id, ...camelizeObjectKeys(data) };
+    const normalized = camelizeObjectKeys(data);
+    const id = normalized.id || this.getNextId(collection);
+    const newItem = { ...normalized, id };
     this.data[collection].push(newItem);
     this.saveData();
     return newItem;
@@ -397,8 +408,9 @@ class JsonAdapter implements DatabaseAdapter {
     }
 
     const created = records.map((data) => {
-      const id = this.getNextId(collection);
-      const newItem = { id, ...camelizeObjectKeys(data) };
+      const normalized = camelizeObjectKeys(data);
+      const id = normalized.id || this.getNextId(collection);
+      const newItem = { ...normalized, id };
       this.data[collection].push(newItem);
       return newItem;
     });

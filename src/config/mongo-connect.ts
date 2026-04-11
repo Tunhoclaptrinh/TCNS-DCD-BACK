@@ -72,11 +72,21 @@ class MongoConnect implements DatabaseAdapter {
       },
       duty_slots: {
         kip: { ref: 'duty_kips', localField: 'kipId', foreignField: 'id', justOne: true },
+        shift: { ref: 'duty_shifts', localField: 'shiftId', foreignField: 'id', justOne: true },
+        creator: { ref: 'users', localField: 'createdBy', foreignField: 'id', justOne: true },
       },
       duty_leave_requests: {
         user: { ref: 'users', localField: 'userId', foreignField: 'id', justOne: true },
         slot: { ref: 'duty_slots', localField: 'slotId', foreignField: 'id', justOne: true },
         approver: { ref: 'users', localField: 'approvedBy', foreignField: 'id', justOne: true },
+      },
+      duty_logs: {
+        slot: { ref: 'duty_slots', localField: 'slotId', foreignField: 'id', justOne: true },
+        user: { ref: 'users', localField: 'userId', foreignField: 'id', justOne: true },
+        performer: { ref: 'users', localField: 'performerId', foreignField: 'id', justOne: true },
+      },
+      duty_template_assignments: {
+        template: { ref: 'duty_templates', localField: 'templateId', foreignField: 'id', justOne: true },
       },
     };
   }
@@ -237,6 +247,11 @@ class MongoConnect implements DatabaseAdapter {
 
     if (options.filter) {
       for (const [key, val] of Object.entries(options.filter)) {
+        if (key.startsWith('$')) {
+          query[key] = val;
+          continue;
+        }
+
         const { field: rawField, suffix } = splitKeyBySuffix(key, FILTER_SUFFIXES);
         const field = toCamelCase(rawField);
 
