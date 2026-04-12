@@ -13,6 +13,7 @@ const RELATION_MAP = {
     notifications: { collection: 'notifications', foreignField: 'userId' },
     notificationSettings: { collection: 'notification_settings', foreignField: 'userId' },
     files: { collection: 'files', foreignField: 'uploadedBy' },
+    generation: { collection: 'generations', localField: 'generationId', foreignField: 'id', justOne: true },
   },
   files: {
     uploader: { collection: 'users', localField: 'uploadedBy', justOne: true },
@@ -112,6 +113,9 @@ class JsonAdapter implements DatabaseAdapter {
       duty_leave_requests: [],
       duty_template_assignments: [],
       duty_logs: [],
+      generations: [],
+      roles: [],
+      duty_settings: [],
     };
   }
 

@@ -107,7 +107,7 @@ class UserController extends BaseController {
 
   getUserStats = async (req, res, next) => {
     try {
-      const data = await this.service.getUserStats();
+      const data = await this.service.getUserStats(req.parsedQuery?.filter || {});
       res.json(data);
     } catch (error) {
       next(error);

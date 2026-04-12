@@ -107,6 +107,8 @@ class DutyService extends BaseService {
       return {
         weeklyKipLimit: 0, // 0 means no limit
         allowUnregisterWhenFull: true,
+        currentGeneration: '',
+        generations: [],
         updatedAt: new Date().toISOString(),
       };
     }
@@ -118,6 +120,8 @@ class DutyService extends BaseService {
     const payload = {
       weeklyKipLimit: Number(data.weeklyKipLimit) || 0,
       allowUnregisterWhenFull: data.allowUnregisterWhenFull !== false,
+      currentGeneration: data.currentGeneration || '',
+      generations: Array.isArray(data.generations) ? data.generations : [],
       updatedAt: new Date().toISOString(),
     };
 
@@ -958,17 +962,27 @@ class DutyService extends BaseService {
       }
     }
 
-    // Get capacity: use slot override if present, otherwise associated Kip
-    let maxCapacity = Number(slot.capacity);
+    // --- REDUNDANT CHECK (MITIGATE RACE CONDITIONS IN JSON DB) ---
+    // Re-fetch the slot to catch any updates that happened between our first read and now
+    const currentSlot = await db.findById('duty_slots', slot.id);
+    if (!currentSlot) throw ApiError.notFound('Slot not found');
+
+    const currentAssigned = normalizeIdList(currentSlot.assignedUserIds || []);
+    if (currentAssigned.includes(userId)) return currentSlot; // Already registered by another process
+
+    // Get capacity: prioritize slot override, fallback to Kip template
+    let maxCapacity = Number(currentSlot.capacity);
     if (!maxCapacity || isNaN(maxCapacity)) {
-      const kip = await db.findById('duty_kips', slot.kipId);
+      const kip = await db.findById('duty_kips', currentSlot.kipId);
       maxCapacity = Number(kip?.capacity) || 1;
     }
 
-    if (assigned.length >= maxCapacity) throw ApiError.badRequest('Full');
+    if (currentAssigned.length >= maxCapacity) {
+      throw ApiError.badRequest('Ca trực đã đầy, vui lòng chọn kíp khác.');
+    }
 
-    const updated = await db.update('duty_slots', slot.id, {
-      assignedUserIds: [...assigned, userId].map(Number),
+    const updated = await db.update('duty_slots', currentSlot.id, {
+      assignedUserIds: [...currentAssigned, userId].map(Number),
       updatedAt: new Date().toISOString(),
     });
 

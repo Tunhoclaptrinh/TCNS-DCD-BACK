@@ -99,10 +99,16 @@ export default defineSchema({
   },
   role: {
     type: 'enum',
-    enum: ['admin', 'staff', 'customer', 'researcher', 'curator'],
+    enum: ['admin', 'staff', 'customer', 'curator'],
     required: false,
     default: 'customer',
     description: 'Vai trò người dùng',
+  },
+  generationId: {
+    type: 'number',
+    required: false,
+    foreignKey: 'generations',
+    description: 'ID Thế hệ/Khóa liên kết',
   },
 
   bio: {

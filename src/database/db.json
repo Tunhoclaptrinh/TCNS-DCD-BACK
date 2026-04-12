@@ -22,7 +22,8 @@
       "lastName": "Nguyễn Tiến",
       "position": "ctc",
       "studentId": "string",
-      "status": "active"
+      "status": "active",
+      "generationId": 1
     },
     {
       "id": 4,
@@ -36,7 +37,8 @@
       "isActive": true,
       "createdAt": "2026-03-02T13:28:08.637Z",
       "updatedAt": "2026-03-14T10:24:38.995Z",
-      "status": "active"
+      "status": "active",
+      "generationId": 1
     },
     {
       "id": 5,
@@ -58,7 +60,8 @@
       "updatedAt": "2026-04-05T12:03:23.630Z",
       "lastLogin": "2026-03-10T19:37:35.688Z",
       "department": "Nhân sự",
-      "position": "tv"
+      "position": "tv",
+      "generationId": 1
     },
     {
       "id": 9,
@@ -91,7 +94,8 @@
       "lastSeen": "string",
       "promotedAt": "2026-03-12T04:03:24.345Z",
       "promotedBy": 2,
-      "promotionReason": "string"
+      "promotionReason": "string",
+      "generationId": 1
     },
     {
       "id": 10,
@@ -108,7 +112,8 @@
       "expelled": false,
       "createdAt": "2026-04-05T12:24:57.801Z",
       "updatedAt": "2026-04-05T12:24:58.058Z",
-      "lastLogin": "2026-04-05T12:24:58.057Z"
+      "lastLogin": "2026-04-05T12:24:58.057Z",
+      "generationId": 1
     }
   ],
   "notifications": [
@@ -3079,12 +3084,6 @@
       "name": "Bản mẫu Mùa Hè",
       "isDefault": false,
       "description": "Khung giờ đẩy sớm 30p để tránh nắng"
-    },
-    {
-      "id": 3,
-      "name": "Bản mẫu Sự kiện / Lễ hội",
-      "isDefault": false,
-      "description": "Tăng cường nhân sự và thêm kíp trực đêm"
     }
   ],
   "duty_shifts": [
@@ -3132,15 +3131,6 @@
       "endTime": "17:30",
       "order": 2,
       "daysOfWeek": [1, 2, 3, 4, 5]
-    },
-    {
-      "id": 6,
-      "templateId": 3,
-      "name": "Sự kiện: Hội nghị Khoa học",
-      "startTime": "07:30",
-      "endTime": "17:30",
-      "order": 1,
-      "daysOfWeek": [2, 3]
     }
   ],
   "duty_kips": [
@@ -3193,46 +3183,6 @@
       "capacity": 2,
       "order": 1,
       "daysOfWeek": [1, 2, 4, 5]
-    },
-    {
-      "id": 11,
-      "shiftId": 6,
-      "name": "Đón đại biểu (Phiên sáng)",
-      "startTime": "08:00",
-      "endTime": "10:30",
-      "capacity": 5,
-      "order": 1,
-      "daysOfWeek": [2, 3]
-    },
-    {
-      "id": 12,
-      "shiftId": 6,
-      "name": "Phục vụ Hội thảo",
-      "startTime": "10:30",
-      "endTime": "12:00",
-      "capacity": 3,
-      "order": 2,
-      "daysOfWeek": [2, 3]
-    },
-    {
-      "id": 13,
-      "shiftId": 6,
-      "name": "Phiên thảo luận chiều",
-      "startTime": "13:30",
-      "endTime": "15:30",
-      "capacity": 4,
-      "order": 3,
-      "daysOfWeek": [2, 3]
-    },
-    {
-      "id": 14,
-      "shiftId": 6,
-      "name": "Bế mạc & Dọn dẹp",
-      "startTime": "15:30",
-      "endTime": "17:00",
-      "capacity": 2,
-      "order": 4,
-      "daysOfWeek": [2, 3]
     }
   ],
   "duty_days": [
@@ -3619,15 +3569,6 @@
       "createdAt": "2026-04-11T01:57:53.515Z"
     },
     {
-      "id": 2,
-      "templateId": 3,
-      "startDate": "2026-04-21T01:57:53.515Z",
-      "endDate": "2026-04-26T01:57:53.515Z",
-      "note": "Tuần lễ Sự kiện",
-      "createdBy": 1,
-      "createdAt": "2026-04-11T01:57:53.515Z"
-    },
-    {
       "id": 3,
       "templateId": 2,
       "startDate": "2026-05-11T01:57:53.515Z",
@@ -3648,6 +3589,74 @@
       "details": "Admin sao chép lịch trực từ tuần 2026-03-30 sang tuần 2026-04-06. Số lượng kíp: 29",
       "createdAt": "2026-04-09T16:40:19.542Z",
       "updatedAt": "2026-04-09T16:40:19.542Z"
+    }
+  ],
+  "generations": [
+    {
+      "id": 1,
+      "name": "Thế hệ 1",
+      "description": "Thế hệ khởi tạo hệ thống",
+      "status": "active",
+      "createdAt": "2026-04-12T08:34:57.925Z",
+      "updatedAt": "2026-04-12T08:34:57.925Z"
+    }
+  ],
+  "roles": [
+    {
+      "id": 1,
+      "key": "admin",
+      "name": "Quản trị viên",
+      "description": "Toàn quyền hệ thống",
+      "permissions": ["*"],
+      "isActive": true,
+      "createdAt": "2026-04-12T09:27:32.649Z"
+    },
+    {
+      "id": 2,
+      "key": "staff",
+      "name": "Ban Nhân sự",
+      "description": "Quản lý thành viên và lịch trực",
+      "permissions": [
+        "users:list",
+        "users:read",
+        "users:create",
+        "users:update",
+        "users:delete",
+        "users:manage_status",
+        "users:view_stats",
+        "users:manage_rank",
+        "users:expel",
+        "dashboard:view",
+        "duty:view",
+        "duty:register",
+        "duty:update",
+        "duty:manage",
+        "duty:approve_swap",
+        "duty:approve_leave",
+        "reward_penalty:view",
+        "reward_penalty:manage",
+        "reports:view",
+        "reports:export"
+      ],
+      "isActive": true,
+      "createdAt": "2026-04-12T09:27:32.649Z"
+    },
+    {
+      "id": 3,
+      "key": "customer",
+      "name": "Thành viên",
+      "description": "Quyền cơ bản của thành viên",
+      "permissions": [
+        "profile:read",
+        "profile:update",
+        "dashboard:view",
+        "duty:view",
+        "duty:register",
+        "duty:update",
+        "reward_penalty:view"
+      ],
+      "isActive": true,
+      "createdAt": "2026-04-12T09:27:32.649Z"
     }
   ]
 }

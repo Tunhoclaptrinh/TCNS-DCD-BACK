@@ -12,10 +12,12 @@ import dutyLeaveRequests from './duty-leave-request.schema';
 import dutyDays from './duty-day.schema';
 import dutyTemplates from './duty-template.schema';
 import dutyTemplateAssignments from './duty-template-assignment.schema';
+import generations from './generation.schema';
 
 const schemas: SchemaMap = {
   // Auth & User
   users,
+  generations,
 
   // User Content
   notifications,

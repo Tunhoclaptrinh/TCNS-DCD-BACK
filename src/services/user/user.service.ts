@@ -82,8 +82,8 @@ class UserService extends BaseService {
     };
   }
 
-  async getUserStats() {
-    const users = await db.findAll('users');
+  async getUserStats(filters: any = {}) {
+    const users = await db.findMany('users', filters);
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
 
