@@ -121,6 +121,7 @@ async function seedDutyData() {
         endTime: '17:30',
         order: 1,
         daysOfWeek: [2, 3],
+        isSpecialEvent: true,
       },
     ];
     await db.insertMany('duty_shifts', shifts);
@@ -323,6 +324,7 @@ async function seedDutyData() {
             capacity: 1,
             order: shift.order,
             status: isPast ? 'locked' : 'open',
+            isSpecialEvent: !!shift.isSpecialEvent,
             assignedUserIds: shiftAssignedIds,
             attendedUserIds: isPast ? shiftAssignedIds : [],
             createdBy: 1,
@@ -352,6 +354,7 @@ async function seedDutyData() {
             capacity: kip.capacity,
             order: kip.order,
             status: isPast ? 'locked' : 'open',
+            isSpecialEvent: !!shift.isSpecialEvent,
             assignedUserIds,
             attendedUserIds: isPast ? assignedUserIds.filter(() => Math.random() > 0.2) : [],
             createdBy: 1,
