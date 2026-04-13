@@ -93,6 +93,7 @@ class DutyService extends BaseService {
       endPeriod: data.endPeriod ? Number(data.endPeriod) : null,
       note: data.note || '',
       capacity: data.capacity ? Number(data.capacity) : null,
+      isSpecialEvent: !!data.isSpecialEvent,
       createdAt: new Date(data.createdAt || new Date()),
       updatedAt: new Date(),
     };
@@ -215,6 +216,7 @@ class DutyService extends BaseService {
       endTime: data.endTime,
       order: Number(data.order) || 0,
       description: data.description || '',
+      isSpecialEvent: !!data.isSpecialEvent,
       daysOfWeek: Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : [0, 1, 2, 3, 4, 5, 6],
     });
   }
@@ -227,6 +229,7 @@ class DutyService extends BaseService {
       endTime: data.endTime,
       order: Number(data.order) || 0,
       description: data.description || '',
+      isSpecialEvent: data.isSpecialEvent !== undefined ? !!data.isSpecialEvent : undefined,
       daysOfWeek: Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : undefined,
     });
   }
@@ -446,6 +449,7 @@ class DutyService extends BaseService {
           order: s.order,
           description: 'INSTANCE',
           templateId: null, // DISCONNECT from template group
+          isSpecialEvent: !!s.isSpecialEvent,
           daysOfWeek: [dayOfWeek],
         });
 
@@ -496,6 +500,7 @@ class DutyService extends BaseService {
                 startTime: shift.startTime,
                 endTime: shift.endTime,
                 order: shift.order,
+                isSpecialEvent: !!shift.isSpecialEvent,
                 note: shift.description || '',
               },
               actorId,
@@ -522,6 +527,7 @@ class DutyService extends BaseService {
                   capacity: kip.capacity,
                   order: kip.order,
                   endPeriod: kip.endPeriod,
+                  isSpecialEvent: !!shift.isSpecialEvent,
                   note: kip.description || kip.duration || '',
                 },
                 actorId,
@@ -831,6 +837,7 @@ class DutyService extends BaseService {
             order: shiftTemplate.order,
             templateId: null, // DISCONNECT
             description: 'INSTANCE',
+            isSpecialEvent: !!shiftTemplate.isSpecialEvent,
             daysOfWeek: shiftTemplate.daysOfWeek,
           });
           finalShiftId = newShift.id;
@@ -1416,6 +1423,8 @@ class DutyService extends BaseService {
         order: overrides?.order !== undefined ? Number(overrides.order) : shiftTemplate.order,
         description: 'INSTANCE',
         templateId: null, // DISCONNECT
+        isSpecialEvent:
+          overrides?.isSpecialEvent !== undefined ? !!overrides.isSpecialEvent : !!shiftTemplate.isSpecialEvent,
         daysOfWeek: shiftTemplate.daysOfWeek,
       });
       finalShiftId = newShift.id;
@@ -1481,6 +1490,7 @@ class DutyService extends BaseService {
               endTime: effectiveShift.endTime,
               capacity: 1, // Default for shift overall
               order: effectiveShift.order,
+              isSpecialEvent: !!effectiveShift.isSpecialEvent,
               note: 'Individual Shift Slot',
             },
             actorId,
@@ -1512,6 +1522,7 @@ class DutyService extends BaseService {
               capacity: kip.capacity,
               order: kip.order,
               endPeriod: kip.endPeriod,
+              isSpecialEvent: !!effectiveShift.isSpecialEvent,
               note: kip.description || '',
             },
             actorId,

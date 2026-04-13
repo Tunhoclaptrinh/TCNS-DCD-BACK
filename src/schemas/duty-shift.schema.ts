@@ -48,4 +48,10 @@ export default defineSchema({
     default: [0, 1, 2, 3, 4, 5, 6],
     description: 'Thứ trong tuần áp dụng (0: Thứ 2, ..., 6: Chủ Nhật)',
   },
+  isSpecialEvent: {
+    type: 'boolean',
+    required: false,
+    default: false,
+    description: 'Đánh dấu là sự kiện đặc biệt (lễ hội)',
+  },
 });

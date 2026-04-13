@@ -98,4 +98,10 @@ export default defineSchema({
     required: false,
     description: 'Sĩ số tối đa (Đè giá trị của kíp nếu có)',
   },
+  isSpecialEvent: {
+    type: 'boolean',
+    required: false,
+    default: false,
+    description: 'Đánh dấu là sự kiện đặc biệt',
+  },
 });
