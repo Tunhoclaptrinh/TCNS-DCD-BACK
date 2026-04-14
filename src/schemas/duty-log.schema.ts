@@ -1,0 +1,49 @@
+import { defineSchema } from '@app-types/schema';
+
+export default defineSchema({
+  type: {
+    type: 'string',
+    required: false,
+    enum: ['leave', 'swap_transfer', 'unassigned', 'manual_update'],
+    description: 'Loại hành động (Đơn nghỉ, Đổi kíp, Gỡ người, Cập nhật kíp)',
+  },
+  action: {
+    type: 'string',
+    required: true,
+    enum: ['approved', 'rejected', 'transfer', 'removed', 'system'],
+    description: 'Hành động cụ thể',
+  },
+  requestId: {
+    type: 'number',
+    required: false,
+    description: 'ID của đơn gốc (nếu có)',
+  },
+  slotId: {
+    type: 'number',
+    required: true,
+    foreignKey: 'duty_slots',
+    description: 'ID kíp trực liên quan',
+  },
+  userId: {
+    type: 'number',
+    required: true,
+    foreignKey: 'users',
+    description: 'Nhân sự bị tác động trực tiếp',
+  },
+  performerId: {
+    type: 'number',
+    required: true,
+    foreignKey: 'users',
+    description: 'Người thực hiện hành động (Admin/Staff/Hệ thống)',
+  },
+  details: {
+    type: 'string',
+    required: false,
+    description: 'Chi tiết thông tin bổ sung',
+  },
+  createdAt: {
+    type: 'date',
+    required: false,
+    default: new Date(),
+  },
+});

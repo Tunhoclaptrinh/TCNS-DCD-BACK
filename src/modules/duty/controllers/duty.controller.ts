@@ -21,17 +21,17 @@ class DutyController extends BaseController {
   });
 
   updateSlot = this.handle(async (req, res) => {
-    const data = await dutyService.updateSlot(req.params.id, req.body);
+    const data = await dutyService.updateSlot(req.params.id, req.body, req.user.id);
     this.ok(res, data);
   });
 
   registerToSlot = this.handle(async (req, res) => {
-    const data = await dutyService.registerToSlot(req.params.id, this.getCurrentUser(req));
+    const data = await dutyService.registerToSlot(req.params.id, this.getCurrentUser(req).id);
     this.ok(res, data);
   });
 
   cancelRegistration = this.handle(async (req, res) => {
-    const data = await dutyService.cancelRegistration(req.params.id, this.getCurrentUser(req));
+    const data = await dutyService.cancelRegistration(req.params.id, this.getCurrentUser(req).id);
     this.ok(res, data);
   });
 

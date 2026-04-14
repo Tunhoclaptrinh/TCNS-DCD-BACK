@@ -41,19 +41,33 @@ class NotificationService extends BaseService {
 
   async getSettings(userId: Identifier) {
     const normalizedUserId = normalizeId(userId);
-    const now = new Date().toISOString();
+
+    if (!normalizedUserId || isNaN(Number(normalizedUserId))) {
+      return { ...DEFAULT_SETTINGS, isFallback: true };
+    }
+
     let settings = await notificationsRepository.findSettingsByUserId(normalizedUserId);
 
     if (!settings) {
-      settings = await notificationsRepository.createSettings({
-        userId: normalizedUserId,
-        ...DEFAULT_SETTINGS,
-        createdAt: now,
-        updatedAt: now,
-      });
+      try {
+        const now = new Date().toISOString();
+        settings = await notificationsRepository.createSettings({
+          userId: normalizedUserId,
+          ...DEFAULT_SETTINGS,
+          createdAt: now,
+          updatedAt: now,
+        });
+      } catch (err: any) {
+        // Handle race condition: if another process created it concurrently
+        if (err.code === 11000 || err.message?.includes('duplicate')) {
+          settings = await notificationsRepository.findSettingsByUserId(normalizedUserId);
+        } else {
+          throw err;
+        }
+      }
     }
 
-    return settings;
+    return settings || { ...DEFAULT_SETTINGS, isFallback: true };
   }
 
   async updateSettings(userId: Identifier, payload: Record<string, any> = {}) {
@@ -86,6 +100,11 @@ class NotificationService extends BaseService {
 
   async notifyUser(userId: Identifier, payload: NotificationPayload = {}, options: NotificationOptions = {}) {
     const normalizedUserId = normalizeId(userId);
+    if (!normalizedUserId || isNaN(Number(normalizedUserId))) {
+      // Cannot notify a user that doesn't exist
+      return { skipped: true, reason: 'Invalid user ID' };
+    }
+
     const category = payload.category || 'system';
     const force = options.force === true;
     const derivedType = deriveNotificationTypeFromCategory(category);

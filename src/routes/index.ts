@@ -7,6 +7,8 @@ import notificationRoutes from '@modules/notifications/routes/notification.route
 import dutyRoutes from '@modules/duty/routes/duty.routes';
 import rewardPenaltyRoutes from '@modules/reward-penalties/routes/reward-penalty.routes';
 import reportRoutes from '@modules/reports/routes/report.routes';
+import generationRoutes from './generations.routes';
+import roleRoutes from './role.routes';
 
 const router = express.Router();
 
@@ -18,5 +20,7 @@ router.use('/notifications', notificationRoutes);
 router.use('/duty', dutyRoutes);
 router.use('/reward-penalties', rewardPenaltyRoutes);
 router.use('/reports', reportRoutes);
+router.use('/generations', generationRoutes);
+router.use('/roles', roleRoutes);
 
 export default router;
