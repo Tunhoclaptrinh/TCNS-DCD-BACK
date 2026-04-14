@@ -19,12 +19,18 @@ class BaseController {
     };
   }
 
-  protected ok(res: Response, data: unknown) {
-    return res.json(data);
+  protected ok(res: Response, data: any) {
+    if (typeof data === 'object' && data !== null && typeof data.success === 'boolean') {
+      return res.json(data);
+    }
+    return res.json({ success: true, data });
   }
 
-  protected created(res: Response, data: unknown) {
-    return res.status(201).json(data);
+  protected created(res: Response, data: any) {
+    if (typeof data === 'object' && data !== null && typeof data.success === 'boolean') {
+      return res.status(201).json(data);
+    }
+    return res.status(201).json({ success: true, data });
   }
 
   protected requireService() {

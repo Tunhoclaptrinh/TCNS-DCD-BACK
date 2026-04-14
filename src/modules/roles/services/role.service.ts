@@ -1,9 +1,10 @@
 import BaseService from '@shared/common/base-service';
-import roleSchema from '../../schemas/role.schema';
+import rolesRepository from '@modules/roles/repositories/roles.repository';
+import roleSchema from '@modules/roles/schemas/role.schema';
 
 class RoleService extends BaseService {
   constructor() {
-    super('roles');
+    super('roles', rolesRepository);
   }
 
   getSchema() {
