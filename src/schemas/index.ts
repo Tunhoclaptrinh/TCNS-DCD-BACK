@@ -6,18 +6,22 @@ import files from '@modules/files/schemas/file.schema';
 import dutySlots from '@modules/duty/schemas/duty-slot.schema';
 import dutySwapRequests from '@modules/duty/schemas/duty-swap-request.schema';
 import rewardPenalties from '@modules/reward-penalties/schemas/reward-penalty.schema';
-import dutyShifts from './duty-shift.schema';
-import dutyKips from './duty-kip.schema';
-import dutyLeaveRequests from './duty-leave-request.schema';
-import dutyDays from './duty-day.schema';
-import dutyTemplates from './duty-template.schema';
-import dutyTemplateAssignments from './duty-template-assignment.schema';
-import generations from './generation.schema';
+import dutyShifts from '@modules/duty/schemas/duty-shift.schema';
+import dutyKips from '@modules/duty/schemas/duty-kip.schema';
+import dutyLeaveRequests from '@modules/duty/schemas/duty-leave-request.schema';
+import dutyDays from '@modules/duty/schemas/duty-day.schema';
+import dutyTemplates from '@modules/duty/schemas/duty-template.schema';
+import dutyTemplateAssignments from '@modules/duty/schemas/duty-template-assignment.schema';
+import dutyLogs from '@modules/duty/schemas/duty-log.schema';
+import dutySettings from '@modules/duty/schemas/duty-settings.schema';
+import generations from '@modules/generations/schemas/generation.schema';
+import roles from '@modules/roles/schemas/role.schema';
 
 const schemas: SchemaMap = {
   // Auth & User
   users,
   generations,
+  roles,
 
   // User Content
   notifications,
@@ -32,6 +36,8 @@ const schemas: SchemaMap = {
   reward_penalties: rewardPenalties,
   duty_days: dutyDays,
   duty_template_assignments: dutyTemplateAssignments,
+  duty_logs: dutyLogs,
+  duty_settings: dutySettings,
 };
 
 export default schemas;

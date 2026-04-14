@@ -74,26 +74,6 @@ function getWeekEndISO(weekStartIso: string): string {
   return end.toISOString();
 }
 
-function paginate(items: GenericRecord[], page = 1, limit = 10) {
-  const currentPage = Math.max(1, Number(page) || 1);
-  const perPage = Math.max(1, Math.min(Number(limit) || 10, 100));
-  const total = items.length;
-  const totalPages = Math.ceil(total / perPage);
-  const start = (currentPage - 1) * perPage;
-
-  return {
-    data: items.slice(start, start + perPage),
-    pagination: {
-      page: currentPage,
-      limit: perPage,
-      total,
-      totalPages,
-      hasPrev: currentPage > 1,
-      hasNext: currentPage < totalPages,
-    },
-  };
-}
-
 class DutyService extends BaseService {
   constructor() {
     super('duty_slots', dutySlotsRepository);
@@ -494,7 +474,7 @@ class DutyService extends BaseService {
       const isoDate = d.toISOString();
 
       // Find assignment for this specific day
-      const assignment = assignments.find((a) => {
+      const assignment = assignments.find((a: any) => {
         const start = new Date(a.startDate);
         const end = new Date(a.endDate);
         return d >= start && d <= end;
@@ -548,7 +528,7 @@ class DutyService extends BaseService {
               capacity: kip.capacity,
               order: kip.order,
               endPeriod: kip.endPeriod,
-              note: kip.description || kip.duration || '',
+              note: kip.description || '',
             },
             actorId,
           ),
@@ -1189,16 +1169,18 @@ class DutyService extends BaseService {
     return updated;
   }
 
-  async cancelRegistration(slotId: Identifier, userId: Identifier, isAdmin = false) {
+  async cancelRegistration(slotId: Identifier, user: GenericRecord | Identifier) {
     const slot = await db.findById('duty_slots', slotId);
     if (!slot) throw ApiError.notFound('Kíp trực không tồn tại');
 
+    const userId = getActorId(user);
     const assigned = normalizeIdList(slot.assignedUserIds || []);
     if (!assigned.includes(userId)) {
       throw ApiError.badRequest('Bạn không đăng ký kíp trực này');
     }
 
     const settings = await this.getSettings();
+    const isAdmin = typeof user === 'object' && (user as any).role === 'admin';
     const isFull = assigned.length >= (slot.capacity || 1);
 
     if (!settings.allowUnregisterWhenFull && isFull && !isAdmin) {
