@@ -163,6 +163,42 @@ class UserService extends BaseService {
     return userSchema;
   }
 
+  async validateUniqueFields(data: AnyRecord, excludeId?: Identifier) {
+    const errors: string[] = [];
+
+    if (data.email) {
+      const existingEmail = await this.repository.findOne({ email: data.email });
+      if (existingEmail && (excludeId === undefined || existingEmail.id !== excludeId)) {
+        errors.push(`Email '${data.email}' already exists`);
+      }
+    }
+
+    if (data.studentId) {
+      const existingStudentId = await this.repository.findOne({ studentId: data.studentId });
+      if (existingStudentId && (excludeId === undefined || existingStudentId.id !== excludeId)) {
+        errors.push(`Mã sinh viên '${data.studentId}' already exists`);
+      }
+    }
+
+    return errors;
+  }
+
+  async validateCreate(data: AnyRecord) {
+    const errors = await this.validateUniqueFields(data);
+    if (errors.length > 0) {
+      return { success: false, message: errors.join('. '), errors };
+    }
+    return { success: true };
+  }
+
+  async validateUpdate(id: Identifier, data: AnyRecord) {
+    const errors = await this.validateUniqueFields(data, id);
+    if (errors.length > 0) {
+      return { success: false, message: errors.join('. '), errors };
+    }
+    return { success: true };
+  }
+
   async transformImportData(data: AnyRecord) {
     const transformed = await super.transformImportData(data);
 

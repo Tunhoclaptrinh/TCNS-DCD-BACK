@@ -8,6 +8,7 @@ export const PERMISSIONS = {
     'users:delete',
     'users:manage_status',
     'users:view_stats',
+    'users:import_export',
     'users:manage_rank',
     'users:expel',
     'dashboard:view',
