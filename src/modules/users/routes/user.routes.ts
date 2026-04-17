@@ -41,15 +41,26 @@ router.patch('/:id/expel', requireAuth, requirePermission('users:expel'), userCo
 router.delete('/:id/permanent', requireAuth, requirePermission('users:delete'), userController.permanentDeleteUser);
 
 // === IMPORT/EXPORT (ADMIN ONLY) ===
-router.get('/template', requireAuth, requirePermission('users:create'), (req, res, next) => {
+router.get('/template', requireAuth, requirePermission('users:import_export'), (req, res, next) => {
   (req.params as Record<string, string>).entity = 'users';
   importExportController.downloadTemplate(req, res, next);
 });
 
 router.post(
+  '/validate-import',
+  requireAuth,
+  requirePermission('users:import_export'),
+  importExportController.getUploadMiddleware(),
+  (req, res, next) => {
+    (req.params as Record<string, string>).entity = 'users';
+    importExportController.validateData(req, res, next);
+  },
+);
+
+router.post(
   '/import',
   requireAuth,
-  requirePermission('users:create'),
+  requirePermission('users:import_export'),
   importExportController.getUploadMiddleware(),
   (req, res, next) => {
     (req.params as Record<string, string>).entity = 'users';
@@ -57,7 +68,7 @@ router.post(
   },
 );
 
-router.get('/export', requireAuth, requirePermission('users:update'), (req, res, next) => {
+router.get('/export', requireAuth, requirePermission('users:import_export'), (req, res, next) => {
   (req.params as Record<string, string>).entity = 'users';
   importExportController.exportData(req, res, next);
 });
