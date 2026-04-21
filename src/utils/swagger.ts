@@ -1,6 +1,7 @@
 import swaggerUi from 'swagger-ui-express';
 import schemas from '@schemas';
 import type { AnyRecord } from '@app-types/common';
+import { logger } from './logger';
 import type { SchemaDefinition, SchemaRule } from '@app-types/schema';
 
 type SwaggerRouteDoc = {
@@ -1349,9 +1350,9 @@ function setupSwagger(app: AnyRecord) {
     }),
   );
 
-  console.log('Swagger initialized');
-  console.log(`   - Declared ${Object.keys(spec.paths).length} paths`);
-  console.log(`   - Tags: ${spec.tags.map((tag: { name: string }) => tag.name).join(', ')}`);
+  logger.info('Swagger initialized', 'SERVER');
+  logger.info(`   - Declared ${Object.keys(spec.paths).length} paths`, 'SERVER');
+  logger.info(`   - Tags: ${spec.tags.map((tag: { name: string }) => tag.name).join(', ')}`, 'SERVER');
 }
 
 export { setupSwagger, buildSwaggerSpec };
