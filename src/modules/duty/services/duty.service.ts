@@ -6,6 +6,14 @@ import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import BaseService from '@shared/common/base-service';
 import dutySlotsRepository from '@modules/duty/repositories/duty-slots.repository';
 import dutySwapRequestsRepository from '@modules/duty/repositories/duty-swap-requests.repository';
+import dutyDaysRepository from '@modules/duty/repositories/duty-days.repository';
+import dutyKipsRepository from '@modules/duty/repositories/duty-kips.repository';
+import dutyLeaveRequestsRepository from '@modules/duty/repositories/duty-leave-requests.repository';
+import dutyLogsRepository from '@modules/duty/repositories/duty-logs.repository';
+import dutySettingsRepository from '@modules/duty/repositories/duty-settings.repository';
+import dutyShiftsRepository from '@modules/duty/repositories/duty-shifts.repository';
+import dutyTemplateAssignmentsRepository from '@modules/duty/repositories/duty-template-assignments.repository';
+import dutyTemplatesRepository from '@modules/duty/repositories/duty-templates.repository';
 import usersRepository from '@modules/users/repositories/users.repository';
 import db from '@database';
 import ApiError from '@utils/api-error';
@@ -257,8 +265,8 @@ class DutyService extends BaseService {
   // ==================== SETTINGS MANAGEMENT ====================
 
   async getSettings() {
-    const settings = await db.findAll('duty_settings');
-    if (settings.length === 0) {
+    const settings = await dutySettingsRepository.getGlobalSettings();
+    if (!settings) {
       // Return default settings
       return {
         weeklyKipLimit: 0, // 0 means no limit
@@ -268,11 +276,11 @@ class DutyService extends BaseService {
         updatedAt: new Date().toISOString(),
       };
     }
-    return settings[0];
+    return settings;
   }
 
   async updateSettings(data: GenericRecord) {
-    const settings = await db.findAll('duty_settings');
+    const settings = await dutySettingsRepository.getGlobalSettings();
     const payload = {
       weeklyKipLimit: Number(data.weeklyKipLimit) || 0,
       allowUnregisterWhenFull: data.allowUnregisterWhenFull !== false,
@@ -281,30 +289,30 @@ class DutyService extends BaseService {
       updatedAt: new Date().toISOString(),
     };
 
-    if (settings.length === 0) {
-      return await db.create('duty_settings', payload);
+    if (!settings) {
+      return await dutySettingsRepository.create(payload);
     }
-    return await db.update('duty_settings', settings[0].id, payload);
+    return await dutySettingsRepository.update(settings.id, payload);
   }
 
   // ==================== TEMPLATE MANAGEMENT ====================
 
   async getTemplates() {
-    const all = await db.findAll('duty_templates');
+    const all = await dutyTemplatesRepository.findAll();
     return all.sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '', 'vi'));
   }
 
   async createTemplate(data: GenericRecord) {
-    const template = await db.create('duty_templates', {
+    const template = await dutyTemplatesRepository.create({
       name: data.name,
       isDefault: !!data.isDefault,
       description: data.description || '',
     });
     if (data.isDefault) {
-      const all = await db.findAll('duty_templates');
+      const all = await dutyTemplatesRepository.findAll();
       for (const t of all) {
         if (normalizeId(t.id) !== normalizeId(template.id) && t.isDefault) {
-          await db.update('duty_templates', t.id, { isDefault: false });
+          await dutyTemplatesRepository.update(t.id, { isDefault: false });
         }
       }
     }
@@ -312,16 +320,16 @@ class DutyService extends BaseService {
   }
 
   async updateTemplate(id: Identifier, data: GenericRecord) {
-    const updated = await db.update('duty_templates', id, {
+    const updated = await dutyTemplatesRepository.update(id, {
       name: data.name,
       isDefault: !!data.isDefault,
       description: data.description || '',
     });
     if (data.isDefault) {
-      const all = await db.findAll('duty_templates');
+      const all = await dutyTemplatesRepository.findAll();
       for (const t of all) {
         if (normalizeId(t.id) !== normalizeId(id) && t.isDefault) {
-          await db.update('duty_templates', t.id, { isDefault: false });
+          await dutyTemplatesRepository.update(t.id, { isDefault: false });
         }
       }
     }
@@ -329,11 +337,11 @@ class DutyService extends BaseService {
   }
 
   async deleteTemplate(id: Identifier) {
-    const shifts = await db.findMany('duty_shifts', { templateId: normalizeId(id) });
+    const shifts = await dutyShiftsRepository.findByTemplateId(normalizeId(id));
     for (const s of shifts) {
       await this.deleteShiftTemplate(s.id);
     }
-    return await db.delete('duty_templates', id);
+    return await dutyTemplatesRepository.delete(id);
   }
 
   async getShiftTemplates(templateId?: Identifier | null) {
@@ -342,17 +350,14 @@ class DutyService extends BaseService {
       if (templateId) {
         filter.templateId = normalizeId(templateId);
       } else if (templateId === null) {
-        // Individual shifts have templateId as null in our new system
         filter.templateId = null;
       }
     } else {
-      // If nothing provided, we might want ALL shifts for the calendar to pick from
-      // or just the default. For the calendar, "all" is safer.
       filter = {};
     }
 
-    const shifts = await db.findMany('duty_shifts', filter);
-    const kips = await db.findAll('duty_kips');
+    const shifts = await dutyShiftsRepository.findMany(filter);
+    const kips = await dutyKipsRepository.findAll();
     return shifts
       .map((shift: any) => ({
         ...shift,
@@ -364,7 +369,7 @@ class DutyService extends BaseService {
   }
 
   async createShiftTemplate(data: GenericRecord) {
-    return await db.create('duty_shifts', {
+    return await dutyShiftsRepository.create({
       templateId: data.templateId ? normalizeId(data.templateId) : null,
       name: data.name,
       startTime: data.startTime,
@@ -376,7 +381,7 @@ class DutyService extends BaseService {
   }
 
   async updateShiftTemplate(id: Identifier, data: GenericRecord) {
-    return await db.update('duty_shifts', id, {
+    return await dutyShiftsRepository.update(id, {
       templateId: data.templateId ? normalizeId(data.templateId) : undefined,
       name: data.name,
       startTime: data.startTime,
@@ -388,12 +393,12 @@ class DutyService extends BaseService {
   }
 
   async deleteShiftTemplate(id: Identifier) {
-    await db.deleteMany('duty_kips', { shiftId: normalizeId(id) });
-    return await db.delete('duty_shifts', id);
+    await dutyKipsRepository.deleteByShiftId(normalizeId(id));
+    return await dutyShiftsRepository.delete(id);
   }
 
   async createKipTemplate(data: GenericRecord) {
-    return await db.create('duty_kips', {
+    return await dutyKipsRepository.create({
       shiftId: normalizeId(data.shiftId),
       name: data.name,
       coefficient: Number(data.coefficient) || 1,
@@ -406,7 +411,7 @@ class DutyService extends BaseService {
   }
 
   async updateKipTemplate(id: Identifier, data: GenericRecord) {
-    return await db.update('duty_kips', id, {
+    return await dutyKipsRepository.update(id, {
       name: data.name,
       coefficient: Number(data.coefficient) || 1,
       capacity: Number(data.capacity) || 1,
@@ -418,7 +423,7 @@ class DutyService extends BaseService {
   }
 
   async deleteKipTemplate(id: Identifier) {
-    return await db.delete('duty_kips', id);
+    return await dutyKipsRepository.delete(id);
   }
 
   async findOrCreateDay(date: string, actorId: Identifier) {
@@ -426,9 +431,9 @@ class DutyService extends BaseService {
     d.setUTCHours(0, 0, 0, 0);
     const isoDate = d.toISOString();
 
-    let dayRecord = await db.findOne('duty_days', { date: isoDate });
+    let dayRecord = await dutyDaysRepository.findByDate(isoDate);
     if (!dayRecord) {
-      dayRecord = await db.create('duty_days', {
+      dayRecord = await dutyDaysRepository.create({
         date: isoDate,
         dayOfWeek: (new Date(isoDate).getUTCDay() + 6) % 7,
         status: 'open',
@@ -447,19 +452,19 @@ class DutyService extends BaseService {
     we.setUTCDate(we.getUTCDate() + 6); // End of the week
 
     // Check for existing slots
-    const existingSlots = await db.findMany('duty_slots', {
+    const existingSlots = await dutySlotsRepository.findMany({
       shiftDate_gte: ws.toISOString(),
       shiftDate_lte: we.toISOString(),
     });
     if (existingSlots.length > 0) throw ApiError.badRequest('Schedule already exists for this week');
 
     // Fetch all assignments that might overlap with this week
-    const assignments = await db.findMany('duty_template_assignments', {
+    const assignments = await dutyTemplateAssignmentsRepository.findMany({
       startDate_lte: we.toISOString(),
       endDate_gte: ws.toISOString(),
     });
 
-    const defaultGroup = await db.findOne('duty_templates', { isDefault: true });
+    const defaultGroup = await dutyTemplatesRepository.findDefault();
 
     const allWeeklySlots = [];
     for (let i = 0; i < 7; i++) {
@@ -477,7 +482,7 @@ class DutyService extends BaseService {
       const groupId = assignment?.templateId || defaultGroup?.id;
       if (!groupId) continue;
 
-      const shifts = await db.findMany('duty_shifts', { templateId: normalizeId(groupId) });
+      const shifts = await dutyShiftsRepository.findByTemplateId(normalizeId(groupId));
 
       for (const shift of shifts) {
         const res = await this.addShiftToDay(isoDate, shift.id, actorId, null, 'kips', true);
@@ -486,7 +491,7 @@ class DutyService extends BaseService {
     }
 
     if (allWeeklySlots.length > 0) {
-      await db.insertMany('duty_slots', allWeeklySlots);
+      await dutySlotsRepository.insertMany(allWeeklySlots);
     }
 
     return { success: true };
@@ -530,7 +535,7 @@ class DutyService extends BaseService {
       }
     }
     if (slots.length === 0) return [];
-    return await db.insertMany('duty_slots', slots);
+    return await dutySlotsRepository.insertMany(slots);
   }
 
   async generateRangeSlots(
@@ -547,7 +552,7 @@ class DutyService extends BaseService {
     if (e < s) throw ApiError.badRequest('End date must be after start date');
 
     // Fetch all assignments that might overlap with this range
-    const assignments = await db.findMany('duty_template_assignments', {
+    const assignments = await dutyTemplateAssignmentsRepository.findMany({
       startDate_lte: e.toISOString(),
       endDate_gte: s.toISOString(),
     });
@@ -571,7 +576,7 @@ class DutyService extends BaseService {
         if (assignment) {
           effectiveTemplateId = assignment.templateId;
         } else {
-          const defaultTemplate = await db.findOne('duty_templates', { isDefault: true });
+          const defaultTemplate = await dutyTemplatesRepository.findDefault();
           effectiveTemplateId = defaultTemplate?.id;
         }
       }
@@ -591,7 +596,7 @@ class DutyService extends BaseService {
       for (const s of shifts as any[]) {
         if (!(s.daysOfWeek || [0, 1, 2, 3, 4, 5, 6]).includes(dayOfWeek)) continue;
 
-        const newShift = await db.create('duty_shifts', {
+        const newShift = await dutyShiftsRepository.create({
           name: s.name,
           startTime: s.startTime,
           endTime: s.endTime,
@@ -601,11 +606,11 @@ class DutyService extends BaseService {
           daysOfWeek: [dayOfWeek],
         });
 
-        persistentShiftIds.push(newShift.id);
-        shiftMap.set(s.id, newShift.id);
+        persistentShiftIds.push(newShift.id as number);
+        shiftMap.set(s.id, newShift.id as number);
       }
 
-      await db.update('duty_days', dayRecord.id, {
+      await dutyDaysRepository.update(dayRecord.id, {
         shiftTemplateIds: persistentShiftIds,
       });
 
@@ -614,11 +619,11 @@ class DutyService extends BaseService {
         const persistentShiftId = shiftMap.get(shift.id)!;
 
         // 2. Clone Kips for this shift instance
-        const templateKips = await db.findMany('duty_kips', { shiftId: normalizeId(shift.id) });
+        const templateKips = await dutyKipsRepository.findMany({ shiftId: normalizeId(shift.id) });
         const kipMap = new Map<number, number>();
 
         for (const k of templateKips) {
-          const newKip = await db.create('duty_kips', {
+          const newKip = await dutyKipsRepository.create({
             shiftId: persistentShiftId,
             name: k.name,
             coefficient: k.coefficient,
@@ -630,7 +635,7 @@ class DutyService extends BaseService {
             config: k.config,
             description: 'INSTANCE',
           });
-          kipMap.set(k.id, newKip.id);
+          kipMap.set(k.id as number, newKip.id as number);
         }
 
         // Create a Shift-level slot (kipId: null) ONLY if there are no kips for this shift
@@ -667,7 +672,7 @@ class DutyService extends BaseService {
                   shiftDate: isoDate,
                   dayId: dayRecord.id,
                   shiftId: persistentShiftId,
-                  kipId: kipMap.get(kip.id),
+                  kipId: kipMap.get(kip.id as number),
                   shiftLabel: `${shift.name} - ${kip.name}`,
                   startTime: kip.startTime || shift.startTime,
                   endTime: kip.endTime || shift.endTime,
@@ -688,15 +693,15 @@ class DutyService extends BaseService {
 
     if (allSlots.length === 0) return [];
 
-    await db.deleteMany('duty_slots', {
+    await dutySlotsRepository.deleteMany({
       shiftDate_gte: s.toISOString(),
       shiftDate_lte: e.toISOString(),
     });
 
-    const created = await db.insertMany('duty_slots', allSlots);
+    const created = await dutySlotsRepository.insertMany(allSlots);
 
     // --- LOGGING ---
-    await db.create('duty_logs', {
+    await dutyLogsRepository.create({
       type: 'manual_update',
       action: 'system',
       slotId: 0, // Batch creation
@@ -714,13 +719,13 @@ class DutyService extends BaseService {
     const e = toUTCMidnight(endDate);
     e.setUTCHours(23, 59, 59, 999);
 
-    const deletedCount = await db.deleteMany('duty_slots', {
+    const deletedCount = await dutySlotsRepository.deleteMany({
       shiftDate_gte: s.toISOString(),
       shiftDate_lte: e.toISOString(),
     });
 
     // --- LOGGING ---
-    await db.create('duty_logs', {
+    await dutyLogsRepository.create({
       type: 'unassigned',
       action: 'removed',
       slotId: 0, // Batch action
@@ -745,20 +750,20 @@ class DutyService extends BaseService {
     const weTarget = new Date(targetIso);
     weTarget.setUTCDate(weTarget.getUTCDate() + 6);
 
-    const existingTarget = await db.findOne('duty_slots', {
+    const existingTarget = await dutySlotsRepository.findOne({
       shiftDate_gte: wsTarget.toISOString(),
       shiftDate_lte: weTarget.toISOString(),
     });
     if (existingTarget) throw ApiError.badRequest('Target week already has slots');
 
     // 1. Fetch all data for source week
-    const sourceSlots = await db.findMany('duty_slots', {
+    const sourceSlots = await dutySlotsRepository.findMany({
       shiftDate_gte: wsSource.toISOString(),
       shiftDate_lte: weSource.toISOString(),
     });
     if (!sourceSlots || sourceSlots.length === 0) throw ApiError.badRequest('Source week is empty');
 
-    const sourceDays = await db.findMany('duty_days', {
+    const sourceDays = await dutyDaysRepository.findMany({
       date_gte: wsSource.toISOString(),
       date_lte: weSource.toISOString(),
     });
@@ -773,7 +778,7 @@ class DutyService extends BaseService {
       const targetDate = new Date(wsTarget);
       targetDate.setUTCDate(targetDate.getUTCDate() + i);
 
-      const srcDay = sourceDays.find((d) => new Date(d.date).getTime() === srcDate.getTime());
+      const srcDay = sourceDays.find((d: any) => new Date(d.date).getTime() === srcDate.getTime());
       if (!srcDay) continue;
 
       const targetDay = await this.findOrCreateDay(targetDate.toISOString(), actorId);
@@ -781,30 +786,30 @@ class DutyService extends BaseService {
       const newShiftIds = [];
 
       for (const oldShiftId of oldShiftIds) {
-        const shift = await db.findById('duty_shifts', oldShiftId);
+        const shift = await dutyShiftsRepository.findById(oldShiftId);
         if (!shift) continue;
 
         // If it's an instance, clone it to keep weeks independent
         if (shift.description === 'INSTANCE') {
-          const newShift = await db.create('duty_shifts', {
+          const newShift = await dutyShiftsRepository.create({
             ...shift,
             id: undefined,
             _id: undefined,
             templateId: shift.templateId, // Keep reference to original blueprint if any
           });
-          newShiftIds.push(newShift.id);
-          shiftIdMap[String(oldShiftId)] = newShift.id;
+          newShiftIds.push(newShift.id as number);
+          shiftIdMap[String(oldShiftId)] = newShift.id as number;
 
           // Also clone its kips
-          const kips = await db.findMany('duty_kips', { shiftId: normalizeId(oldShiftId) });
+          const kips = await dutyKipsRepository.findMany({ shiftId: normalizeId(oldShiftId) });
           for (const k of kips) {
-            const newKip = await db.create('duty_kips', {
+            const newKip = await dutyKipsRepository.create({
               ...k,
               id: undefined,
               _id: undefined,
-              shiftId: newShift.id,
+              shiftId: newShift.id as number,
             });
-            kipIdMap[String(k.id)] = newKip.id;
+            kipIdMap[String(k.id)] = newKip.id as number;
           }
         } else {
           // If it's a direct blueprint (unlikely in stencil but possible), just link it
@@ -813,7 +818,7 @@ class DutyService extends BaseService {
         }
       }
 
-      await db.update('duty_days', targetDay.id, { shiftTemplateIds: newShiftIds });
+      await dutyDaysRepository.update(targetDay.id, { shiftTemplateIds: newShiftIds });
     }
 
     // 3. Clone Slots with translated IDs
@@ -840,10 +845,10 @@ class DutyService extends BaseService {
       );
     });
 
-    const created = await db.insertMany('duty_slots', newSlots);
+    const created = await dutySlotsRepository.insertMany(newSlots);
 
     // --- LOGGING ---
-    await db.create('duty_logs', {
+    await dutyLogsRepository.create({
       type: 'manual_update',
       action: 'system',
       slotId: 0,
@@ -863,12 +868,12 @@ class DutyService extends BaseService {
     we.setUTCDate(we.getUTCDate() + 6);
 
     // 1. Delete all slots for the week
-    await db.deleteMany('duty_slots', {
-      weekStart: new Date(startIso),
+    await dutySlotsRepository.deleteMany({
+      weekStart: new Date(startIso).toISOString(),
     });
 
     // 2. Clear shift boundaries in duty_days
-    const days = await db.findMany('duty_days', {
+    const days = await dutyDaysRepository.findMany({
       date_gte: ws.toISOString(),
       date_lte: we.toISOString(),
     });
@@ -877,7 +882,7 @@ class DutyService extends BaseService {
       if (d.shiftTemplateIds?.length > 0) {
         // Optional: We could also delete the actual duty_shifts records here if they are 'INSTANCE'
         // But for simplicity and safety, resetting the reference is the most important for UI
-        await db.update('duty_days', d.id, { shiftTemplateIds: [] });
+        await dutyDaysRepository.update(d.id, { shiftTemplateIds: [] });
       }
     }
 
@@ -891,7 +896,7 @@ class DutyService extends BaseService {
     const ws = new Date(weekStart);
     const we = new Date(weekEnd);
 
-    const result = await db.findAllAdvanced('duty_slots', {
+    const result = await dutySlotsRepository.findAllAdvanced({
       ...options,
       limit: 1000,
       filter: {
@@ -907,7 +912,7 @@ class DutyService extends BaseService {
     const users = (await usersRepository.findAll()) as DutyUser[];
     const userMap = this.buildScheduleUserMap(users);
 
-    const data = result.data.map((slot) => {
+    const data = result.data.map((slot: any) => {
       const assignedIds = normalizeIdList(slot.assignedUserIds || []);
       return {
         ...slot,
@@ -915,7 +920,7 @@ class DutyService extends BaseService {
         assignedUsers: assignedIds
           .map((id) => userMap.get(id))
           .filter(Boolean)
-          .map((user) => ({ id: user.id, name: user.name, role: user.role, avatar: user.avatar })),
+          .map((user: any) => ({ id: user.id, name: user.name, role: user.role, avatar: user.avatar })),
       };
     });
 
@@ -924,12 +929,12 @@ class DutyService extends BaseService {
     const queryStart = dayjs.utc(weekStart).subtract(1, 'day').toDate();
     const queryEnd = dayjs.utc(weekEnd).add(1, 'day').toDate();
 
-    const assignments = await db.findMany('duty_template_assignments', {
+    const assignments = await dutyTemplateAssignmentsRepository.findMany({
       startDate_lte: queryEnd,
       endDate_gte: queryStart,
     });
 
-    const days = await db.findMany('duty_days', {
+    const days = await dutyDaysRepository.findMany({
       date_gte: queryStart,
       date_lte: queryEnd,
     });
@@ -943,13 +948,13 @@ class DutyService extends BaseService {
       (d.shiftTemplateIds || []).forEach((id: any) => referredShiftIds.add(normalizeId(id)));
     });
 
-    const fullShifts = await db.findMany('duty_shifts', { id_in: Array.from(referredShiftIds) });
-    const allKips = await db.findMany('duty_kips', { shiftId_in: Array.from(referredShiftIds) });
+    const fullShifts = await dutyShiftsRepository.findMany({ id_in: Array.from(referredShiftIds) });
+    const allKips = await dutyKipsRepository.findMany({ shiftId_in: Array.from(referredShiftIds) });
 
-    const templateData = fullShifts.map((s) => ({
+    const templateData = fullShifts.map((s: any) => ({
       ...s,
       kips: allKips
-        .filter((k) => normalizeId(k.shiftId) === normalizeId(s.id))
+        .filter((k: any) => normalizeId(k.shiftId) === normalizeId(s.id))
         .sort((a: any, b: any) => (a.startTime || '').localeCompare(b.startTime || '')),
     }));
 
@@ -977,10 +982,10 @@ class DutyService extends BaseService {
     if (finalShiftId) {
       const existingIds = dayRecord.shiftTemplateIds || [];
       if (!existingIds.map(String).includes(String(finalShiftId))) {
-        const shiftTemplate = await db.findById('duty_shifts', finalShiftId);
+        const shiftTemplate = await dutyShiftsRepository.findById(finalShiftId);
         // Only deep copy if it's currently linked to a template
         if (shiftTemplate && shiftTemplate.templateId) {
-          const newShift = await db.create('duty_shifts', {
+          const newShift = await dutyShiftsRepository.create({
             name: shiftTemplate.name,
             startTime: shiftTemplate.startTime,
             endTime: shiftTemplate.endTime,
@@ -993,7 +998,7 @@ class DutyService extends BaseService {
         }
 
         if (!existingIds.map(String).includes(String(finalShiftId))) {
-          await db.update('duty_days', dayRecord.id, {
+          await dutyDaysRepository.update(dayRecord.id, {
             shiftTemplateIds: [...existingIds, finalShiftId],
           });
         }
@@ -1001,10 +1006,10 @@ class DutyService extends BaseService {
     }
 
     const data = this.buildSlotPayload({ ...payload, dayId: dayRecord.id, shiftId: finalShiftId }, actorId);
-    const created = await db.create('duty_slots', data);
+    const created = await dutySlotsRepository.create(data);
 
     // --- LOGGING ---
-    await db.create('duty_logs', {
+    await dutyLogsRepository.create({
       type: 'manual_update',
       action: 'system',
       slotId: created.id,
@@ -1018,11 +1023,11 @@ class DutyService extends BaseService {
   }
 
   async deleteSlot(id: Identifier, performerId: Identifier) {
-    const slot = await db.findById('duty_slots', id);
+    const slot = await dutySlotsRepository.findById(id);
     if (!slot) throw ApiError.notFound('Slot not found');
 
     // --- LOGGING ---
-    await db.create('duty_logs', {
+    await dutyLogsRepository.create({
       type: 'unassigned',
       action: 'removed',
       slotId: normalizeId(id),
@@ -1033,7 +1038,7 @@ class DutyService extends BaseService {
     });
 
     // Simplified: Delete ONLY the requested slot, no cascading
-    await db.delete('duty_slots', id);
+    await dutySlotsRepository.delete(id);
 
     return { success: true };
   }
@@ -1041,10 +1046,10 @@ class DutyService extends BaseService {
   async deleteShiftSlots(date: string, shiftId: number, performerId: Identifier) {
     const d = new Date(date);
     d.setUTCHours(0, 0, 0, 0);
-    const deletedCount = await db.deleteMany('duty_slots', { shiftDate: d, shiftId: Number(shiftId) });
+    const deletedCount = await dutySlotsRepository.deleteMany({ shiftDate: d, shiftId: Number(shiftId) });
 
     // --- LOGGING ---
-    await db.create('duty_logs', {
+    await dutyLogsRepository.create({
       type: 'unassigned',
       action: 'removed',
       slotId: normalizeId(shiftId),
@@ -1058,7 +1063,7 @@ class DutyService extends BaseService {
   }
 
   async updateSlot(slotId: Identifier, payload: GenericRecord = {}, performerId: Identifier) {
-    const slot = await db.findById('duty_slots', slotId);
+    const slot = await dutySlotsRepository.findById(slotId);
     if (!slot) throw ApiError.notFound('Slot not found');
 
     const patch: GenericRecord = { ...payload, updatedAt: new Date().toISOString() };
@@ -1070,10 +1075,10 @@ class DutyService extends BaseService {
     }
     if (payload.assignedUserIds) patch.assignedUserIds = normalizeIdList(payload.assignedUserIds);
 
-    const updated = await db.update('duty_slots', slotId, patch);
+    const updated = await dutySlotsRepository.update(slotId, patch);
 
     // --- LOGGING ---
-    await db.create('duty_logs', {
+    await dutyLogsRepository.create({
       type: 'manual_update',
       action: 'system',
       slotId: normalizeId(slotId),
@@ -1087,7 +1092,7 @@ class DutyService extends BaseService {
   }
 
   async registerToSlot(slotId: Identifier, user: GenericRecord | Identifier) {
-    const slot = await db.findById('duty_slots', slotId);
+    const slot = await dutySlotsRepository.findById(slotId);
     if (!slot) throw ApiError.notFound('Slot not found');
     if (slot.status === 'locked') throw ApiError.badRequest('Locked');
 
@@ -1098,7 +1103,7 @@ class DutyService extends BaseService {
     }
 
     // --- CONFLICT CHECK (From HEAD) ---
-    const sameDateSlots = await db.findMany('duty_slots', { shiftDate: slot.shiftDate });
+    const sameDateSlots = await dutySlotsRepository.findMany({ shiftDate: slot.shiftDate });
     const hasConflict = sameDateSlots.some((item: any) => {
       if (normalizeId(item.id) === normalizeId(slot.id)) return false;
       const itemAssigned = normalizeIdList(item.assignedUserIds || []);
@@ -1115,7 +1120,7 @@ class DutyService extends BaseService {
     const weeklyLimit = settings.weeklyKipLimit;
     if (weeklyLimit !== null && weeklyLimit !== undefined && Number(weeklyLimit) > 0) {
       const weekStartStr = new Date(slot.weekStart).toISOString();
-      const allSlotsInWeek = await db.findMany('duty_slots', {
+      const allSlotsInWeek = await dutySlotsRepository.findMany({
         weekStart: weekStartStr,
       });
 
@@ -1130,7 +1135,7 @@ class DutyService extends BaseService {
     }
 
     // --- REDUNDANT CHECK ---
-    const currentSlot = await db.findById('duty_slots', slot.id);
+    const currentSlot = await dutySlotsRepository.findById(slot.id);
     if (!currentSlot) throw ApiError.notFound('Slot not found');
 
     const currentAssigned = normalizeIdList(currentSlot.assignedUserIds || []);
@@ -1139,7 +1144,7 @@ class DutyService extends BaseService {
     // Get capacity: prioritize slot override, fallback to Kip template
     let maxCapacity = Number(currentSlot.capacity);
     if (!maxCapacity || isNaN(maxCapacity)) {
-      const kip = await db.findById('duty_kips', currentSlot.kipId);
+      const kip = await dutyKipsRepository.findById(currentSlot.kipId);
       maxCapacity = Number(kip?.capacity) || 1;
     }
 
@@ -1161,7 +1166,7 @@ class DutyService extends BaseService {
 
       if (requirement) {
         // Count occupants in the same requirement group
-        const assignedUsers = await db.findMany('users', { id_in: currentAssigned });
+        const assignedUsers = await usersRepository.findMany({ id_in: currentAssigned });
         const occupantsInGroup = assignedUsers.filter(
           (u: any) => Array.isArray(requirement.positions) && requirement.positions.includes(u.position),
         ).length;
@@ -1175,7 +1180,7 @@ class DutyService extends BaseService {
         const totalStructuredSlots = slotStructure.reduce((acc: number, req: any) => acc + (Number(req.slots) || 0), 0);
         const freeSlotsTotal = maxCapacity - totalStructuredSlots;
 
-        const assignedUsers = await db.findMany('users', { id_in: currentAssigned });
+        const assignedUsers = await usersRepository.findMany({ id_in: currentAssigned });
         const structuredUserIds = new Set();
         slotStructure.forEach((req: any) => {
           assignedUsers.forEach((u: any) => {
@@ -1194,7 +1199,7 @@ class DutyService extends BaseService {
       }
     }
 
-    const updated = await db.update('duty_slots', currentSlot.id, {
+    const updated = await dutySlotsRepository.update(currentSlot.id, {
       assignedUserIds: [...currentAssigned, userId].map(Number),
       updatedAt: new Date().toISOString(),
     });
@@ -1210,7 +1215,7 @@ class DutyService extends BaseService {
   }
 
   async cancelRegistration(slotId: Identifier, user: GenericRecord | Identifier) {
-    const slot = await db.findById('duty_slots', slotId);
+    const slot = await dutySlotsRepository.findById(slotId);
     if (!slot) throw ApiError.notFound('Kíp trực không tồn tại');
 
     const userId = getActorId(user);
@@ -1227,12 +1232,12 @@ class DutyService extends BaseService {
       throw ApiError.badRequest('Kíp đã đủ người, không thể tự ý hủy. Hãy liên hệ Admin.');
     }
 
-    const updated = await db.update('duty_slots', slot.id, {
+    const updated = await dutySlotsRepository.update(slot.id, {
       assignedUserIds: assigned.filter((id) => id !== userId),
       updatedAt: new Date().toISOString(),
     });
 
-    await db.create('duty_logs', {
+    await dutyLogsRepository.create({
       type: 'registration',
       action: 'cancel',
       slotId: normalizeId(slotId),
@@ -1250,10 +1255,10 @@ class DutyService extends BaseService {
     const fromSlotId = normalizeId(payload.fromSlotId);
     const targetUserId = payload.targetUserId ? normalizeId(payload.targetUserId) : null;
 
-    const toSlot = await db.findById('duty_slots', toSlotId);
+    const toSlot = await dutySlotsRepository.findById(toSlotId);
     if (!toSlot) throw ApiError.notFound('Mục tiêu chuyển kíp không tồn tại');
 
-    const created = await db.create('duty_swap_requests', {
+    const created = await dutySwapRequestsRepository.create({
       dutySlotId: toSlotId,
       fromSlotId: fromSlotId,
       requesterId: normalizeId(requesterUser.id),
@@ -1274,9 +1279,9 @@ class DutyService extends BaseService {
       });
     } else {
       // General transfer request (Notify Admin)
-      const admins = await db.findMany('users', { role: 'admin' });
+      const admins = await usersRepository.findMany({ role: 'admin' });
       for (const admin of admins) {
-        await notificationService.notifyUser(admin.id, {
+        await notificationService.notifyUser(admin.id as number, {
           title: 'Yêu cầu chuyển ca trực',
           message: `${requesterUser.name} xin chuyển sang: ${toSlot.shiftLabel}`,
           category: 'approval',
@@ -1290,33 +1295,33 @@ class DutyService extends BaseService {
   }
 
   async decideSwap(requestId: Identifier, payload: GenericRecord = {}, approver: any) {
-    const req = await db.findById('duty_swap_requests', requestId);
+    const req = await dutySwapRequestsRepository.findById(requestId);
     if (!req) throw ApiError.notFound('Yêu cầu không tồn tại');
 
     const status = payload.status || payload.decision;
     const approverId = normalizeId(approver?.id || approver);
     const approverObj =
-      typeof approver === 'object' && approver.role ? approver : await db.findById('users', approverId);
+      typeof approver === 'object' && approver.role ? approver : await usersRepository.findById(approverId);
     if (!approverObj) throw ApiError.notFound('Người duyệt không tồn tại');
 
     // Permission check: Admin/Staff can always decide. TargetUser can also decide (Accept/Reject).
     const isTargetUser = normalizeId(req.targetUserId) === approverId;
-    const isAdminOrStaff = ['admin', 'staff'].includes(approverObj.role);
+    const isAdminOrStaff = ['admin', 'staff'].includes(approverObj.role as string);
 
     if (!isTargetUser && !isAdminOrStaff) {
       throw ApiError.forbidden('Bạn không có quyền xử lý yêu cầu này');
     }
 
     if (status === 'approved') {
-      const targetSlot = await db.findById('duty_slots', req.dutySlotId);
+      const targetSlot = await dutySlotsRepository.findById(req.dutySlotId);
       if (!targetSlot) throw ApiError.notFound('Kíp trực đích không tồn tại');
 
       // 1. Remove from source slot (if any)
       if (req.fromSlotId) {
-        const sourceSlot = await db.findById('duty_slots', req.fromSlotId);
+        const sourceSlot = await dutySlotsRepository.findById(req.fromSlotId);
         if (sourceSlot) {
           const sourceAssigned = normalizeIdList(sourceSlot.assignedUserIds || []);
-          await db.update('duty_slots', sourceSlot.id, {
+          await dutySlotsRepository.update(sourceSlot.id, {
             assignedUserIds: sourceAssigned.filter((id) => normalizeId(id) !== normalizeId(req.requesterId)),
             updatedAt: new Date().toISOString(),
           });
@@ -1329,13 +1334,13 @@ class DutyService extends BaseService {
         targetAssigned.push(normalizeId(req.requesterId));
       }
 
-      await db.update('duty_slots', targetSlot.id, {
+      await dutySlotsRepository.update(targetSlot.id, {
         assignedUserIds: targetAssigned,
         updatedAt: new Date().toISOString(),
       });
 
       // --- LOGGING ---
-      await db.create('duty_logs', {
+      await dutyLogsRepository.create({
         type: 'swap_transfer',
         action: 'transfer',
         requestId: normalizeId(requestId),
@@ -1347,7 +1352,7 @@ class DutyService extends BaseService {
       });
 
       // Notifications
-      await notificationService.notifyUser(req.requesterId, {
+      await notificationService.notifyUser(req.requesterId as number, {
         title: 'Điều chuyển kíp trực thành công',
         message: `Bạn đã được điều chuyển sang kíp trực: ${targetSlot.shiftLabel}.`,
         category: 'duty',
@@ -1356,7 +1361,7 @@ class DutyService extends BaseService {
       });
     } else if (status === 'rejected') {
       // Notify the requester about rejection
-      await notificationService.notifyUser(req.requesterId, {
+      await notificationService.notifyUser(req.requesterId as number, {
         title: 'Yêu cầu đổi ca bị từ chối',
         message: `Yêu cầu đổi ca của bạn đã được từ chối.`,
         category: 'duty',
@@ -1365,7 +1370,7 @@ class DutyService extends BaseService {
       });
     }
 
-    return await db.update('duty_swap_requests', requestId, {
+    return await dutySwapRequestsRepository.update(requestId, {
       status,
       approvedBy: approverId,
       decisionNote: payload.reason || payload.decisionNote || '',
@@ -1374,13 +1379,13 @@ class DutyService extends BaseService {
   }
 
   async markAttendance(slotId: Identifier, userIds: Identifier[], performerId: Identifier) {
-    const slot = await db.findById('duty_slots', slotId);
+    const slot = await dutySlotsRepository.findById(slotId);
     if (!slot) throw ApiError.notFound('Slot not found');
 
-    const updated = await db.update('duty_slots', slotId, { attendedUserIds: userIds });
+    const updated = await dutySlotsRepository.update(slotId, { attendedUserIds: userIds });
 
     // --- LOGGING ---
-    await db.create('duty_logs', {
+    await dutyLogsRepository.create({
       type: 'manual_update',
       action: 'system',
       slotId: normalizeId(slotId),
@@ -1394,7 +1399,7 @@ class DutyService extends BaseService {
   }
 
   async requestLeave(slotId: Identifier, userId: Identifier, reason: string) {
-    return await db.create('duty_leave_requests', {
+    return await dutyLeaveRequestsRepository.create({
       slotId: normalizeId(slotId),
       userId: normalizeId(userId),
       reason,
@@ -1405,7 +1410,7 @@ class DutyService extends BaseService {
   async createLeaveManual(data: GenericRecord, performerId: Identifier) {
     const { userId, slotId, reason, status = 'pending', rejectionReason = '' } = data;
 
-    const request = await db.create('duty_leave_requests', {
+    const request = await dutyLeaveRequestsRepository.create({
       userId: normalizeId(userId),
       slotId: normalizeId(slotId),
       reason: reason || 'Admin tạo thủ công',
@@ -1425,10 +1430,10 @@ class DutyService extends BaseService {
   }
 
   async updateLeaveRequest(id: Identifier, data: GenericRecord, performerId: Identifier) {
-    const old = await db.findById('duty_leave_requests', id);
+    const old = await dutyLeaveRequestsRepository.findById(id);
     if (!old) throw ApiError.notFound('Mục không tồn tại');
 
-    const updated = await db.update('duty_leave_requests', id, {
+    const updated = await dutyLeaveRequestsRepository.update(id, {
       ...data,
       updatedAt: new Date().toISOString(),
     });
@@ -1442,21 +1447,23 @@ class DutyService extends BaseService {
   }
 
   async deleteLeaveRequest(id: Identifier) {
-    return await db.delete('duty_leave_requests', id);
+    return await dutyLeaveRequestsRepository.delete(id);
   }
 
   async getLeaveRequests(options: GenericRecord = {}) {
-    const result = await db.findAllAdvanced('duty_leave_requests', {
+    const result = await dutyLeaveRequestsRepository.findAllAdvanced({
       ...options,
       sort: options.sort || 'createdAt',
       order: options.order || 'desc',
     });
 
-    const users = await db.findAll('users');
-    const userMap = new Map(users.map((u) => [normalizeId(u.id), { id: u.id, name: u.name, avatar: u.avatar }]));
+    const users = await usersRepository.findAll();
+    const userMap = new Map(
+      (users as any[]).map((u) => [normalizeId(u.id), { id: u.id, name: u.name, avatar: u.avatar }]),
+    );
 
-    const slots = await db.findAll('duty_slots');
-    const slotMap = new Map(slots.map((s) => [normalizeId(s.id), s]));
+    const slots = await dutySlotsRepository.findAll();
+    const slotMap = new Map((slots as any[]).map((s) => [normalizeId(s.id), s]));
 
     const data = result.data.map((req: any) => ({
       ...req,
@@ -1473,11 +1480,11 @@ class DutyService extends BaseService {
     approverId: Identifier,
     rejectionReason: string = '',
   ) {
-    const request = await db.findById('duty_leave_requests', requestId);
+    const request = await dutyLeaveRequestsRepository.findById(requestId);
     if (!request) throw ApiError.notFound('Đơn xin nghỉ không tồn tại');
 
     const now = new Date().toISOString();
-    const updated = await db.update('duty_leave_requests', requestId, {
+    const updated = await dutyLeaveRequestsRepository.update(requestId, {
       status,
       approvedBy: normalizeId(approverId),
       rejectionReason,
@@ -1485,17 +1492,17 @@ class DutyService extends BaseService {
     });
 
     if (status === 'approved') {
-      const slot = await db.findById('duty_slots', request.slotId);
+      const slot = await dutySlotsRepository.findById(request.slotId);
       if (slot) {
         const assigned = normalizeIdList(slot.assignedUserIds || []);
         const nextAssigned = assigned.filter((id) => normalizeId(id) !== normalizeId(request.userId));
-        await db.update('duty_slots', slot.id, {
+        await dutySlotsRepository.update(slot.id, {
           assignedUserIds: nextAssigned,
           updatedAt: now,
         });
 
         // --- LOGGING ---
-        await db.create('duty_logs', {
+        await dutyLogsRepository.create({
           type: 'leave',
           action: 'approved',
           requestId: normalizeId(requestId),
@@ -1507,7 +1514,7 @@ class DutyService extends BaseService {
         });
 
         // Notify member
-        await notificationService.notifyUser(request.userId, {
+        await notificationService.notifyUser(request.userId as number, {
           title: 'Đơn xin nghỉ đã được duyệt',
           message: `Yêu cầu xin nghỉ cho kíp ${slot.shiftLabel || ''} của bạn đã được chấp thuận.`,
           category: 'duty',
@@ -1517,7 +1524,7 @@ class DutyService extends BaseService {
       }
     } else if (status === 'rejected') {
       // --- LOGGING ---
-      await db.create('duty_logs', {
+      await dutyLogsRepository.create({
         type: 'leave',
         action: 'rejected',
         requestId: normalizeId(requestId),
@@ -1528,7 +1535,7 @@ class DutyService extends BaseService {
         createdAt: new Date(),
       });
 
-      await notificationService.notifyUser(request.userId, {
+      await notificationService.notifyUser(request.userId as number, {
         title: 'Đơn xin nghỉ bị từ chối',
         message: `Yêu cầu xin nghỉ của bạn đã bị từ chối. Lý do: ${rejectionReason || 'Không có'}`,
         category: 'duty',
@@ -1541,9 +1548,9 @@ class DutyService extends BaseService {
   }
 
   async getStats() {
-    const slots = (await db.findAll('duty_slots')) || [];
-    const leaves = (await db.findAll('duty_leave_requests')) || [];
-    const swaps = (await db.findAll('duty_swap_requests')) || [];
+    const slots = (await dutySlotsRepository.findAll()) || [];
+    const leaves = (await dutyLeaveRequestsRepository.findAll()) || [];
+    const swaps = (await dutySwapRequestsRepository.findAll()) || [];
 
     return {
       global: {
@@ -1565,7 +1572,7 @@ class DutyService extends BaseService {
   // ==================== TEMPLATE ASSIGNMENT ====================
 
   async getTemplateAssignments() {
-    return await db.findAll('duty_template_assignments');
+    return await dutyTemplateAssignmentsRepository.findAll();
   }
 
   async createTemplateAssignment(data: any, actorId: any) {
@@ -1590,7 +1597,7 @@ class DutyService extends BaseService {
       const dateStr = current.format('YYYY-MM-DD');
       const dIdx = (current.day() + 6) % 7; // Mon=0...Sun=6
 
-      for (const s of shifts) {
+      for (const s of shifts as any[]) {
         const shiftDays = s.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
         if (shiftDays.includes(dIdx)) {
           // Use the established cloning logic for each shift with mode support
@@ -1604,7 +1611,7 @@ class DutyService extends BaseService {
     }
 
     if (allSlots.length > 0) {
-      await db.insertMany('duty_slots', allSlots);
+      await dutySlotsRepository.insertMany(allSlots);
     }
 
     return { success: true, results };
@@ -1619,7 +1626,7 @@ class DutyService extends BaseService {
     batchMode: boolean = false,
   ) {
     const dayRecord = await this.findOrCreateDay(date, actorId);
-    const shiftTemplate = await db.findById('duty_shifts', shiftId);
+    const shiftTemplate = await dutyShiftsRepository.findById(shiftId);
     if (!shiftTemplate) throw ApiError.notFound('Shift not found');
 
     let finalShiftId = normalizeId(shiftId);
@@ -1627,7 +1634,7 @@ class DutyService extends BaseService {
 
     // Deep Copy if it's from a template
     if (shiftTemplate.templateId) {
-      const newShift = await db.create('duty_shifts', {
+      const newShift = await dutyShiftsRepository.create({
         name: overrides?.name || shiftTemplate.name,
         startTime: overrides?.startTime || shiftTemplate.startTime,
         endTime: overrides?.endTime || shiftTemplate.endTime,
@@ -1638,12 +1645,12 @@ class DutyService extends BaseService {
           overrides?.isSpecialEvent !== undefined ? !!overrides.isSpecialEvent : !!shiftTemplate.isSpecialEvent,
         daysOfWeek: shiftTemplate.daysOfWeek,
       });
-      finalShiftId = newShift.id;
+      finalShiftId = newShift.id as number;
 
       // ALSO CLONE KIPS for this shift
-      const kips = await db.findMany('duty_kips', { shiftId: normalizeId(shiftId) });
+      const kips = await dutyKipsRepository.findMany({ shiftId: normalizeId(shiftId) });
       for (const k of kips) {
-        const newKip = await db.create('duty_kips', {
+        const newKip = await dutyKipsRepository.create({
           shiftId: finalShiftId,
           name: k.name,
           coefficient: k.coefficient,
@@ -1655,13 +1662,13 @@ class DutyService extends BaseService {
           daysOfWeek: k.daysOfWeek,
           description: 'INSTANCE',
         });
-        finalKipIds.push(newKip.id);
+        finalKipIds.push(newKip.id as number);
       }
     }
 
     const existingIds = dayRecord.shiftTemplateIds || [];
     if (!existingIds.map(String).includes(String(finalShiftId))) {
-      await db.update('duty_days', dayRecord.id, {
+      await dutyDaysRepository.update(dayRecord.id, {
         shiftTemplateIds: [...existingIds, finalShiftId],
       });
     }
@@ -1671,12 +1678,12 @@ class DutyService extends BaseService {
     const weekStartIso = getWeekStartISO(date);
 
     // Fetch newly created kips or original kips if already an instance
-    const effectiveShift = await db.findById('duty_shifts', finalShiftId);
-    const effectiveKips = await db.findMany('duty_kips', { shiftId: finalShiftId });
+    const effectiveShift = await dutyShiftsRepository.findById(finalShiftId);
+    const effectiveKips = await dutyKipsRepository.findMany({ shiftId: finalShiftId });
 
     // Idempotency: Fetch existing slots for this shift instance on this day
-    const existingSlots = await db.findMany('duty_slots', {
-      shiftDate: new Date(date),
+    const existingSlots = await dutySlotsRepository.findMany({
+      shiftDate: new Date(date).toISOString(),
       shiftId: finalShiftId,
     });
 
@@ -1684,8 +1691,8 @@ class DutyService extends BaseService {
 
     // 1. Shift-level Slot
     if (mode === 'shifts') {
-      const hasShiftSlot = existingSlots.some((s) => s.kipId === null);
-      if (!hasShiftSlot) {
+      const hasShiftSlot = existingSlots.some((s: any) => s.kipId === null);
+      if (!hasShiftSlot && effectiveShift) {
         slots.push(
           this.buildSlotPayload(
             {
@@ -1714,7 +1721,7 @@ class DutyService extends BaseService {
         const kipDays = kip.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
         if (!kipDays.includes(dayOfWeek)) continue;
 
-        const hasKipSlot = existingSlots.some((s: any) => normalizeId(s.kipId) === normalizeId(kip.id));
+        const hasKipSlot = existingSlots.some((s: any) => normalizeId(s.kipId) === normalizeId(kip.id as number));
         if (hasKipSlot) continue;
 
         slots.push(
@@ -1725,13 +1732,13 @@ class DutyService extends BaseService {
               dayId: dayRecord.id,
               shiftId: finalShiftId,
               kipId: kip.id,
-              shiftLabel: `${effectiveShift.name} - ${kip.name}`,
-              startTime: kip.startTime || effectiveShift.startTime,
-              endTime: kip.endTime || effectiveShift.endTime,
+              shiftLabel: `${effectiveShift?.name || ''} - ${kip.name}`,
+              startTime: kip.startTime || effectiveShift?.startTime,
+              endTime: kip.endTime || effectiveShift?.endTime,
               capacity: kip.capacity,
               order: kip.order,
               endPeriod: kip.endPeriod,
-              isSpecialEvent: !!effectiveShift.isSpecialEvent,
+              isSpecialEvent: effectiveShift ? !!effectiveShift.isSpecialEvent : false,
               note: kip.description || '',
             },
             actorId,
@@ -1741,7 +1748,7 @@ class DutyService extends BaseService {
     }
 
     if (slots.length > 0 && !batchMode) {
-      await db.insertMany('duty_slots', slots);
+      await dutySlotsRepository.insertMany(slots);
     }
 
     return { success: true, slots };
@@ -1750,7 +1757,7 @@ class DutyService extends BaseService {
   async createSwapManual(data: GenericRecord, performerId: Identifier) {
     const { requesterId, fromSlotId, dutySlotId, status = 'pending', reason = '' } = data;
 
-    const request = await db.create('duty_swap_requests', {
+    const request = await dutySwapRequestsRepository.create({
       requesterId: normalizeId(requesterId),
       fromSlotId: normalizeId(fromSlotId) || null,
       dutySlotId: normalizeId(dutySlotId),
@@ -1769,10 +1776,10 @@ class DutyService extends BaseService {
   }
 
   async updateSwapRequest(id: Identifier, data: GenericRecord, performerId: Identifier) {
-    const old = await db.findById('duty_swap_requests', id);
+    const old = await dutySwapRequestsRepository.findById(id);
     if (!old) throw ApiError.notFound('Mục không tồn tại');
 
-    const updated = await db.update('duty_swap_requests', id, {
+    const updated = await dutySwapRequestsRepository.update(id, {
       ...data,
       updatedAt: new Date().toISOString(),
     });
@@ -1785,14 +1792,14 @@ class DutyService extends BaseService {
   }
 
   async deleteSwapRequest(id: Identifier) {
-    return await db.delete('duty_swap_requests', id);
+    return await dutySwapRequestsRepository.delete(id);
   }
 
   async getSwapRequests(user: GenericRecord, options: GenericRecord = {}) {
     const userId = normalizeId(user.id);
     const isApprover = ['admin', 'staff'].includes(user.role);
 
-    const result = await db.findAllAdvanced('duty_swap_requests', {
+    const result = await dutySwapRequestsRepository.findAllAdvanced({
       ...options,
       sort: options.sort || 'createdAt',
       order: options.order || 'desc',
@@ -1804,11 +1811,13 @@ class DutyService extends BaseService {
           },
     });
 
-    const users = await db.findAll('users');
-    const userMap = new Map(users.map((u) => [normalizeId(u.id), { id: u.id, name: u.name, avatar: u.avatar }]));
+    const users = await usersRepository.findAll();
+    const userMap = new Map(
+      (users as any[]).map((u) => [normalizeId(u.id), { id: u.id, name: u.name, avatar: u.avatar }]),
+    );
 
-    const slots = await db.findAll('duty_slots');
-    const slotMap = new Map(slots.map((s) => [normalizeId(s.id), s]));
+    const slots = await dutySlotsRepository.findAll();
+    const slotMap = new Map((slots as any[]).map((s) => [normalizeId(s.id), s]));
 
     const data = result.data.map((req: any) => ({
       ...req,
@@ -1822,22 +1831,22 @@ class DutyService extends BaseService {
 
   async removeShiftFromDay(date: string, shiftId: number) {
     const d = toUTCMidnight(date);
-    const dayRecord = await db.findOne('duty_days', { date: d });
+    const dayRecord = await dutyDaysRepository.findOne({ date: d.toISOString() });
     if (!dayRecord) throw ApiError.notFound('Day not found');
 
     const existingIds = dayRecord.shiftTemplateIds || [];
     // Remove ONLY ONE instance of this shiftId to support duplicate boundaries
-    const index = existingIds.findIndex((id) => String(id) === String(shiftId));
+    const index = existingIds.findIndex((id: any) => String(id) === String(shiftId));
 
     if (index !== -1) {
       const newIds = [...existingIds];
       newIds.splice(index, 1);
-      await db.update('duty_days', dayRecord.id, { shiftTemplateIds: newIds });
+      await dutyDaysRepository.update(dayRecord.id, { shiftTemplateIds: newIds });
 
       // Cascade: Delete all slots (both shift-level and kips) belonging to this shift instance on this day
       // shiftId here is the instance ID
-      await db.deleteMany('duty_slots', {
-        shiftDate: d,
+      await dutySlotsRepository.deleteMany({
+        shiftDate: d.toISOString(),
         shiftId: Number(shiftId),
       });
     }
@@ -1851,11 +1860,11 @@ class DutyService extends BaseService {
     if (data.templateId) update.templateId = parseInt(data.templateId, 10);
     if (data.note !== undefined) update.note = data.note;
 
-    return await db.update('duty_template_assignments', id, update);
+    return await dutyTemplateAssignmentsRepository.update(id, update);
   }
 
   async deleteTemplateAssignment(id: any) {
-    return await db.delete('duty_template_assignments', id);
+    return await dutyTemplateAssignmentsRepository.delete(id);
   }
 }
 
