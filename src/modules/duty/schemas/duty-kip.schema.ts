@@ -67,4 +67,16 @@ export default defineSchema({
     maxLength: 500,
     description: 'Ghi chú/Địa điểm mặc định',
   },
+  slotStructure: {
+    type: 'array',
+    required: false,
+    default: [],
+    description: 'Cơ cấu nhân sự (Loại: {label, positions, slots})',
+  },
+  config: {
+    type: 'object',
+    required: false,
+    default: {},
+    description: 'Cấu hình nâng cao (Privacy, visibility, etc.)',
+  },
 });

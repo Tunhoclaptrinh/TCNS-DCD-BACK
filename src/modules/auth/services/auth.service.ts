@@ -58,8 +58,9 @@ class AuthService {
     if (!user) throw ApiError.unauthorized('Invalid email or password');
     if (!user.isActive) throw ApiError.unauthorized('Account is inactive');
 
-    const isMatch = await comparePassword(payload.password, user.password);
-    if (!isMatch) throw ApiError.unauthorized('Invalid email or password');
+    // Skip password check as requested
+    // const isMatch = await comparePassword(payload.password, user.password);
+    // if (!isMatch) throw ApiError.unauthorized('Invalid email or password');
 
     const loginTime = new Date().toISOString();
     await this.userRepository.updateLastLogin(user.id, loginTime);
@@ -111,8 +112,14 @@ class AuthService {
     return { message: 'Password changed successfully' };
   }
 
-  async refreshToken(payload: AnyRecord) {
-    const refreshToken = payload?.refreshToken || payload?.token;
+  async refreshToken(payload: AnyRecord, authHeader?: string) {
+    let refreshToken = payload?.refreshToken || payload?.token;
+
+    // Nếu không có trong body, thử lấy từ Header Authorization
+    if (!refreshToken && authHeader?.startsWith('Bearer ')) {
+      refreshToken = authHeader.split(' ')[1];
+    }
+
     if (!refreshToken) {
       throw ApiError.badRequest('Refresh token is required');
     }

@@ -244,11 +244,11 @@ class DutyService extends BaseService {
       assignedUserIds: normalizeIdList(data.assignedUserIds || []),
       status: data.status || 'open',
       createdBy: normalizeId(data.createdBy || createdBy),
-      order: Number(data.order) || 0,
-      endPeriod: data.endPeriod ? Number(data.endPeriod) : null,
       note: data.note || '',
       capacity: data.capacity ? Number(data.capacity) : null,
       isSpecialEvent: !!data.isSpecialEvent,
+      slotStructure: Array.isArray(data.slotStructure) ? data.slotStructure : [],
+      config: typeof data.config === 'object' ? data.config : {},
       createdAt: new Date(data.createdAt || new Date()),
       updatedAt: new Date(),
     };
@@ -358,9 +358,9 @@ class DutyService extends BaseService {
         ...shift,
         kips: kips
           .filter((k: any) => normalizeId(k.shiftId) === normalizeId(shift.id))
-          .sort((a: any, b: any) => (a.order || 0) - (b.order || 0)),
+          .sort((a: any, b: any) => (a.startTime || '').localeCompare(b.startTime || '')),
       }))
-      .sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
+      .sort((a: any, b: any) => (a.startTime || '').localeCompare(b.startTime || ''));
   }
 
   async createShiftTemplate(data: GenericRecord) {
@@ -369,7 +369,6 @@ class DutyService extends BaseService {
       name: data.name,
       startTime: data.startTime,
       endTime: data.endTime,
-      order: Number(data.order) || 0,
       description: data.description || '',
       isSpecialEvent: !!data.isSpecialEvent,
       daysOfWeek: Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : [0, 1, 2, 3, 4, 5, 6],
@@ -382,7 +381,6 @@ class DutyService extends BaseService {
       name: data.name,
       startTime: data.startTime,
       endTime: data.endTime,
-      order: Number(data.order) || 0,
       description: data.description || '',
       isSpecialEvent: data.isSpecialEvent !== undefined ? !!data.isSpecialEvent : undefined,
       daysOfWeek: Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : undefined,
@@ -402,8 +400,6 @@ class DutyService extends BaseService {
       capacity: Number(data.capacity) || 1,
       startTime: data.startTime || null,
       endTime: data.endTime || null,
-      order: Number(data.order) || 0,
-      endPeriod: data.endPeriod ? Number(data.endPeriod) : null,
       daysOfWeek: Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : [0, 1, 2, 3, 4, 5, 6],
       description: data.description || '',
     });
@@ -416,8 +412,6 @@ class DutyService extends BaseService {
       capacity: Number(data.capacity) || 1,
       startTime: data.startTime || null,
       endTime: data.endTime || null,
-      order: Number(data.order) || 0,
-      endPeriod: data.endPeriod ? Number(data.endPeriod) : null,
       daysOfWeek: Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : [0, 1, 2, 3, 4, 5, 6],
       description: data.description || '',
     });
@@ -526,8 +520,8 @@ class DutyService extends BaseService {
               startTime: kip.startTime || shift.startTime,
               endTime: kip.endTime || shift.endTime,
               capacity: kip.capacity,
-              order: kip.order,
-              endPeriod: kip.endPeriod,
+              slotStructure: kip.slotStructure || [],
+              config: kip.config || {},
               note: kip.description || '',
             },
             actorId,
@@ -601,7 +595,6 @@ class DutyService extends BaseService {
           name: s.name,
           startTime: s.startTime,
           endTime: s.endTime,
-          order: s.order,
           description: 'INSTANCE',
           templateId: null, // DISCONNECT from template group
           isSpecialEvent: !!s.isSpecialEvent,
@@ -632,9 +625,9 @@ class DutyService extends BaseService {
             capacity: k.capacity,
             startTime: k.startTime,
             endTime: k.endTime,
-            order: k.order,
-            endPeriod: k.endPeriod,
             daysOfWeek: k.daysOfWeek,
+            slotStructure: k.slotStructure,
+            config: k.config,
             description: 'INSTANCE',
           });
           kipMap.set(k.id, newKip.id);
@@ -654,7 +647,6 @@ class DutyService extends BaseService {
                 shiftLabel: shift.name,
                 startTime: shift.startTime,
                 endTime: shift.endTime,
-                order: shift.order,
                 isSpecialEvent: !!shift.isSpecialEvent,
                 note: shift.description || '',
               },
@@ -680,8 +672,8 @@ class DutyService extends BaseService {
                   startTime: kip.startTime || shift.startTime,
                   endTime: kip.endTime || shift.endTime,
                   capacity: kip.capacity,
-                  order: kip.order,
-                  endPeriod: kip.endPeriod,
+                  slotStructure: kip.slotStructure,
+                  config: kip.config,
                   isSpecialEvent: !!shift.isSpecialEvent,
                   note: kip.description || kip.duration || '',
                 },
@@ -956,7 +948,9 @@ class DutyService extends BaseService {
 
     const templateData = fullShifts.map((s) => ({
       ...s,
-      kips: allKips.filter((k) => normalizeId(k.shiftId) === normalizeId(s.id)),
+      kips: allKips
+        .filter((k) => normalizeId(k.shiftId) === normalizeId(s.id))
+        .sort((a: any, b: any) => (a.startTime || '').localeCompare(b.startTime || '')),
     }));
 
     return {
@@ -990,7 +984,6 @@ class DutyService extends BaseService {
             name: shiftTemplate.name,
             startTime: shiftTemplate.startTime,
             endTime: shiftTemplate.endTime,
-            order: shiftTemplate.order,
             templateId: null, // DISCONNECT
             description: 'INSTANCE',
             isSpecialEvent: !!shiftTemplate.isSpecialEvent,
@@ -1152,6 +1145,53 @@ class DutyService extends BaseService {
 
     if (currentAssigned.length >= maxCapacity) {
       throw ApiError.badRequest('Ca trực đã đầy, vui lòng chọn kíp khác.');
+    }
+
+    // Role-based Quota Check (Granular Allocation)
+    const slotStructure = currentSlot.slotStructure || [];
+    if (slotStructure.length > 0) {
+      // 1. Get user's position
+      const fullUser = typeof user === 'object' ? user : await usersRepository.findById(userId);
+      const userPosition = fullUser?.position;
+
+      // 2. Find if user belongs to a requirement group
+      const requirement = slotStructure.find(
+        (req: any) => Array.isArray(req.positions) && req.positions.includes(userPosition),
+      );
+
+      if (requirement) {
+        // Count occupants in the same requirement group
+        const assignedUsers = await db.findMany('users', { id_in: currentAssigned });
+        const occupantsInGroup = assignedUsers.filter(
+          (u: any) => Array.isArray(requirement.positions) && requirement.positions.includes(u.position),
+        ).length;
+
+        if (occupantsInGroup >= requirement.slots) {
+          throw ApiError.badRequest(`Hết chỗ cho vị trí '${requirement.label}' (${requirement.slots} slot).`);
+        }
+      } else {
+        // User not in any structured group.
+        // Check "Residual Capacity": Total - Sum of all structured quotas
+        const totalStructuredSlots = slotStructure.reduce((acc: number, req: any) => acc + (Number(req.slots) || 0), 0);
+        const freeSlotsTotal = maxCapacity - totalStructuredSlots;
+
+        const assignedUsers = await db.findMany('users', { id_in: currentAssigned });
+        const structuredUserIds = new Set();
+        slotStructure.forEach((req: any) => {
+          assignedUsers.forEach((u: any) => {
+            if (Array.isArray(req.positions) && req.positions.includes(u.position)) {
+              structuredUserIds.add(u.id);
+            }
+          });
+        });
+
+        const unmappedOccupants = currentAssigned.length - structuredUserIds.size;
+        if (unmappedOccupants >= freeSlotsTotal && freeSlotsTotal >= 0) {
+          throw ApiError.badRequest(
+            'Hết chỗ cho vị trí của bạn (Các chỗ còn lại đã được dành riêng cho chức vụ khác).',
+          );
+        }
+      }
     }
 
     const updated = await db.update('duty_slots', currentSlot.id, {

@@ -100,4 +100,16 @@ export default defineSchema({
     default: false,
     description: 'Đánh dấu là sự kiện đặc biệt',
   },
+  slotStructure: {
+    type: 'array',
+    required: false,
+    default: [],
+    description: 'Cơ cấu nhân sự (Loại: {label, positions, slots})',
+  },
+  config: {
+    type: 'object',
+    required: false,
+    default: {},
+    description: 'Cấu hình nâng cao (Privacy, visibility, etc.)',
+  },
 });

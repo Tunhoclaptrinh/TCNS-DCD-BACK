@@ -30,12 +30,6 @@ export default defineSchema({
     required: true,
     description: 'Giờ kết thúc mặc định (HH:mm)',
   },
-  order: {
-    type: 'number',
-    required: false,
-    default: 0,
-    description: 'Thứ tự hiển thị',
-  },
   description: {
     type: 'string',
     required: false,
