@@ -5,6 +5,7 @@ import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import path from 'path';
 import axios from 'axios';
+import dns from 'dns';
 
 import logRequest from './middleware/request-logger.middleware';
 import { handleError, notFound, wrapJson } from './middleware/http-response.middleware';
@@ -13,8 +14,11 @@ import { camelizeBody } from './middleware/normalize-request-body.middleware';
 import { setupSwagger } from './utils/swagger';
 import routes from './routes';
 import { initDatabase } from '@database';
+import { logger } from './utils/logger';
 
 dotenv.config();
+// ép Node dùng DNS ngoài
+dns.setServers(['8.8.8.8', '1.1.1.1']);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -106,7 +110,7 @@ async function pingService(url) {
   } catch (error) {
     const status = error.response?.status;
     if (!status) {
-      console.error(`Keep-alive request failed: ${error.message}`);
+      logger.error(`Keep-alive request failed: ${error.message}`, 'SERVER');
     }
   }
 }
@@ -119,8 +123,8 @@ function startKeepAlive() {
     const targetUrl = `${new URL(serviceUrl).origin}/`;
     pingService(targetUrl);
     setInterval(() => pingService(targetUrl), KEEPALIVE_INTERVAL);
-  } catch (err) {
-    console.error(err.message);
+  } catch (err: any) {
+    logger.error(err.message, 'SERVER');
   }
 }
 
@@ -130,15 +134,15 @@ async function bootstrap() {
 
   app.listen(PORT, () => {
     const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
-    console.log(`Local: http://localhost:${PORT}`);
-    console.log(`API Docs: ${baseUrl}/api-docs`);
+    logger.success(`Server is running at http://localhost:${PORT}`, 'SERVER');
+    logger.info(`API Docs: ${baseUrl}/api-docs`, 'SERVER');
 
     startKeepAlive();
   });
 }
 
 bootstrap().catch((err) => {
-  console.error('Failed to start server:', err.message);
+  logger.error('Failed to start server:', 'SERVER', err);
   process.exit(1);
 });
 

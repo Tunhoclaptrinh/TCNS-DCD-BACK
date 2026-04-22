@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import type { AnyRecord } from '@app-types/common';
+import { logger } from '../utils/logger';
 
 type ResponseEnvelope = AnyRecord & {
   success: boolean;
@@ -58,12 +59,7 @@ function buildWrappedResponse(res: Response, responseBody: unknown) {
 }
 
 function logUnexpectedError(error: ErrorLike, req: Request) {
-  console.error('[ERROR]', {
-    message: error.message,
-    path: req.path,
-    method: req.method,
-    stack: error.stack,
-  });
+  logger.error(`${req.method} ${req.path} failed: ${error.message}`, 'HTTP', error);
 }
 
 // Bọc mọi `res.json()` theo format chuẩn `{ success, data, ... }` của API.
