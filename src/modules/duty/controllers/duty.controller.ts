@@ -21,17 +21,22 @@ class DutyController extends BaseController {
   });
 
   updateSlot = this.handle(async (req, res) => {
-    const data = await dutyService.updateSlot(req.params.id, req.body);
+    const data = await dutyService.updateSlot(req.params.id, req.body, req.user.id);
+    this.ok(res, data);
+  });
+
+  deleteSlot = this.handle(async (req, res) => {
+    const data = await dutyService.deleteSlot(req.params.id, req.user.id);
     this.ok(res, data);
   });
 
   registerToSlot = this.handle(async (req, res) => {
-    const data = await dutyService.registerToSlot(req.params.id, this.getCurrentUser(req));
+    const data = await dutyService.registerToSlot(req.params.id, req.user);
     this.ok(res, data);
   });
 
   cancelRegistration = this.handle(async (req, res) => {
-    const data = await dutyService.cancelRegistration(req.params.id, this.getCurrentUser(req));
+    const data = await dutyService.cancelRegistration(req.params.id, req.user);
     this.ok(res, data);
   });
 
@@ -47,6 +52,203 @@ class DutyController extends BaseController {
 
   decideSwap = this.handle(async (req, res) => {
     const data = await dutyService.decideSwap(req.params.id, req.body, this.getCurrentUser(req));
+    this.ok(res, data);
+  });
+
+  createSwapManual = this.handle(async (req, res) => {
+    const data = await dutyService.createSwapManual(req.body, req.user.id);
+    this.created(res, data);
+  });
+
+  updateSwapRequest = this.handle(async (req, res) => {
+    const data = await dutyService.updateSwapRequest(req.params.id, req.body, req.user.id);
+    this.ok(res, data);
+  });
+
+  deleteSwapRequest = this.handle(async (req, res) => {
+    const data = await dutyService.deleteSwapRequest(req.params.id);
+    this.ok(res, data);
+  });
+
+  // Leave Requests
+  requestLeave = this.handle(async (req, res) => {
+    const { slotId, reason } = req.body;
+    const data = await dutyService.requestLeave(slotId, req.user.id, reason);
+    this.created(res, data);
+  });
+
+  getLeaveRequests = this.handle(async (req, res) => {
+    const data = await dutyService.getLeaveRequests(req.parsedQuery);
+    this.ok(res, data);
+  });
+
+  resolveLeaveRequest = this.handle(async (req, res) => {
+    const { status, rejectionReason } = req.body;
+    const data = await dutyService.resolveLeaveRequest(req.params.id, status, req.user.id, rejectionReason);
+    this.ok(res, data);
+  });
+
+  createLeaveManual = this.handle(async (req, res) => {
+    const data = await dutyService.createLeaveManual(req.body, req.user.id);
+    this.created(res, data);
+  });
+
+  updateLeaveRequest = this.handle(async (req, res) => {
+    const data = await dutyService.updateLeaveRequest(req.params.id, req.body, req.user.id);
+    this.ok(res, data);
+  });
+
+  deleteLeaveRequest = this.handle(async (req, res) => {
+    const data = await dutyService.deleteLeaveRequest(req.params.id);
+    this.ok(res, data);
+  });
+
+  // Templates
+  getTemplateGroups = this.handle(async (_req, res) => {
+    const data = await dutyService.getTemplates();
+    this.ok(res, data);
+  });
+
+  createTemplateGroup = this.handle(async (req, res) => {
+    const data = await dutyService.createTemplate(req.body);
+    this.created(res, data);
+  });
+
+  updateTemplateGroup = this.handle(async (req, res) => {
+    const data = await dutyService.updateTemplate(req.params.id, req.body);
+    this.ok(res, data);
+  });
+
+  deleteTemplateGroup = this.handle(async (req, res) => {
+    const data = await dutyService.deleteTemplate(req.params.id);
+    this.ok(res, data);
+  });
+
+  getShiftTemplates = this.handle(async (req, res) => {
+    const data = await dutyService.getShiftTemplates(req.query.templateId as string);
+    this.ok(res, data);
+  });
+
+  createShiftTemplate = this.handle(async (req, res) => {
+    const data = await dutyService.createShiftTemplate(req.body);
+    this.created(res, data);
+  });
+
+  updateShiftTemplate = this.handle(async (req, res) => {
+    const data = await dutyService.updateShiftTemplate(req.params.id, req.body);
+    this.ok(res, data);
+  });
+
+  deleteShiftTemplate = this.handle(async (req, res) => {
+    const data = await dutyService.deleteShiftTemplate(req.params.id);
+    this.ok(res, data);
+  });
+
+  createKipTemplate = this.handle(async (req, res) => {
+    const data = await dutyService.createKipTemplate(req.body);
+    this.created(res, data);
+  });
+
+  updateKipTemplate = this.handle(async (req, res) => {
+    const data = await dutyService.updateKipTemplate(req.params.id, req.body);
+    this.ok(res, data);
+  });
+
+  deleteKipTemplate = this.handle(async (req, res) => {
+    const data = await dutyService.deleteKipTemplate(req.params.id);
+    this.ok(res, data);
+  });
+
+  generateWeekSlots = this.handle(async (req, res) => {
+    const { weekStart } = req.body;
+    const data = await dutyService.generateWeekSlots(weekStart, req.user.id);
+    this.ok(res, data);
+  });
+
+  generateDaySlots = this.handle(async (req, res) => {
+    const { date } = req.body;
+    const data = await dutyService.generateDaySlots(date, req.user.id);
+    this.ok(res, data);
+  });
+
+  // Assignments
+  getTemplateAssignments = this.handle(async (_req, res) => {
+    const data = await dutyService.getTemplateAssignments();
+    this.ok(res, data);
+  });
+
+  createTemplateAssignment = this.handle(async (req, res) => {
+    const data = await dutyService.createTemplateAssignment(req.body, req.user.id);
+    this.created(res, data);
+  });
+
+  updateTemplateAssignment = this.handle(async (req, res) => {
+    const data = await dutyService.updateTemplateAssignment(req.params.id, req.body);
+    this.ok(res, data);
+  });
+
+  deleteTemplateAssignment = this.handle(async (req, res) => {
+    const data = await dutyService.deleteTemplateAssignment(req.params.id);
+    this.ok(res, data);
+  });
+
+  // Advanced Operations
+  generateRangeSlots = this.handle(async (req, res) => {
+    const { startDate, endDate, templateId, mode } = req.body;
+    const data = await dutyService.generateRangeSlots(startDate, endDate, req.user.id, templateId, mode);
+    this.ok(res, data);
+  });
+
+  deleteRangeSlots = this.handle(async (req, res) => {
+    const { startDate, endDate } = req.body;
+    const data = await dutyService.deleteRangeSlots(startDate, endDate, req.user.id);
+    this.ok(res, data);
+  });
+
+  copyWeekSchedule = this.handle(async (req, res) => {
+    const { sourceWeek, targetWeek } = req.body;
+    const data = await dutyService.copyWeekSchedule(sourceWeek, targetWeek, req.user.id);
+    this.ok(res, data);
+  });
+
+  deleteWeeklySlots = this.handle(async (req, res) => {
+    const { weekStart } = req.body;
+    const data = await dutyService.deleteWeeklySlots(weekStart);
+    this.ok(res, data);
+  });
+
+  deleteShiftSlots = this.handle(async (req, res) => {
+    const { date, shiftId } = req.body;
+    const data = await dutyService.deleteShiftSlots(date, shiftId, req.user.id);
+    this.ok(res, data);
+  });
+
+  addShiftToDay = this.handle(async (req, res) => {
+    const { date, shiftId, overrides, mode } = req.body;
+    const data = await dutyService.addShiftToDay(date, shiftId, req.user.id, overrides, mode);
+    this.ok(res, data);
+  });
+
+  removeShiftFromDay = this.handle(async (req, res) => {
+    const { date, shiftId } = req.body;
+    const data = await dutyService.removeShiftFromDay(date, shiftId);
+    this.ok(res, data);
+  });
+
+  markAttendance = this.handle(async (req, res) => {
+    const { ids } = req.body;
+    const data = await dutyService.markAttendance(req.params.id, ids, req.user.id);
+    this.ok(res, data);
+  });
+
+  // Settings
+  getSettings = this.handle(async (_req, res) => {
+    const data = await dutyService.getSettings();
+    this.ok(res, data);
+  });
+
+  updateSettings = this.handle(async (req, res) => {
+    const data = await dutyService.updateSettings(req.body);
     this.ok(res, data);
   });
 

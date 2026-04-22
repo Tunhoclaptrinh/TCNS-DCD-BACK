@@ -11,6 +11,16 @@ class ImportExportController extends BaseController {
     return Array.isArray(queryValue) ? String(queryValue[0] || 'xlsx') : String(queryValue || 'xlsx');
   }
 
+  validateData = this.handle(async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    const { entity } = req.params;
+    const report = await importExportService.validateImportFile(entity, req.file.buffer, req.file.originalname);
+    this.ok(res, report);
+  });
+
   importData = this.handle(async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ message: 'No file uploaded' });
@@ -38,7 +48,8 @@ class ImportExportController extends BaseController {
   downloadTemplate = this.handle(async (req, res) => {
     const { entity } = req.params;
     const format = this.getFormat(req.query.format);
-    const buffer = importExportService.generateTemplate(entity, format);
+    const columns = req.query.columns ? String(req.query.columns).split(',') : undefined;
+    const buffer = importExportService.generateTemplate(entity, format, columns);
 
     const ext = format === 'csv' ? 'csv' : 'xlsx';
     res.setHeader('Content-Type', 'application/octet-stream');

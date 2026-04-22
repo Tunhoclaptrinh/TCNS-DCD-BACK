@@ -5,6 +5,8 @@
     "moduleResolution": "node",
     "baseUrl": ".",
     "paths": {
+      "@controllers/*": ["src/controllers/*"],
+      "@services/*": ["src/services/*"],
       "@database": ["src/database/index"],
       "@database/*": ["src/database/*"],
       "@middleware/*": ["src/middleware/*"],
