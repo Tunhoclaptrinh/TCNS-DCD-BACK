@@ -18,6 +18,7 @@ import usersRepository from '@modules/users/repositories/users.repository';
 import db from '@database';
 import ApiError from '@utils/api-error';
 import notificationService from '@modules/notifications/services/notification.service';
+import { socketService } from '../../../services/socket.service';
 
 dayjs.extend(utc);
 dayjs.extend(isoWeek);
@@ -1580,6 +1581,11 @@ class DutyService extends BaseService {
     const endDate = dayjs.utc(data.endDate).endOf('day').toDate();
     const templateId = parseInt(data.templateId, 10);
     const mode = data.mode || 'kips';
+    const jobId = data.jobId;
+
+    if (jobId) {
+      socketService.emitToRoom(jobId, 'job_progress', { percent: 5, text: 'Đang phân tích cấu trúc Bản mẫu...' });
+    }
 
     // 1. Fetch all shifts for this template
     const shifts = await this.getShiftTemplates(templateId);
@@ -1587,31 +1593,70 @@ class DutyService extends BaseService {
       throw ApiError.badRequest('Bản mẫu này không có ca trực nào để áp dụng.');
     }
 
-    // 2. Iterate through each day in the range and "Stamp" the shifts
+    // 2. Prepare array of dates
     let current = dayjs.utc(startDate).startOf('day');
     const end = dayjs.utc(endDate).startOf('day');
-    const results = [];
-    const allSlots: any[] = [];
+    const datesToInit: string[] = [];
 
     while (current.isSameOrBefore(end, 'day')) {
-      const dateStr = current.format('YYYY-MM-DD');
-      const dIdx = (current.day() + 6) % 7; // Mon=0...Sun=6
-
-      for (const s of shifts as any[]) {
-        const shiftDays = s.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
-        if (shiftDays.includes(dIdx)) {
-          // Use the established cloning logic for each shift with mode support
-          // Note: Passing collectSlotsOnly=true to prevent multiple small inserts
-          const { slots } = await this.addShiftToDay(dateStr, s.id, actorId, null, mode, true);
-          if (slots) allSlots.push(...slots);
-          results.push({ date: dateStr, shiftId: s.id });
-        }
-      }
+      datesToInit.push(current.format('YYYY-MM-DD'));
       current = current.add(1, 'day');
     }
 
+    const results: any[] = [];
+    const allSlots: any[] = [];
+
+    // 3. Process concurrently in chunks (Batch Size: 15 days) to avoid DB overload
+    // By grouping by date, we guarantee NO race conditions on dayRecords.
+    const BATCH_SIZE = 15;
+    const totalDays = datesToInit.length;
+    for (let i = 0; i < totalDays; i += BATCH_SIZE) {
+      if (jobId) {
+        const percent = Math.floor(10 + (i / totalDays) * 70); // Tăng dần từ 10% đến 80%
+        socketService.emitToRoom(jobId, 'job_progress', {
+          percent,
+          text: `Đang cấp phát Ca trực từ ngày ${dayjs(datesToInit[i]).format('DD/MM')}...`,
+        });
+      }
+
+      const batchDates = datesToInit.slice(i, i + BATCH_SIZE);
+      const batchPromises = batchDates.map(async (dateStr) => {
+        const dIdx = (dayjs.utc(dateStr).day() + 6) % 7; // Mon=0...Sun=6
+        const localSlots: any[] = [];
+        const localResults: any[] = [];
+
+        for (const s of shifts as any[]) {
+          const shiftDays = s.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
+          if (shiftDays.includes(dIdx)) {
+            // Sequentially add shifts for THIS specific day to prevent row overwrites
+            const { slots } = await this.addShiftToDay(dateStr, s.id, actorId, null, mode, true);
+            if (slots) localSlots.push(...slots);
+            localResults.push({ date: dateStr, shiftId: s.id });
+          }
+        }
+        return { localSlots, localResults };
+      });
+
+      const chunkResults = await Promise.all(batchPromises);
+      for (const res of chunkResults) {
+        allSlots.push(...res.localSlots);
+        results.push(...res.localResults);
+      }
+    }
+
+    // 4. Batch Insert Slots
     if (allSlots.length > 0) {
+      if (jobId) {
+        socketService.emitToRoom(jobId, 'job_progress', {
+          percent: 85,
+          text: `Đang chèn Atomic đồng loạt ${allSlots.length} Slots vào DB...`,
+        });
+      }
       await dutySlotsRepository.insertMany(allSlots);
+    }
+
+    if (jobId) {
+      socketService.emitToRoom(jobId, 'job_progress', { percent: 100, text: 'Xong! Hoàn tất chiến dịch lập lịch.' });
     }
 
     return { success: true, results };

@@ -415,14 +415,75 @@ class MongoConnect implements DatabaseAdapter {
     return !!deleted;
   }
 
-  // ==================== UTILITY METHODS ====================
+  private counterLocks: Record<string, Promise<void>> = {};
+
+  async ensureCounter(collection: string, Model: any, CounterModel: any) {
+    if (this.counterLocks[collection]) {
+      await this.counterLocks[collection];
+      return;
+    }
+
+    let resolveLock!: () => void;
+    this.counterLocks[collection] = new Promise<void>((resolve) => {
+      resolveLock = resolve;
+    });
+
+    try {
+      const existing = await CounterModel.findOne({ _id: collection }).lean();
+      if (!existing) {
+        const lastItem = await Model.findOne().sort({ id: -1 }).select('id').lean();
+        const maxVal = lastItem ? parseInt(lastItem.id, 10) : 0;
+        await CounterModel.updateOne({ _id: collection }, { $setOnInsert: { seq: maxVal } }, { upsert: true });
+      }
+    } catch (err) {
+      console.error(`Failed to initialize counter for ${collection}`, err);
+    } finally {
+      resolveLock();
+    }
+  }
+
+  async getNextId(collection: string, reserveCount: number = 1) {
+    const Model = this.getModel(collection);
+    if (!Model) return 1;
+
+    try {
+      if (!mongoose.models['_counters']) {
+        const counterSchema = new mongoose.Schema({ _id: String, seq: Number }, { versionKey: false });
+        mongoose.model('_counters', counterSchema);
+      }
+      const CounterModel = mongoose.model('_counters');
+
+      // 1. Ensure counter is seeded safely via Memory Lock
+      await this.ensureCounter(collection, Model, CounterModel);
+
+      // 2. Safely atomic increment
+      const counter = await CounterModel.findOneAndUpdate(
+        { _id: collection },
+        { $inc: { seq: reserveCount } },
+        { new: true },
+      );
+
+      return (counter as any).seq - reserveCount + 1;
+    } catch (error) {
+      console.error(`Auto-increment atomic error for ${collection}:`, error);
+      const lastItem = await Model.findOne().sort({ id: -1 }).select('id').lean();
+      return lastItem ? lastItem.id + 1 : 1;
+    }
+  }
 
   async insertMany(collection: string, records: AnyRecord[]) {
     const Model = this.getModel(collection);
     if (!Model) throw new Error(`Model not found: ${collection}`);
 
-    // Auto-generate numeric IDs for records that don't have one
-    let nextId = await this.getNextId(collection);
+    // Filter items that actually need ID generation
+    const itemsWithoutId = records.filter((r) => !r.id && !r._id);
+    let nextId = 1;
+
+    // Atomically reserve EXACTLY the amount of IDs we need
+    if (itemsWithoutId.length > 0) {
+      nextId = await this.getNextId(collection, itemsWithoutId.length);
+    }
+
     const prepared = records.map((record) => {
       const item = camelizeObjectKeys(record);
       delete item._id;
@@ -464,18 +525,6 @@ class MongoConnect implements DatabaseAdapter {
     if (!Model) return 0;
 
     return await Model.countDocuments(camelizeObjectKeys(query));
-  }
-
-  async getNextId(collection: string) {
-    const Model = this.getModel(collection);
-    if (!Model) return 1;
-
-    try {
-      const lastItem = await Model.findOne().sort({ id: -1 }).select('id').lean();
-      return lastItem ? lastItem.id + 1 : 1;
-    } catch (error) {
-      return 1;
-    }
   }
 
   async getSlice(collection: string, start: number, end: number) {
