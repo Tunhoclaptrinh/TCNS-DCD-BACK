@@ -1,6 +1,7 @@
 import swaggerUi from 'swagger-ui-express';
 import schemas from '@schemas';
 import type { AnyRecord } from '@app-types/common';
+import { logger } from './logger';
 import type { SchemaDefinition, SchemaRule } from '@app-types/schema';
 
 type SwaggerRouteDoc = {
@@ -148,7 +149,7 @@ const TAG_METADATA: Record<string, { name: string; description: string }> = {
     description: 'Lấy danh sách thông báo, đánh dấu đã đọc và cập nhật cài đặt thông báo.',
   },
   duty: {
-    name: 'Ca trực',
+    name: 'Kíp trực',
     description: 'Quản lý lịch trực, đăng ký ca và xử lý yêu cầu đổi ca.',
   },
   'reward-penalties': {
@@ -331,18 +332,18 @@ const EXTRA_SCHEMAS: AnyRecord = {
   DutySlotRequest: buildObjectSchema(
     buildPropertiesFromSchemaFields(omitFields(dutySlotSchema, ['createdBy'])),
     ['shiftDate', 'shiftLabel'],
-    'Thông tin ca trực. `weekStart` sẽ được tự suy ra từ `shiftDate` nếu không truyền.',
+    'Thông tin kíp trực. `weekStart` sẽ được tự suy ra từ `shiftDate` nếu không truyền.',
   ),
   DutySlotUpdateRequest: buildObjectSchema(
     buildPropertiesFromSchemaFields(omitFields(dutySlotSchema, ['createdBy'])),
     [],
-    'Dữ liệu cập nhật ca trực. Chỉ cần truyền các trường muốn thay đổi.',
+    'Dữ liệu cập nhật kíp trực. Chỉ cần truyền các trường muốn thay đổi.',
   ),
   DutySwapRequest: buildObjectSchema(
     {
       dutySlotId: {
         type: 'number',
-        description: 'ID ca trực cần đổi.',
+        description: 'ID kíp trực cần đổi.',
       },
       targetUserId: {
         type: 'number',
@@ -354,7 +355,7 @@ const EXTRA_SCHEMAS: AnyRecord = {
       },
     },
     ['dutySlotId', 'targetUserId', 'reason'],
-    'Tạo yêu cầu đổi ca trực.',
+    'Tạo yêu cầu đổi kíp trực.',
   ),
   DutySwapDecisionRequest: buildObjectSchema(
     {
@@ -919,7 +920,7 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
 
   'GET /duty/week': {
     summary: 'Lấy lịch trực theo tuần',
-    description: 'Lấy danh sách ca trực trong tuần theo `weekStart` và hỗ trợ phân trang.',
+    description: 'Lấy danh sách kíp trực trong tuần theo `weekStart` và hỗ trợ phân trang.',
     protected: true,
     permission: 'duty:view',
     parameters: [
@@ -941,35 +942,35 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
     ],
   },
   'GET /duty/stats/summary': {
-    summary: 'Thống kê ca trực',
+    summary: 'Thống kê kíp trực',
     protected: true,
     permission: 'duty:view',
   },
   'POST /duty/slots': {
-    summary: 'Tạo ca trực',
+    summary: 'Tạo kíp trực',
     protected: true,
     permission: 'duty:manage',
     requestBody: buildSchemaRefBody('DutySlotRequest'),
     responses: {
-      201: { description: 'Tạo ca trực thành công' },
+      201: { description: 'Tạo kíp trực thành công' },
       400: { description: 'Dữ liệu không hợp lệ' },
     },
   },
   'PUT /duty/slots/{id}': {
-    summary: 'Cập nhật ca trực',
+    summary: 'Cập nhật kíp trực',
     protected: true,
     permission: 'duty:manage',
     requestBody: buildSchemaRefBody('DutySlotUpdateRequest', false),
   },
   'PATCH /duty/slots/{id}/register': {
-    summary: 'Đăng ký vào ca trực',
-    description: 'Đăng ký người dùng hiện tại vào ca trực theo ID.',
+    summary: 'Đăng ký vào kíp trực',
+    description: 'Đăng ký người dùng hiện tại vào kíp trực theo ID.',
     protected: true,
     permission: 'duty:register',
   },
   'PATCH /duty/slots/{id}/cancel': {
-    summary: 'Hủy đăng ký ca trực',
-    description: 'Hủy đăng ký ca trực của người dùng hiện tại.',
+    summary: 'Hủy đăng ký kíp trực',
+    description: 'Hủy đăng ký kíp trực của người dùng hiện tại.',
     protected: true,
     permission: 'duty:update',
   },
@@ -980,7 +981,7 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
     requestBody: buildSchemaRefBody('DutySwapRequest'),
     responses: {
       201: { description: 'Tạo yêu cầu đổi ca thành công' },
-      400: { description: 'Dữ liệu không hợp lệ hoặc xung đột ca trực' },
+      400: { description: 'Dữ liệu không hợp lệ hoặc xung đột kíp trực' },
     },
   },
   'GET /duty/swaps': {
@@ -1349,9 +1350,9 @@ function setupSwagger(app: AnyRecord) {
     }),
   );
 
-  console.log('Swagger initialized');
-  console.log(`   - Declared ${Object.keys(spec.paths).length} paths`);
-  console.log(`   - Tags: ${spec.tags.map((tag: { name: string }) => tag.name).join(', ')}`);
+  logger.info('Swagger initialized', 'SERVER');
+  logger.info(`   - Declared ${Object.keys(spec.paths).length} paths`, 'SERVER');
+  logger.info(`   - Tags: ${spec.tags.map((tag: { name: string }) => tag.name).join(', ')}`, 'SERVER');
 }
 
 export { setupSwagger, buildSwaggerSpec };

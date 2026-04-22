@@ -9,8 +9,8 @@ const router = express.Router();
 // Register - validate tất cả schema fields
 router.post('/register', validateSchema('user'), authController.register);
 
-// Login - custom validate email + password
-router.post('/login', validateFields('user', ['email', 'password']), authController.login);
+// Login - custom validate email (removed password validation as requested)
+router.post('/login', validateFields('user', ['email']), authController.login);
 
 // Forgot password
 router.post('/forgot-password', requireResetEmail, validateFields('user', ['email']), authController.forgotPassword);

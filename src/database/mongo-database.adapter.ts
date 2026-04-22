@@ -5,6 +5,25 @@ import type { DatabaseAdapter, QueryOptions } from '@app-types/database';
 import type { SchemaDefinition, SchemaRule } from '@app-types/schema';
 import { camelizeObjectKeys, splitKeyBySuffix, toCamelCase } from '@utils/case';
 
+const SCHEMA_MODEL_MAP = {
+  'user.schema': 'users',
+  'notification.schema': 'notifications',
+  'notification-setting.schema': 'notification_settings',
+  'file.schema': 'files',
+  'duty-slot.schema': 'duty_slots',
+  'duty-shift.schema': 'duty_shifts',
+  'duty-kip.schema': 'duty_kips',
+  'duty-swap-request.schema': 'duty_swap_requests',
+  'duty-leave-request.schema': 'duty_leave_requests',
+  'reward-penalty.schema': 'reward_penalties',
+  'duty-day.schema': 'duty_days',
+  'duty-template.schema': 'duty_templates',
+  'duty-template-assignment.schema': 'duty_template_assignments',
+  'duty-log.schema': 'duty_logs',
+  'generation.schema': 'generations',
+  'role.schema': 'roles',
+  'duty-settings.schema': 'duty_settings',
+};
 const FILTER_SUFFIXES = ['_not_like', '_ilike', '_like', '_gte', '_lte', '_gt', '_lt', '_ne', '_in', '_nin'];
 
 type RelationConfig = {
@@ -25,6 +44,7 @@ class MongoConnect implements DatabaseAdapter {
         notifications: { ref: 'notifications', localField: 'id', foreignField: 'userId' },
         notificationSettings: { ref: 'notification_settings', localField: 'id', foreignField: 'userId' },
         files: { ref: 'files', localField: 'id', foreignField: 'uploadedBy' },
+        generation: { ref: 'generations', localField: 'generationId', foreignField: 'id', justOne: true },
       },
       files: {
         uploader: { ref: 'users', localField: 'uploadedBy', foreignField: 'id', justOne: true },
@@ -44,6 +64,27 @@ class MongoConnect implements DatabaseAdapter {
         targetUser: { ref: 'users', localField: 'targetUserId', foreignField: 'id', justOne: true },
         approver: { ref: 'users', localField: 'approvedBy', foreignField: 'id', justOne: true },
         dutySlot: { ref: 'duty_slots', localField: 'dutySlotId', foreignField: 'id', justOne: true },
+      },
+      duty_kips: {
+        shift: { ref: 'duty_shifts', localField: 'shiftId', foreignField: 'id', justOne: true },
+      },
+      duty_slots: {
+        kip: { ref: 'duty_kips', localField: 'kipId', foreignField: 'id', justOne: true },
+        shift: { ref: 'duty_shifts', localField: 'shiftId', foreignField: 'id', justOne: true },
+        creator: { ref: 'users', localField: 'createdBy', foreignField: 'id', justOne: true },
+      },
+      duty_leave_requests: {
+        user: { ref: 'users', localField: 'userId', foreignField: 'id', justOne: true },
+        slot: { ref: 'duty_slots', localField: 'slotId', foreignField: 'id', justOne: true },
+        approver: { ref: 'users', localField: 'approvedBy', foreignField: 'id', justOne: true },
+      },
+      duty_logs: {
+        slot: { ref: 'duty_slots', localField: 'slotId', foreignField: 'id', justOne: true },
+        user: { ref: 'users', localField: 'userId', foreignField: 'id', justOne: true },
+        performer: { ref: 'users', localField: 'performerId', foreignField: 'id', justOne: true },
+      },
+      duty_template_assignments: {
+        template: { ref: 'duty_templates', localField: 'templateId', foreignField: 'id', justOne: true },
       },
     };
   }
@@ -176,6 +217,11 @@ class MongoConnect implements DatabaseAdapter {
 
     if (options.filter) {
       for (const [key, val] of Object.entries(options.filter)) {
+        if (key.startsWith('$')) {
+          query[key] = val;
+          continue;
+        }
+
         const { field: rawField, suffix } = splitKeyBySuffix(key, FILTER_SUFFIXES);
         const field = toCamelCase(rawField);
 
@@ -237,7 +283,10 @@ class MongoConnect implements DatabaseAdapter {
       }
     }
 
-    const [data, total] = await Promise.all([queryBuilder.skip(skip).limit(limit).exec(), Model.countDocuments(query)]);
+    const [data, total] = await Promise.all([
+      queryBuilder.skip(skip).limit(limit).lean().exec(),
+      Model.countDocuments(query),
+    ]);
 
     return {
       success: true,
@@ -255,28 +304,80 @@ class MongoConnect implements DatabaseAdapter {
 
   // ==================== CRUD METHODS ====================
 
-  async findAll(collection: string) {
-    const Model = this.getModel(collection);
-    if (!Model) return [];
-    return await Model.find();
-  }
-
   async findById(collection: string, id: Identifier) {
     const Model = this.getModel(collection);
     if (!Model) return null;
-    return await Model.findOne({ id: parseInt(String(id), 10) });
+    const doc = await Model.findOne({ id: parseInt(String(id), 10) }).lean();
+    return this.mapId(doc);
+  }
+
+  // Utility to convert our suffix-based query to MongoDB query
+  private mapId(doc: any) {
+    if (!doc) return doc;
+    const result = { ...doc };
+    if (result._id && !result.id) {
+      result.id = result._id; // Preserve as MongoDB ID if numeric ID missing
+    }
+    return result;
+  }
+
+  private buildMongoQuery(query: AnyRecord) {
+    const mongoQuery: AnyRecord = {};
+    // DO NOT camelizeObjectKeys here, as it breaks suffix detection (_gte, _lte, etc)
+    const normalized = query;
+
+    for (const [key, val] of Object.entries(normalized)) {
+      // If it's already a Mongo operator object, pass it through
+      if (val && typeof val === 'object' && !Array.isArray(val) && Object.keys(val).some((k) => k.startsWith('$'))) {
+        mongoQuery[key] = val;
+        continue;
+      }
+
+      const { field: rawField, suffix } = splitKeyBySuffix(key, FILTER_SUFFIXES);
+      const field = toCamelCase(rawField);
+
+      if (suffix === '_gte') {
+        mongoQuery[field] = { ...mongoQuery[field], $gte: this.castQueryValue(val) };
+      } else if (suffix === '_lte') {
+        mongoQuery[field] = { ...mongoQuery[field], $lte: this.castQueryValue(val) };
+      } else if (suffix === '_gt') {
+        mongoQuery[field] = { ...mongoQuery[field], $gt: this.castQueryValue(val) };
+      } else if (suffix === '_lt') {
+        mongoQuery[field] = { ...mongoQuery[field], $lt: this.castQueryValue(val) };
+      } else if (suffix === '_ne') {
+        mongoQuery[field] = { $ne: this.castQueryValue(val) };
+      } else if (suffix === '_in') {
+        const values = Array.isArray(val) ? val : String(val).split(',');
+        mongoQuery[field] = { $in: values.map((item) => this.castQueryValue(item)) };
+      } else if (suffix === '_nin') {
+        const values = Array.isArray(val) ? val : String(val).split(',');
+        mongoQuery[field] = { $nin: values.map((item) => this.castQueryValue(item)) };
+      } else {
+        mongoQuery[key] = this.castQueryValue(val);
+      }
+    }
+    return mongoQuery;
   }
 
   async findOne(collection: string, query: AnyRecord) {
     const Model = this.getModel(collection);
     if (!Model) return null;
-    return await Model.findOne(camelizeObjectKeys(query));
+    const doc = await Model.findOne(this.buildMongoQuery(query)).lean();
+    return this.mapId(doc);
   }
 
   async findMany(collection: string, query: AnyRecord = {}) {
     const Model = this.getModel(collection);
     if (!Model) return [];
-    return await Model.find(camelizeObjectKeys(query));
+    const docs = await Model.find(this.buildMongoQuery(query)).lean();
+    return docs.map((d) => this.mapId(d));
+  }
+
+  async findAll(collection: string) {
+    const Model = this.getModel(collection);
+    if (!Model) return [];
+    const docs = await Model.find({}).lean();
+    return docs.map((d) => this.mapId(d));
   }
 
   async create(collection: string, data: AnyRecord) {

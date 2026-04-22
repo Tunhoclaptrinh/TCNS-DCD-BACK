@@ -4,6 +4,7 @@ export default defineSchema({
   dutySlotId: {
     type: 'number',
     required: true,
+    description: 'ID kíp trực cần đổi',
   },
   requesterId: {
     type: 'number',

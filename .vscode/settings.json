@@ -8,9 +8,6 @@
     "**/dist/**": true
   },
   "typescript.tsserver.watchOptions": {
-    "excludeDirectories": [
-      "**/node_modules",
-      "**/dist"
-    ]
+    "excludeDirectories": ["**/node_modules", "**/dist"]
   }
 }
