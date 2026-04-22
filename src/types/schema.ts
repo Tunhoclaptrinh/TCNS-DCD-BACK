@@ -14,6 +14,8 @@ export type SchemaRule = {
   maxLength?: number;
   foreignKey?: string;
   values?: any[];
+  label?: string;
+  hidden?: boolean;
   custom?: (value: any, data: AnyRecord) => string | void | Promise<string | void>;
 };
 

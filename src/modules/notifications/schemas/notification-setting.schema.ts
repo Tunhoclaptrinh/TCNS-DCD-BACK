@@ -3,7 +3,7 @@ import { defineSchema } from '@app-types/schema';
 export default defineSchema({
   userId: {
     type: 'number',
-    required: true,
+    required: false,
     unique: true,
     foreignKey: 'users',
   },
@@ -11,6 +11,7 @@ export default defineSchema({
     type: 'boolean',
     required: false,
     default: true,
+    description: 'Bật/tắt thông báo lịch trực',
   },
   approvalNotifications: {
     type: 'boolean',

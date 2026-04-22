@@ -38,7 +38,7 @@ class AuthController extends BaseController {
   });
 
   refresh = this.handle(async (req, res) => {
-    const data = await authService.refreshToken(req.body);
+    const data = await authService.refreshToken(req.body, req.headers.authorization);
     this.ok(res, data);
   });
 

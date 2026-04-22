@@ -3,7 +3,7 @@ import { defineSchema } from '@app-types/schema';
 export default defineSchema({
   userId: {
     type: 'number',
-    required: true,
+    required: false,
     foreignKey: 'users',
   },
   title: {
@@ -20,12 +20,12 @@ export default defineSchema({
   },
   type: {
     type: 'enum',
-    enum: ['system', 'general', 'account', 'security', 'shift', 'approval'],
+    enum: ['system', 'general', 'account', 'security', 'shift', 'approval', 'leave', 'swap'],
     required: true,
   },
   category: {
     type: 'enum',
-    enum: ['system', 'shift', 'approval'],
+    enum: ['system', 'shift', 'approval', 'duty'],
     required: false,
     default: 'system',
   },

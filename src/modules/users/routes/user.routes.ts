@@ -35,7 +35,7 @@ router.get('/', requireAuth, requirePermission('users:list'), userController.get
 router.get('/stats/summary', requireAuth, requirePermission('users:view_stats'), userController.getUserStats);
 
 router.patch('/:id/status', requireAuth, requirePermission('users:manage_status'), userController.toggleUserStatus);
-router.patch('/:id/promote', requireAuth, requirePermission('users:manage_rank'), userController.promoteUser);
+router.patch('/:id/promote', requireAuth, requirePermission('users:update'), userController.promoteUser);
 router.patch('/:id/expel', requireAuth, requirePermission('users:expel'), userController.expelUser);
 
 router.delete('/:id/permanent', requireAuth, requirePermission('users:delete'), userController.permanentDeleteUser);
@@ -45,6 +45,17 @@ router.get('/template', requireAuth, requirePermission('users:import_export'), (
   (req.params as Record<string, string>).entity = 'users';
   importExportController.downloadTemplate(req, res, next);
 });
+
+router.post(
+  '/validate-import',
+  requireAuth,
+  requirePermission('users:import_export'),
+  importExportController.getUploadMiddleware(),
+  (req, res, next) => {
+    (req.params as Record<string, string>).entity = 'users';
+    importExportController.validateData(req, res, next);
+  },
+);
 
 router.post(
   '/import',
