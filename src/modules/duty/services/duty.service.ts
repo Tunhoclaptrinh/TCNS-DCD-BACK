@@ -12,8 +12,6 @@ import dutyLeaveRequestsRepository from '@modules/duty/repositories/duty-leave-r
 import dutyLogsRepository from '@modules/duty/repositories/duty-logs.repository';
 import dutySettingsRepository from '@modules/duty/repositories/duty-settings.repository';
 import dutyShiftsRepository from '@modules/duty/repositories/duty-shifts.repository';
-import dutyTemplateShiftsRepository from '@modules/duty/repositories/duty-template-shifts.repository';
-import dutyTemplateKipsRepository from '@modules/duty/repositories/duty-template-kips.repository';
 import dutyTemplateAssignmentsRepository from '@modules/duty/repositories/duty-template-assignments.repository';
 import dutyTemplatesRepository from '@modules/duty/repositories/duty-templates.repository';
 import usersRepository from '@modules/users/repositories/users.repository';
@@ -88,6 +86,88 @@ function getWeekEndISO(weekStartIso: string): string {
 class DutyService extends BaseService {
   constructor() {
     super('duty_slots', dutySlotsRepository);
+    // Wait for DB to be ready then migrate
+    setTimeout(() => this.ensureDataIntegrity(), 2000);
+  }
+
+  private async ensureDataIntegrity() {
+    try {
+      const mongoose = (await import('mongoose')).default;
+      const db = mongoose.connection.db;
+      if (!db) return;
+
+      const collections = await db.listCollections().toArray();
+      const collNames = collections.map((c) => c.name);
+      const templatesColl = db.collection('duty_templates');
+
+      // 1. Groups
+      await templatesColl.updateMany(
+        { $or: [{ type: { $exists: false } }, { type: null }, { type: '' }] },
+        { $set: { type: 'group' } },
+      );
+
+      // 2. Shifts
+      if (collNames.includes('duty_template_shifts')) {
+        const shiftsColl = db.collection('duty_template_shifts');
+        const shifts = await shiftsColl.find({}).toArray();
+
+        if (shifts.length > 0) {
+          const maxIdDoc = await templatesColl.find().sort({ id: -1 }).limit(1).toArray();
+          let nextId = (maxIdDoc[0]?.id || 0) + 1;
+          if (nextId < 100) nextId = 100;
+
+          const shiftOldToNewMap = new Map();
+
+          for (const s of shifts) {
+            const { _id, id: oldId, templateId, ...rest } = s as any;
+            const newId = nextId++;
+            shiftOldToNewMap.set(oldId, newId);
+
+            await templatesColl.updateOne(
+              { oldId: oldId, oldType: 'shift' },
+              {
+                $set: { ...rest, id: newId, type: 'shift', parentId: templateId, templateId, oldId, oldType: 'shift' },
+              },
+              { upsert: true },
+            );
+          }
+
+          // 3. Kips
+          if (collNames.includes('duty_template_kips')) {
+            const kipsColl = db.collection('duty_template_kips');
+            const kips = await kipsColl.find({}).toArray();
+            for (const k of kips) {
+              const { _id, id: oldKipId, templateShiftId, ...rest } = k as any;
+              const newKipId = nextId++;
+              const newParentId = shiftOldToNewMap.get(templateShiftId) || templateShiftId;
+
+              // Find the templateId (group ID) from the original shift or from the map
+              const originalShift = shifts.find((s) => s.id === templateShiftId);
+              const groupId = originalShift?.templateId;
+
+              await templatesColl.updateOne(
+                { oldId: oldKipId, oldType: 'kip' },
+                {
+                  $set: {
+                    ...rest,
+                    id: newKipId,
+                    type: 'kip',
+                    parentId: newParentId,
+                    templateId: groupId,
+                    oldId: oldKipId,
+                    oldType: 'kip',
+                  },
+                },
+                { upsert: true },
+              );
+            }
+          }
+          console.log('✅ Migration triggered from service successful');
+        }
+      }
+    } catch (err) {
+      console.error('❌ Migration Error in service:', err);
+    }
   }
 
   getAssignedUserIds(slot: DutySlotRecord) {
@@ -319,18 +399,19 @@ class DutyService extends BaseService {
   // ==================== TEMPLATE MANAGEMENT ====================
 
   async getTemplates() {
-    const all = await dutyTemplatesRepository.findAll();
+    const all = await dutyTemplatesRepository.findGroups();
     return all.sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '', 'vi'));
   }
 
   async createTemplate(data: GenericRecord) {
     const template = await dutyTemplatesRepository.create({
       name: data.name,
+      type: 'group',
       isDefault: !!data.isDefault,
       description: data.description || '',
     });
     if (data.isDefault) {
-      const all = await dutyTemplatesRepository.findAll();
+      const all = await dutyTemplatesRepository.findGroups();
       for (const t of all) {
         if (normalizeId(t.id) !== normalizeId(template.id) && t.isDefault) {
           await dutyTemplatesRepository.update(t.id, { isDefault: false });
@@ -347,7 +428,7 @@ class DutyService extends BaseService {
       description: data.description || '',
     });
     if (data.isDefault) {
-      const all = await dutyTemplatesRepository.findAll();
+      const all = await dutyTemplatesRepository.findGroups();
       for (const t of all) {
         if (normalizeId(t.id) !== normalizeId(id) && t.isDefault) {
           await dutyTemplatesRepository.update(t.id, { isDefault: false });
@@ -358,7 +439,7 @@ class DutyService extends BaseService {
   }
 
   async deleteTemplate(id: Identifier) {
-    const shifts = await dutyTemplateShiftsRepository.findByTemplateId(normalizeId(id));
+    const shifts = await dutyTemplatesRepository.findShiftsByGroupId(normalizeId(id));
     for (const s of shifts) {
       await this.deleteShiftTemplate(s.id);
     }
@@ -366,32 +447,31 @@ class DutyService extends BaseService {
   }
 
   async getShiftTemplates(templateId?: Identifier | null) {
-    let filter: any = {};
+    let filter: any = { type: 'shift' };
     if (templateId !== undefined) {
       if (templateId) {
-        filter.templateId = normalizeId(templateId);
+        filter.parentId = normalizeId(templateId);
       } else if (templateId === null) {
-        filter.templateId = null;
+        filter.parentId = null;
       }
-    } else {
-      filter = {};
     }
 
-    const shifts = await dutyTemplateShiftsRepository.findMany(filter);
-    const kips = await dutyTemplateKipsRepository.findAll();
+    const shifts = await dutyTemplatesRepository.findMany(filter);
+    const kips = await dutyTemplatesRepository.findMany({ type: 'kip' });
     return shifts
       .map((shift: any) => ({
         ...shift,
         kips: kips
-          .filter((k: any) => normalizeId(k.templateShiftId) === normalizeId(shift.id))
+          .filter((k: any) => normalizeId(k.parentId) === normalizeId(shift.id))
           .sort((a: any, b: any) => (a.startTime || '').localeCompare(b.startTime || '')),
       }))
       .sort((a: any, b: any) => (a.startTime || '').localeCompare(b.startTime || ''));
   }
 
   async createShiftTemplate(data: GenericRecord) {
-    return await dutyTemplateShiftsRepository.create({
-      templateId: data.templateId ? normalizeId(data.templateId) : null,
+    return await dutyTemplatesRepository.create({
+      type: 'shift',
+      parentId: data.templateId ? normalizeId(data.templateId) : null,
       name: data.name,
       startTime: data.startTime,
       endTime: data.endTime,
@@ -409,7 +489,7 @@ class DutyService extends BaseService {
   async updateShiftTemplate(id: Identifier, data: GenericRecord) {
     const newDays = Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : undefined;
     if (newDays) {
-      const kips = await dutyTemplateKipsRepository.findByTemplateShiftId(id);
+      const kips = await dutyTemplatesRepository.findKipsByShiftId(id);
       for (const kip of kips) {
         const kipDays = kip.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
         const invalid = kipDays.filter((d) => !newDays.includes(d));
@@ -422,8 +502,8 @@ class DutyService extends BaseService {
       }
     }
 
-    return await dutyTemplateShiftsRepository.update(id, {
-      templateId: data.templateId ? normalizeId(data.templateId) : undefined,
+    return await dutyTemplatesRepository.update(id, {
+      parentId: data.templateId ? normalizeId(data.templateId) : undefined,
       name: data.name,
       startTime: data.startTime,
       endTime: data.endTime,
@@ -434,16 +514,16 @@ class DutyService extends BaseService {
   }
 
   async deleteShiftTemplate(id: Identifier) {
-    await dutyTemplateKipsRepository.deleteByTemplateShiftId(normalizeId(id));
-    return await dutyTemplateShiftsRepository.delete(id);
+    await dutyTemplatesRepository.deleteByParentId(normalizeId(id));
+    return await dutyTemplatesRepository.delete(id);
   }
 
   async createKipTemplate(data: GenericRecord) {
-    const shiftId = normalizeId(data.templateShiftId || data.shiftId);
+    const shiftId = normalizeId(data.templateShiftId || data.shiftId || data.parentId);
     const kipDays = Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : [0, 1, 2, 3, 4, 5, 6];
 
     // Validate against parent shift
-    const shift = await dutyTemplateShiftsRepository.findById(shiftId);
+    const shift = await dutyTemplatesRepository.findById(shiftId);
     if (shift) {
       const shiftDays = shift.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
       const invalid = kipDays.filter((d) => !shiftDays.includes(d));
@@ -453,8 +533,9 @@ class DutyService extends BaseService {
       }
     }
 
-    return await dutyTemplateKipsRepository.create({
-      templateShiftId: shiftId,
+    return await dutyTemplatesRepository.create({
+      type: 'kip',
+      parentId: shiftId,
       name: data.name,
       coefficient: Number(data.coefficient) || 1,
       capacity: Number(data.capacity) || 1,
@@ -466,13 +547,13 @@ class DutyService extends BaseService {
   }
 
   async updateKipTemplate(id: Identifier, data: GenericRecord) {
-    const kip = await dutyTemplateKipsRepository.findById(id);
+    const kip = await dutyTemplatesRepository.findById(id);
     if (!kip) throw ApiError.notFound('Kíp không tồn tại');
 
     const kipDays = Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : undefined;
 
     if (kipDays) {
-      const shift = await dutyTemplateShiftsRepository.findById(kip.templateShiftId);
+      const shift = await dutyTemplatesRepository.findById(kip.parentId);
       if (shift) {
         const shiftDays = shift.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
         const invalid = kipDays.filter((d) => !shiftDays.includes(d));
@@ -483,7 +564,7 @@ class DutyService extends BaseService {
       }
     }
 
-    return await dutyTemplateKipsRepository.update(id, {
+    return await dutyTemplatesRepository.update(id, {
       name: data.name,
       coefficient: Number(data.coefficient) || 1,
       capacity: Number(data.capacity) || 1,
@@ -495,7 +576,7 @@ class DutyService extends BaseService {
   }
 
   async deleteKipTemplate(id: Identifier) {
-    return await dutyTemplateKipsRepository.delete(id);
+    return await dutyTemplatesRepository.delete(id);
   }
 
   async findOrCreateDay(date: string, actorId: Identifier) {
@@ -550,7 +631,7 @@ class DutyService extends BaseService {
       const groupId = assignment?.templateId || defaultGroup?.id;
       if (!groupId) continue;
 
-      const templateShifts = await dutyTemplateShiftsRepository.findByTemplateId(normalizeId(groupId));
+      const templateShifts = await dutyTemplatesRepository.findShiftsByGroupId(normalizeId(groupId));
       for (const ts of templateShifts) {
         const dIdx = (d.getUTCDay() + 6) % 7;
         if ((ts.daysOfWeek || [0, 1, 2, 3, 4, 5, 6]).includes(dIdx)) {
@@ -580,7 +661,7 @@ class DutyService extends BaseService {
 
     if (!effectiveTemplateId) return { success: false, message: 'No template assigned' };
 
-    const templateShifts = await dutyTemplateShiftsRepository.findByTemplateId(normalizeId(effectiveTemplateId));
+    const templateShifts = await dutyTemplatesRepository.findShiftsByGroupId(normalizeId(effectiveTemplateId));
     const results = [];
     for (const ts of templateShifts) {
       if ((ts.daysOfWeek || [0, 1, 2, 3, 4, 5, 6]).includes(dayOfWeek)) {
@@ -630,7 +711,7 @@ class DutyService extends BaseService {
 
     if (!effectiveTemplateId) return { success: false, message: 'Không tìm thấy Bản mẫu để áp dụng' };
 
-    const templateShifts = await dutyTemplateShiftsRepository.findByTemplateId(normalizeId(effectiveTemplateId));
+    const templateShifts = await dutyTemplatesRepository.findShiftsByGroupId(normalizeId(effectiveTemplateId));
 
     let curr = new Date(s);
     const datesToProcess: string[] = [];
@@ -671,7 +752,7 @@ class DutyService extends BaseService {
 
   async stampTemplateShift(date: string, templateShiftId: Identifier, actorId: Identifier, mode: string = 'all') {
     const dayRecord = await this.findOrCreateDay(date, actorId);
-    const ts = await dutyTemplateShiftsRepository.findById(templateShiftId);
+    const ts = await dutyTemplatesRepository.findById(templateShiftId);
     if (!ts) return null;
 
     let actualShift = await dutyShiftsRepository.findOne({
@@ -695,7 +776,7 @@ class DutyService extends BaseService {
 
     if (mode === 'shifts') return actualShift;
 
-    const tKips = await dutyTemplateKipsRepository.findByTemplateShiftId(ts.id);
+    const tKips = await dutyTemplatesRepository.findKipsByShiftId(ts.id);
     for (const tk of tKips) {
       const dayOfWeek = (dayjs.utc(date).day() + 6) % 7;
       if (!(tk.daysOfWeek || [0, 1, 2, 3, 4, 5, 6]).includes(dayOfWeek)) continue;
