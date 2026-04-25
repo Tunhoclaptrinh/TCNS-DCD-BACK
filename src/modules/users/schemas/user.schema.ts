@@ -103,7 +103,19 @@ export default defineSchema({
     enum: ['admin', 'staff', 'customer', 'curator'],
     required: false,
     default: 'customer',
-    label: 'Vai trò',
+    label: 'Vai trò (Legacy)',
+  },
+  roleIds: {
+    type: 'array',
+    required: false,
+    default: [],
+    label: 'Danh sách Vai trò',
+  },
+  customPermissions: {
+    type: 'object',
+    required: false,
+    default: { extra: [], denied: [] },
+    label: 'Quyền tùy chỉnh',
   },
   generationId: {
     type: 'number',
