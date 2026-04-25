@@ -12,6 +12,8 @@ import dutyLeaveRequestsRepository from '@modules/duty/repositories/duty-leave-r
 import dutyLogsRepository from '@modules/duty/repositories/duty-logs.repository';
 import dutySettingsRepository from '@modules/duty/repositories/duty-settings.repository';
 import dutyShiftsRepository from '@modules/duty/repositories/duty-shifts.repository';
+import dutyTemplateShiftsRepository from '@modules/duty/repositories/duty-template-shifts.repository';
+import dutyTemplateKipsRepository from '@modules/duty/repositories/duty-template-kips.repository';
 import dutyTemplateAssignmentsRepository from '@modules/duty/repositories/duty-template-assignments.repository';
 import dutyTemplatesRepository from '@modules/duty/repositories/duty-templates.repository';
 import usersRepository from '@modules/users/repositories/users.repository';
@@ -67,7 +69,7 @@ function getActorId(user: DutyUser | GenericRecord | Identifier): Identifier {
 }
 
 function toUTCMidnight(dateInput?: string | number | Date): Date {
-  // Extract YYYY-MM-DD and force to UTC 00:00:00.000
+  // Extract YYYYY-MM-DD and force to UTC 00:00:00.000
   const dStr = dayjs(dateInput || new Date()).format('YYYY-MM-DD');
   return dayjs.utc(dStr).toDate();
 }
@@ -96,8 +98,25 @@ class DutyService extends BaseService {
     return Math.max(1, Number(slot.capacity) || 1);
   }
 
+  isTimeInShiftRange(target: string, shiftStart: string, shiftEnd: string): boolean {
+    if (!target || !shiftStart || !shiftEnd) return true;
+    if (shiftStart <= shiftEnd) {
+      return target >= shiftStart && target <= shiftEnd;
+    }
+    return target >= shiftStart || target <= shiftEnd;
+  }
+
   buildScheduleUserMap(users: DutyUser[]) {
     return new Map(users.map((user) => [normalizeId(user.id), user]));
+  }
+
+  async getSlotLabel(slot: any) {
+    if (slot.shiftLabel) return slot.shiftLabel; // legacy
+    const kip = await dutyKipsRepository.findById(slot.kipId);
+    if (!kip) return 'Kíp trực';
+    const shift = await dutyShiftsRepository.findById(kip.shiftId);
+    if (!shift) return kip.name;
+    return `${shift.name} - ${kip.name}`;
   }
 
   async findSlotOrThrow(slotId: Identifier) {
@@ -116,11 +135,12 @@ class DutyService extends BaseService {
   }
 
   async notifySlotAssignment(userId: Identifier, slot: DutySlotRecord, action: 'register' | 'cancel') {
+    const label = await this.getSlotLabel(slot);
     const title = action === 'register' ? 'Đăng ký ca trực thành công' : 'Hủy ca trực thành công';
     const message =
       action === 'register'
-        ? `Bạn đã đăng ký ca '${slot.shiftLabel}' ngày ${new Date(slot.shiftDate).toLocaleDateString('vi-VN')}.`
-        : `Bạn đã hủy ca '${slot.shiftLabel}' ngày ${new Date(slot.shiftDate).toLocaleDateString('vi-VN')}.`;
+        ? `Bạn đã đăng ký ca '${label}' ngày ${new Date(slot.shiftDate).toLocaleDateString('vi-VN')}.`
+        : `Bạn đã hủy ca '${label}' ngày ${new Date(slot.shiftDate).toLocaleDateString('vi-VN')}.`;
 
     await notificationService.notifyUser(userId, {
       title,
@@ -338,7 +358,7 @@ class DutyService extends BaseService {
   }
 
   async deleteTemplate(id: Identifier) {
-    const shifts = await dutyShiftsRepository.findByTemplateId(normalizeId(id));
+    const shifts = await dutyTemplateShiftsRepository.findByTemplateId(normalizeId(id));
     for (const s of shifts) {
       await this.deleteShiftTemplate(s.id);
     }
@@ -357,20 +377,20 @@ class DutyService extends BaseService {
       filter = {};
     }
 
-    const shifts = await dutyShiftsRepository.findMany(filter);
-    const kips = await dutyKipsRepository.findAll();
+    const shifts = await dutyTemplateShiftsRepository.findMany(filter);
+    const kips = await dutyTemplateKipsRepository.findAll();
     return shifts
       .map((shift: any) => ({
         ...shift,
         kips: kips
-          .filter((k: any) => normalizeId(k.shiftId) === normalizeId(shift.id))
+          .filter((k: any) => normalizeId(k.templateShiftId) === normalizeId(shift.id))
           .sort((a: any, b: any) => (a.startTime || '').localeCompare(b.startTime || '')),
       }))
       .sort((a: any, b: any) => (a.startTime || '').localeCompare(b.startTime || ''));
   }
 
   async createShiftTemplate(data: GenericRecord) {
-    return await dutyShiftsRepository.create({
+    return await dutyTemplateShiftsRepository.create({
       templateId: data.templateId ? normalizeId(data.templateId) : null,
       name: data.name,
       startTime: data.startTime,
@@ -381,50 +401,101 @@ class DutyService extends BaseService {
     });
   }
 
+  private getDayName(day: number) {
+    const days = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'];
+    return days[day] || `Ngày ${day}`;
+  }
+
   async updateShiftTemplate(id: Identifier, data: GenericRecord) {
-    return await dutyShiftsRepository.update(id, {
+    const newDays = Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : undefined;
+    if (newDays) {
+      const kips = await dutyTemplateKipsRepository.findByTemplateShiftId(id);
+      for (const kip of kips) {
+        const kipDays = kip.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
+        const invalid = kipDays.filter((d) => !newDays.includes(d));
+        if (invalid.length > 0) {
+          const invalidNames = invalid.map((d) => this.getDayName(d)).join(', ');
+          throw ApiError.badRequest(
+            `Không thể cập nhật: Kíp '${kip.name}' đang có ngày trực (${invalidNames}) không nằm trong danh sách ngày mới của Ca.`,
+          );
+        }
+      }
+    }
+
+    return await dutyTemplateShiftsRepository.update(id, {
       templateId: data.templateId ? normalizeId(data.templateId) : undefined,
       name: data.name,
       startTime: data.startTime,
       endTime: data.endTime,
       description: data.description || '',
       isSpecialEvent: data.isSpecialEvent !== undefined ? !!data.isSpecialEvent : undefined,
-      daysOfWeek: Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : undefined,
+      daysOfWeek: newDays,
     });
   }
 
   async deleteShiftTemplate(id: Identifier) {
-    await dutyKipsRepository.deleteByShiftId(normalizeId(id));
-    return await dutyShiftsRepository.delete(id);
+    await dutyTemplateKipsRepository.deleteByTemplateShiftId(normalizeId(id));
+    return await dutyTemplateShiftsRepository.delete(id);
   }
 
   async createKipTemplate(data: GenericRecord) {
-    return await dutyKipsRepository.create({
-      shiftId: normalizeId(data.shiftId),
+    const shiftId = normalizeId(data.templateShiftId || data.shiftId);
+    const kipDays = Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : [0, 1, 2, 3, 4, 5, 6];
+
+    // Validate against parent shift
+    const shift = await dutyTemplateShiftsRepository.findById(shiftId);
+    if (shift) {
+      const shiftDays = shift.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
+      const invalid = kipDays.filter((d) => !shiftDays.includes(d));
+      if (invalid.length > 0) {
+        const invalidNames = invalid.map((d) => this.getDayName(d)).join(', ');
+        throw ApiError.badRequest(`Kíp có ngày trực không thuộc Ca trực (${invalidNames}).`);
+      }
+    }
+
+    return await dutyTemplateKipsRepository.create({
+      templateShiftId: shiftId,
       name: data.name,
       coefficient: Number(data.coefficient) || 1,
       capacity: Number(data.capacity) || 1,
       startTime: data.startTime || null,
       endTime: data.endTime || null,
-      daysOfWeek: Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : [0, 1, 2, 3, 4, 5, 6],
+      daysOfWeek: kipDays,
       description: data.description || '',
     });
   }
 
   async updateKipTemplate(id: Identifier, data: GenericRecord) {
-    return await dutyKipsRepository.update(id, {
+    const kip = await dutyTemplateKipsRepository.findById(id);
+    if (!kip) throw ApiError.notFound('Kíp không tồn tại');
+
+    const kipDays = Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : undefined;
+
+    if (kipDays) {
+      const shift = await dutyTemplateShiftsRepository.findById(kip.templateShiftId);
+      if (shift) {
+        const shiftDays = shift.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
+        const invalid = kipDays.filter((d) => !shiftDays.includes(d));
+        if (invalid.length > 0) {
+          const invalidNames = invalid.map((d) => this.getDayName(d)).join(', ');
+          throw ApiError.badRequest(`Kíp có ngày trực không thuộc Ca trực (${invalidNames}).`);
+        }
+      }
+    }
+
+    return await dutyTemplateKipsRepository.update(id, {
       name: data.name,
       coefficient: Number(data.coefficient) || 1,
       capacity: Number(data.capacity) || 1,
       startTime: data.startTime || null,
       endTime: data.endTime || null,
-      daysOfWeek: Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : [0, 1, 2, 3, 4, 5, 6],
+      daysOfWeek: kipDays || kip.daysOfWeek,
       description: data.description || '',
     });
   }
 
   async deleteKipTemplate(id: Identifier) {
-    return await dutyKipsRepository.delete(id);
+    return await dutyTemplateKipsRepository.delete(id);
   }
 
   async findOrCreateDay(date: string, actorId: Identifier) {
@@ -450,16 +521,14 @@ class DutyService extends BaseService {
     const startIso = getWeekStartISO(weekStart);
     const ws = new Date(startIso);
     const we = new Date(startIso);
-    we.setUTCDate(we.getUTCDate() + 6); // End of the week
+    we.setUTCDate(we.getUTCDate() + 6);
 
-    // Check for existing slots
-    const existingSlots = await dutySlotsRepository.findMany({
-      shiftDate_gte: ws.toISOString(),
-      shiftDate_lte: we.toISOString(),
+    const existingShifts = await dutyShiftsRepository.findMany({
+      date_gte: ws.toISOString(),
+      date_lte: we.toISOString(),
     });
-    if (existingSlots.length > 0) throw ApiError.badRequest('Schedule already exists for this week');
+    if (existingShifts.length > 0) throw ApiError.badRequest('Lịch đã tồn tại cho tuần này');
 
-    // Fetch all assignments that might overlap with this week
     const assignments = await dutyTemplateAssignmentsRepository.findMany({
       startDate_lte: we.toISOString(),
       endDate_gte: ws.toISOString(),
@@ -467,13 +536,11 @@ class DutyService extends BaseService {
 
     const defaultGroup = await dutyTemplatesRepository.findDefault();
 
-    const allWeeklySlots = [];
     for (let i = 0; i < 7; i++) {
       const d = new Date(startIso);
       d.setUTCDate(d.getUTCDate() + i);
       const isoDate = d.toISOString();
 
-      // Find assignment for this specific day
       const assignment = assignments.find((a: any) => {
         const start = new Date(a.startDate);
         const end = new Date(a.endDate);
@@ -483,60 +550,46 @@ class DutyService extends BaseService {
       const groupId = assignment?.templateId || defaultGroup?.id;
       if (!groupId) continue;
 
-      const shifts = await dutyShiftsRepository.findByTemplateId(normalizeId(groupId));
-
-      for (const shift of shifts) {
-        const res = await this.addShiftToDay(isoDate, shift.id, actorId, null, 'kips', true);
-        if (res.slots) allWeeklySlots.push(...res.slots);
+      const templateShifts = await dutyTemplateShiftsRepository.findByTemplateId(normalizeId(groupId));
+      for (const ts of templateShifts) {
+        const dIdx = (d.getUTCDay() + 6) % 7;
+        if ((ts.daysOfWeek || [0, 1, 2, 3, 4, 5, 6]).includes(dIdx)) {
+          await this.stampTemplateShift(isoDate, ts.id, actorId);
+        }
       }
-    }
-
-    if (allWeeklySlots.length > 0) {
-      await dutySlotsRepository.insertMany(allWeeklySlots);
     }
 
     return { success: true };
   }
 
   async generateDaySlots(date: string, actorId: Identifier) {
-    const d = new Date(date);
-    d.setUTCHours(0, 0, 0, 0);
+    const d = toUTCMidnight(date);
     const isoDate = d.toISOString();
     const dayOfWeek = (d.getUTCDay() + 6) % 7;
-    const weekStartIso = getWeekStartISO(isoDate);
 
-    const dayRecord = await this.findOrCreateDay(isoDate, actorId);
-    const shifts = await this.getShiftTemplates();
-    const slots = [];
+    const assignment = await dutyTemplateAssignmentsRepository.findOne({
+      startDate_lte: isoDate,
+      endDate_gte: isoDate,
+    });
 
-    for (const shift of shifts as any[]) {
-      for (const kip of shift.kips) {
-        const days = kip.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
-        if (!days.includes(dayOfWeek)) continue;
+    let effectiveTemplateId: Identifier | undefined = assignment?.templateId;
+    if (!effectiveTemplateId) {
+      const defaultTemplate = await dutyTemplatesRepository.findDefault();
+      effectiveTemplateId = defaultTemplate?.id;
+    }
 
-        slots.push(
-          this.buildSlotPayload(
-            {
-              weekStart: weekStartIso,
-              shiftDate: isoDate,
-              dayId: dayRecord.id,
-              shiftId: shift.id,
-              kipId: kip.id,
-              shiftLabel: `${shift.name} - ${kip.name}`,
-              startTime: kip.startTime || shift.startTime,
-              endTime: kip.endTime || shift.endTime,
-              capacity: kip.capacity,
-              slotStructure: kip.slotStructure || [],
-              config: kip.config || {},
-              note: kip.description || '',
-            },
-            actorId,
-          ),
-        );
+    if (!effectiveTemplateId) return { success: false, message: 'No template assigned' };
+
+    const templateShifts = await dutyTemplateShiftsRepository.findByTemplateId(normalizeId(effectiveTemplateId));
+    const results = [];
+    for (const ts of templateShifts) {
+      if ((ts.daysOfWeek || [0, 1, 2, 3, 4, 5, 6]).includes(dayOfWeek)) {
+        const stamped = await this.stampTemplateShift(isoDate, ts.id, actorId);
+        results.push(stamped);
       }
     }
-    if (slots.length === 0) return [];
-    return await dutySlotsRepository.insertMany(slots);
+
+    return { success: true, results };
   }
 
   async generateRangeSlots(
@@ -544,175 +597,150 @@ class DutyService extends BaseService {
     endDate: string,
     actorId: Identifier,
     templateId?: Identifier,
-    mode: 'all' | 'shifts' | 'kips' = 'kips',
+    mode: string = 'all',
+    jobId?: string,
   ) {
     const s = toUTCMidnight(startDate);
     const e = toUTCMidnight(endDate);
     e.setUTCHours(23, 59, 59, 999);
 
-    if (e < s) throw ApiError.badRequest('End date must be after start date');
+    if (e < s) throw ApiError.badRequest('Ngày kết thúc phải sau ngày bắt đầu');
 
-    // Fetch all assignments that might overlap with this range
-    const assignments = await dutyTemplateAssignmentsRepository.findMany({
-      startDate_lte: e.toISOString(),
-      endDate_gte: s.toISOString(),
-    });
+    if (jobId) {
+      socketService.emitToRoom(jobId, 'job_progress', { percent: 5, text: 'Bắt đầu quá trình lập lịch...' });
+    }
 
-    const allSlots = [];
-    let curr = new Date(s);
-
-    while (curr <= e) {
-      const isoDate = curr.toISOString();
-      const dayOfWeek = (curr.getUTCDay() + 6) % 7;
-      const weekStartIso = getWeekStartISO(isoDate);
-
-      // Determine effective template for this day
-      let effectiveTemplateId = templateId;
-      if (!effectiveTemplateId) {
-        const assignment = assignments.find(
-          (a: any) =>
-            dayjs.utc(isoDate).isSameOrAfter(dayjs.utc(a.startDate), 'day') &&
-            dayjs.utc(isoDate).isSameOrBefore(dayjs.utc(a.endDate), 'day'),
-        );
-        if (assignment) {
-          effectiveTemplateId = assignment.templateId;
-        } else {
-          const defaultTemplate = await dutyTemplatesRepository.findDefault();
-          effectiveTemplateId = defaultTemplate?.id;
-        }
-      }
-
-      if (!effectiveTemplateId) {
-        curr.setUTCDate(curr.getUTCDate() + 1);
-        continue;
-      }
-
-      const shifts = await this.getShiftTemplates(effectiveTemplateId);
-      const dayRecord = await this.findOrCreateDay(isoDate, actorId);
-
-      const persistentShiftIds: number[] = [];
-      const shiftMap = new Map<number, number>(); // SourceID -> PersistentID
-
-      // 1. Deep Copy the shifts into "Individual Records" (templateId = null)
-      for (const s of shifts as any[]) {
-        if (!(s.daysOfWeek || [0, 1, 2, 3, 4, 5, 6]).includes(dayOfWeek)) continue;
-
-        const newShift = await dutyShiftsRepository.create({
-          name: s.name,
-          startTime: s.startTime,
-          endTime: s.endTime,
-          description: 'INSTANCE',
-          templateId: null, // DISCONNECT from template group
-          isSpecialEvent: !!s.isSpecialEvent,
-          daysOfWeek: [dayOfWeek],
-        });
-
-        persistentShiftIds.push(newShift.id as number);
-        shiftMap.set(s.id, newShift.id as number);
-      }
-
-      await dutyDaysRepository.update(dayRecord.id, {
-        shiftTemplateIds: persistentShiftIds,
+    let effectiveTemplateId = templateId;
+    if (!effectiveTemplateId) {
+      const assignments = await dutyTemplateAssignmentsRepository.findMany({
+        startDate_lte: e.toISOString(),
+        endDate_gte: s.toISOString(),
       });
-
-      for (const shift of shifts as any[]) {
-        if (!shiftMap.has(shift.id)) continue;
-        const persistentShiftId = shiftMap.get(shift.id)!;
-
-        // 2. Clone Kips for this shift instance
-        const templateKips = await dutyKipsRepository.findMany({ shiftId: normalizeId(shift.id) });
-        const kipMap = new Map<number, number>();
-
-        for (const k of templateKips) {
-          const newKip = await dutyKipsRepository.create({
-            shiftId: persistentShiftId,
-            name: k.name,
-            coefficient: k.coefficient,
-            capacity: k.capacity,
-            startTime: k.startTime,
-            endTime: k.endTime,
-            daysOfWeek: k.daysOfWeek,
-            slotStructure: k.slotStructure,
-            config: k.config,
-            description: 'INSTANCE',
-          });
-          kipMap.set(k.id as number, newKip.id as number);
-        }
-
-        // Create a Shift-level slot (kipId: null) ONLY if there are no kips for this shift
-        // OR if explicitly requested via 'shifts' mode (but 'all' should only show kips if present)
-        if (mode === 'shifts' || (mode === 'all' && templateKips.length === 0)) {
-          allSlots.push(
-            this.buildSlotPayload(
-              {
-                weekStart: weekStartIso,
-                shiftDate: isoDate,
-                dayId: dayRecord.id,
-                shiftId: persistentShiftId,
-                kipId: null,
-                shiftLabel: shift.name,
-                startTime: shift.startTime,
-                endTime: shift.endTime,
-                isSpecialEvent: !!shift.isSpecialEvent,
-                note: shift.description || '',
-              },
-              actorId,
-            ),
-          );
-        }
-
-        if (mode === 'kips' || mode === 'all') {
-          for (const kip of templateKips) {
-            const kipDays = kip.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
-            if (!kipDays.includes(dayOfWeek)) continue;
-
-            allSlots.push(
-              this.buildSlotPayload(
-                {
-                  weekStart: weekStartIso,
-                  shiftDate: isoDate,
-                  dayId: dayRecord.id,
-                  shiftId: persistentShiftId,
-                  kipId: kipMap.get(kip.id as number),
-                  shiftLabel: `${shift.name} - ${kip.name}`,
-                  startTime: kip.startTime || shift.startTime,
-                  endTime: kip.endTime || shift.endTime,
-                  capacity: kip.capacity,
-                  slotStructure: kip.slotStructure,
-                  config: kip.config,
-                  isSpecialEvent: !!shift.isSpecialEvent,
-                  note: kip.description || kip.duration || '',
-                },
-                actorId,
-              ),
-            );
-          }
-        }
+      const assignment = assignments.find(
+        (a: any) =>
+          dayjs.utc(s).isSameOrAfter(dayjs.utc(a.startDate), 'day') &&
+          dayjs.utc(e).isSameOrBefore(dayjs.utc(a.endDate), 'day'),
+      );
+      effectiveTemplateId = assignment?.templateId;
+      if (!effectiveTemplateId) {
+        const defaultTemplate = await dutyTemplatesRepository.findDefault();
+        effectiveTemplateId = defaultTemplate?.id;
       }
+    }
+
+    if (!effectiveTemplateId) return { success: false, message: 'Không tìm thấy Bản mẫu để áp dụng' };
+
+    const templateShifts = await dutyTemplateShiftsRepository.findByTemplateId(normalizeId(effectiveTemplateId));
+
+    let curr = new Date(s);
+    const datesToProcess: string[] = [];
+    while (curr <= e) {
+      datesToProcess.push(curr.toISOString());
       curr.setUTCDate(curr.getUTCDate() + 1);
     }
 
-    if (allSlots.length === 0) return [];
+    const totalDays = datesToProcess.length;
+    const results = [];
 
-    await dutySlotsRepository.deleteMany({
-      shiftDate_gte: s.toISOString(),
-      shiftDate_lte: e.toISOString(),
+    for (let i = 0; i < totalDays; i++) {
+      const isoDate = datesToProcess[i];
+      const dayOfWeek = (new Date(isoDate).getUTCDay() + 6) % 7;
+
+      if (jobId && i % 5 === 0) {
+        const percent = Math.floor(10 + (i / totalDays) * 85);
+        socketService.emitToRoom(jobId, 'job_progress', {
+          percent,
+          text: `Đang xử lý ngày ${dayjs(isoDate).format('DD/MM')}...`,
+        });
+      }
+
+      for (const ts of templateShifts) {
+        if ((ts.daysOfWeek || [0, 1, 2, 3, 4, 5, 6]).includes(dayOfWeek)) {
+          const stamped = await this.stampTemplateShift(isoDate, ts.id, actorId, mode);
+          results.push(stamped);
+        }
+      }
+    }
+
+    if (jobId) {
+      socketService.emitToRoom(jobId, 'job_progress', { percent: 100, text: 'Lập lịch hoàn tất!' });
+    }
+
+    return { success: true, results };
+  }
+
+  async stampTemplateShift(date: string, templateShiftId: Identifier, actorId: Identifier, mode: string = 'all') {
+    const dayRecord = await this.findOrCreateDay(date, actorId);
+    const ts = await dutyTemplateShiftsRepository.findById(templateShiftId);
+    if (!ts) return null;
+
+    let actualShift = await dutyShiftsRepository.findOne({
+      date: date,
+      fromTemplateShiftId: ts.id,
     });
 
-    const created = await dutySlotsRepository.insertMany(allSlots);
+    if (!actualShift) {
+      actualShift = await dutyShiftsRepository.create({
+        dayId: dayRecord.id,
+        date: date,
+        name: ts.name,
+        startTime: ts.startTime,
+        endTime: ts.endTime,
+        isSpecialEvent: !!ts.isSpecialEvent,
+        fromTemplateShiftId: ts.id,
+        status: 'open',
+        createdBy: normalizeId(actorId),
+      });
+    }
 
-    // --- LOGGING ---
-    await dutyLogsRepository.create({
-      type: 'manual_update',
-      action: 'system',
-      slotId: 0, // Batch creation
-      userId: actorId,
-      performerId: normalizeId(actorId),
-      details: `Admin tạo hàng loạt kíp trực (Range: ${startDate} - ${endDate}). Số lượng: ${created.length}`,
-      createdAt: new Date(),
-    });
+    if (mode === 'shifts') return actualShift;
 
-    return created;
+    const tKips = await dutyTemplateKipsRepository.findByTemplateShiftId(ts.id);
+    for (const tk of tKips) {
+      const dayOfWeek = (dayjs.utc(date).day() + 6) % 7;
+      if (!(tk.daysOfWeek || [0, 1, 2, 3, 4, 5, 6]).includes(dayOfWeek)) continue;
+
+      let ak = await dutyKipsRepository.findOne({
+        shiftId: actualShift.id,
+        fromTemplateKipId: tk.id,
+      });
+
+      if (!ak) {
+        ak = await dutyKipsRepository.create({
+          shiftId: actualShift.id,
+          date: date,
+          name: tk.name,
+          coefficient: tk.coefficient,
+          capacity: tk.capacity,
+          startTime: tk.startTime,
+          endTime: tk.endTime,
+          fromTemplateKipId: tk.id,
+          slotStructure: tk.slotStructure || [],
+          config: tk.config || {},
+          status: 'open',
+        });
+      }
+
+      const existingSlot = await dutySlotsRepository.findOne({ kipId: ak.id });
+      if (!existingSlot) {
+        const weekStart = dayjs.utc(date).startOf('isoWeek').toDate();
+        await dutySlotsRepository.create({
+          kipId: ak.id,
+          shiftId: actualShift.id,
+          dayId: dayRecord.id,
+          weekStart: weekStart,
+          shiftDate: date,
+          startTime: ak.startTime,
+          endTime: ak.endTime,
+          capacity: ak.capacity,
+          status: 'open',
+          createdBy: normalizeId(actorId),
+          note: 'INSTANCE',
+        });
+      }
+    }
+
+    return actualShift;
   }
 
   async deleteRangeSlots(startDate: string, endDate: string, performerId: Identifier) {
@@ -751,102 +779,68 @@ class DutyService extends BaseService {
     const weTarget = new Date(targetIso);
     weTarget.setUTCDate(weTarget.getUTCDate() + 6);
 
-    const existingTarget = await dutySlotsRepository.findOne({
-      shiftDate_gte: wsTarget.toISOString(),
-      shiftDate_lte: weTarget.toISOString(),
+    // 1. Check if target week already has shifts
+    const existingTarget = await dutyShiftsRepository.findOne({
+      date_gte: wsTarget.toISOString(),
+      date_lte: weTarget.toISOString(),
     });
-    if (existingTarget) throw ApiError.badRequest('Target week already has slots');
+    if (existingTarget) throw ApiError.badRequest('Tuần đích đã có lịch trực');
 
-    // 1. Fetch all data for source week
-    const sourceSlots = await dutySlotsRepository.findMany({
-      shiftDate_gte: wsSource.toISOString(),
-      shiftDate_lte: weSource.toISOString(),
-    });
-    if (!sourceSlots || sourceSlots.length === 0) throw ApiError.badRequest('Source week is empty');
-
-    const sourceDays = await dutyDaysRepository.findMany({
+    // 2. Fetch all shifts for source week
+    const sourceShifts = await dutyShiftsRepository.findMany({
       date_gte: wsSource.toISOString(),
       date_lte: weSource.toISOString(),
     });
 
-    const shiftIdMap: Record<string, any> = {};
-    const kipIdMap: Record<string, any> = {};
+    if (sourceShifts.length === 0) throw ApiError.badRequest('Tuần nguồn không có lịch trực');
 
-    // 2. Clone Days and their Shift/Kip instances
-    for (let i = 0; i < 7; i++) {
-      const srcDate = new Date(wsSource);
-      srcDate.setUTCDate(srcDate.getUTCDate() + i);
-      const targetDate = new Date(wsTarget);
-      targetDate.setUTCDate(targetDate.getUTCDate() + i);
+    for (const ss of sourceShifts) {
+      const srcDate = dayjs.utc(ss.date);
+      const dayOffset = srcDate.diff(dayjs.utc(srcIso), 'day');
+      const targetDate = dayjs.utc(targetIso).add(dayOffset, 'day').toISOString();
 
-      const srcDay = sourceDays.find((d: any) => new Date(d.date).getTime() === srcDate.getTime());
-      if (!srcDay) continue;
-
-      const targetDay = await this.findOrCreateDay(targetDate.toISOString(), actorId);
-      const oldShiftIds = srcDay.shiftTemplateIds || [];
-      const newShiftIds = [];
-
-      for (const oldShiftId of oldShiftIds) {
-        const shift = await dutyShiftsRepository.findById(oldShiftId);
-        if (!shift) continue;
-
-        // If it's an instance, clone it to keep weeks independent
-        if (shift.description === 'INSTANCE') {
-          const newShift = await dutyShiftsRepository.create({
-            ...shift,
-            id: undefined,
-            _id: undefined,
-            templateId: shift.templateId, // Keep reference to original blueprint if any
-          });
-          newShiftIds.push(newShift.id as number);
-          shiftIdMap[String(oldShiftId)] = newShift.id as number;
-
-          // Also clone its kips
-          const kips = await dutyKipsRepository.findMany({ shiftId: normalizeId(oldShiftId) });
-          for (const k of kips) {
-            const newKip = await dutyKipsRepository.create({
-              ...k,
-              id: undefined,
-              _id: undefined,
-              shiftId: newShift.id as number,
-            });
-            kipIdMap[String(k.id)] = newKip.id as number;
-          }
-        } else {
-          // If it's a direct blueprint (unlikely in stencil but possible), just link it
-          newShiftIds.push(oldShiftId);
-          shiftIdMap[String(oldShiftId)] = oldShiftId;
-        }
-      }
-
-      await dutyDaysRepository.update(targetDay.id, { shiftTemplateIds: newShiftIds });
-    }
-
-    // 3. Clone Slots with translated IDs
-    const newSlots = sourceSlots.map((slot: any) => {
-      const d = new Date(slot.shiftDate);
-      const dayOffset = (d.getTime() - wsSource.getTime()) / (1000 * 60 * 60 * 24);
-      const t = new Date(wsTarget);
-      t.setUTCDate(t.getUTCDate() + Math.round(dayOffset));
-
-      const newShiftId = shiftIdMap[String(slot.shiftId)] || slot.shiftId;
-      const newKipId = kipIdMap[String(slot.kipId)] || slot.kipId;
-
-      return this.buildSlotPayload(
-        {
-          ...slot,
+      // Stamp based on the same template if available, or just clone the instance
+      if (ss.fromTemplateShiftId) {
+        await this.stampTemplateShift(targetDate, ss.fromTemplateShiftId, actorId);
+      } else {
+        // Manual clone for ad-hoc shifts
+        const dayRecord = await this.findOrCreateDay(targetDate, actorId);
+        const newShift = await dutyShiftsRepository.create({
+          ...ss,
           id: undefined,
           _id: undefined,
-          weekStart: targetIso,
-          shiftDate: t.toISOString(),
-          shiftId: newShiftId,
-          kipId: newKipId,
-        },
-        actorId,
-      );
-    });
+          dayId: dayRecord.id,
+          date: targetDate,
+          createdBy: normalizeId(actorId),
+        });
 
-    const created = await dutySlotsRepository.insertMany(newSlots);
+        // Clone kips and slots
+        const kips = await dutyKipsRepository.findMany({ shiftId: ss.id });
+        for (const k of kips) {
+          const newKip = await dutyKipsRepository.create({
+            ...k,
+            id: undefined,
+            _id: undefined,
+            shiftId: newShift.id,
+            date: targetDate,
+          });
+
+          const slots = await dutySlotsRepository.findMany({ kipId: k.id });
+          for (const s of slots) {
+            await dutySlotsRepository.create({
+              ...s,
+              id: undefined,
+              _id: undefined,
+              kipId: newKip.id,
+              shiftDate: targetDate,
+              assignedUserIds: [], // Don't copy assignments for a new week usually
+              status: 'open',
+              createdBy: normalizeId(actorId),
+            });
+          }
+        }
+      }
+    }
 
     // --- LOGGING ---
     await dutyLogsRepository.create({
@@ -855,37 +849,34 @@ class DutyService extends BaseService {
       slotId: 0,
       userId: actorId,
       performerId: normalizeId(actorId),
-      details: `Admin sao chép lịch trực từ tuần ${sourceWeekStart} sang tuần ${targetWeekStart}. Số lượng kíp: ${created.length}`,
+      details: `Admin sao chép lịch trực từ tuần ${sourceWeekStart} sang tuần ${targetWeekStart}.`,
       createdAt: new Date(),
     });
 
-    return { success: true, count: created.length };
+    return { success: true };
   }
 
   async deleteWeeklySlots(weekStart: string) {
-    const startIso = getWeekStartISO(weekStart);
-    const ws = new Date(startIso);
-    const we = new Date(startIso);
-    we.setUTCDate(we.getUTCDate() + 6);
+    const ws = dayjs(weekStart).startOf('isoWeek' as any);
+    const we = ws.endOf('isoWeek' as any);
 
     // 1. Delete all slots for the week
     await dutySlotsRepository.deleteMany({
-      weekStart: new Date(startIso).toISOString(),
+      shiftDate_gte: ws.toDate(),
+      shiftDate_lte: we.toDate(),
     });
 
-    // 2. Clear shift boundaries in duty_days
-    const days = await dutyDaysRepository.findMany({
-      date_gte: ws.toISOString(),
-      date_lte: we.toISOString(),
+    // 2. Delete all kips for the week
+    await dutyKipsRepository.deleteMany({
+      date_gte: ws.toDate(),
+      date_lte: we.toDate(),
     });
 
-    for (const d of days) {
-      if (d.shiftTemplateIds?.length > 0) {
-        // Optional: We could also delete the actual duty_shifts records here if they are 'INSTANCE'
-        // But for simplicity and safety, resetting the reference is the most important for UI
-        await dutyDaysRepository.update(d.id, { shiftTemplateIds: [] });
-      }
-    }
+    // 3. Delete all shifts for the week
+    await dutyShiftsRepository.deleteMany({
+      date_gte: ws.toDate(),
+      date_lte: we.toDate(),
+    });
 
     return { success: true };
   }
@@ -894,67 +885,78 @@ class DutyService extends BaseService {
     const weekStart = getWeekStartISO(options.weekStart);
     const weekEnd = getWeekEndISO(weekStart);
 
-    const ws = new Date(weekStart);
-    const we = new Date(weekEnd);
+    const ws = dayjs(weekStart);
+    const we = dayjs(weekEnd);
 
-    const result = await dutySlotsRepository.findAllAdvanced({
-      ...options,
+    // 1. Fetch Days
+    const days = await dutyDaysRepository.findMany({
+      date_gte: ws.toISOString(),
+      date_lte: we.toISOString(),
+    });
+
+    // 2. Fetch Actual Shifts for these days
+    const shifts = await dutyShiftsRepository.findMany({
+      date_gte: ws.toDate(),
+      date_lte: we.toDate(),
+    });
+
+    // 3. Fetch Actual Kips for these shifts
+    const kips = await dutyKipsRepository.findMany({
+      date_gte: ws.toDate(),
+      date_lte: we.toDate(),
+    });
+
+    // 4. Fetch Slots for these kips
+    const slotsResult = await dutySlotsRepository.findAllAdvanced({
       limit: 1000,
       filter: {
-        ...(options.filter || {}),
-        shiftDate_gte: ws,
-        shiftDate_lte: we,
+        shiftDate_gte: ws.toDate(),
+        shiftDate_lte: we.toDate(),
       },
-      expand: 'kip',
-      sort: options.sort || 'shiftDate,startTime',
-      order: options.order || 'asc',
     });
 
     const users = (await usersRepository.findAll()) as DutyUser[];
     const userMap = this.buildScheduleUserMap(users);
 
-    const data = result.data.map((slot: any) => {
+    const slots = slotsResult.data.map((slot: any) => {
       const assignedIds = normalizeIdList(slot.assignedUserIds || []);
+
+      // Improved lookup: Find kip first, then shift
+      let kip = kips.find((k: any) => normalizeId(k.id) === normalizeId(slot.kipId));
+      if (!kip && slot.kipId) {
+        // Fallback if kips weren't fetched by date correctly
+        console.warn(`Kip ${slot.kipId} not found in pre-fetched list for slot ${slot.id}`);
+      }
+
+      const shift = shifts.find((s: any) => normalizeId(s.id) === normalizeId(slot.shiftId || kip?.shiftId));
+
       return {
         ...slot,
-        assignedUserIds: assignedIds,
+        shiftLabel: shift && kip ? `${shift.name} - ${kip.name}` : kip?.name || 'Kíp trực',
+        startTime: slot.startTime || kip?.startTime || shift?.startTime,
+        endTime: slot.endTime || kip?.endTime || shift?.endTime,
         assignedUsers: assignedIds
           .map((id) => userMap.get(id))
           .filter(Boolean)
-          .map((user: any) => ({ id: user.id, name: user.name, role: user.role, avatar: user.avatar })),
+          .map((user: any) => ({
+            id: user.id,
+            name: user.name,
+            role: user.role,
+            avatar: user.avatar,
+          })),
       };
     });
 
-    // Fetch assignments that overlap with this week
-    // Fetch assignments and days with a generous +/- 1 day buffer to handle timezone-shifted dates
-    const queryStart = dayjs.utc(weekStart).subtract(1, 'day').toDate();
-    const queryEnd = dayjs.utc(weekEnd).add(1, 'day').toDate();
-
+    // 5. Fetch Assignments for context
     const assignments = await dutyTemplateAssignmentsRepository.findMany({
-      startDate_lte: queryEnd,
-      endDate_gte: queryStart,
+      startDate_lte: we.toISOString(),
+      endDate_gte: ws.toISOString(),
     });
 
-    const days = await dutyDaysRepository.findMany({
-      date_gte: queryStart,
-      date_lte: queryEnd,
-    });
-
-    // 3. Fetch full metadata for all referred shifts and kips (True Snapshot rendering)
-    const referredShiftIds = new Set<Identifier>();
-    result.data.forEach((s: any) => {
-      if (s.shiftId) referredShiftIds.add(normalizeId(s.shiftId));
-    });
-    days.forEach((d: any) => {
-      (d.shiftTemplateIds || []).forEach((id: any) => referredShiftIds.add(normalizeId(id)));
-    });
-
-    const fullShifts = await dutyShiftsRepository.findMany({ id_in: Array.from(referredShiftIds) });
-    const allKips = await dutyKipsRepository.findMany({ shiftId_in: Array.from(referredShiftIds) });
-
-    const templateData = fullShifts.map((s: any) => ({
+    // Build hierarchical templateData for the timeline
+    const templateData = shifts.map((s: any) => ({
       ...s,
-      kips: allKips
+      kips: kips
         .filter((k: any) => normalizeId(k.shiftId) === normalizeId(s.id))
         .sort((a: any, b: any) => (a.startTime || '').localeCompare(b.startTime || '')),
     }));
@@ -962,51 +964,115 @@ class DutyService extends BaseService {
     return {
       success: true,
       data: {
-        slots: data,
+        slots,
         days,
         assignments,
         templates: templateData,
       },
       weekStart,
       weekEnd,
-      pagination: result.pagination,
     };
   }
 
-  async createSlot(payload: GenericRecord, actorId: Identifier) {
-    if (!payload?.shiftDate) throw ApiError.badRequest('shiftDate is required');
+  async createActualShift(payload: GenericRecord, actorId: Identifier) {
+    if (!payload.date) throw ApiError.badRequest('Ngày là bắt buộc');
+    const dayRecord = await this.findOrCreateDay(payload.date, actorId);
 
-    const dayRecord = await this.findOrCreateDay(payload.shiftDate, actorId);
+    const created = await dutyShiftsRepository.create({
+      dayId: dayRecord.id,
+      date: payload.date,
+      name: payload.name,
+      startTime: payload.startTime,
+      endTime: payload.endTime,
+      status: 'open',
+      createdBy: normalizeId(actorId),
+      note: payload.note || '',
+    });
 
-    // Auto-stamp development: If shiftId is provided, Deep Copy it if it's from a template
-    let finalShiftId = payload.shiftId ? normalizeId(payload.shiftId) : null;
-    if (finalShiftId) {
-      const existingIds = dayRecord.shiftTemplateIds || [];
-      if (!existingIds.map(String).includes(String(finalShiftId))) {
-        const shiftTemplate = await dutyShiftsRepository.findById(finalShiftId);
-        // Only deep copy if it's currently linked to a template
-        if (shiftTemplate && shiftTemplate.templateId) {
-          const newShift = await dutyShiftsRepository.create({
-            name: shiftTemplate.name,
-            startTime: shiftTemplate.startTime,
-            endTime: shiftTemplate.endTime,
-            templateId: null, // DISCONNECT
-            description: 'INSTANCE',
-            isSpecialEvent: !!shiftTemplate.isSpecialEvent,
-            daysOfWeek: shiftTemplate.daysOfWeek,
-          });
-          finalShiftId = newShift.id;
-        }
+    // --- LOGGING ---
+    await dutyLogsRepository.create({
+      type: 'manual_update',
+      action: 'system',
+      slotId: 0,
+      userId: normalizeId(actorId),
+      performerId: normalizeId(actorId),
+      details: `Tạo ca trực mới: ${created.name} (${created.startTime} - ${created.endTime}).`,
+      createdAt: new Date(),
+    });
 
-        if (!existingIds.map(String).includes(String(finalShiftId))) {
-          await dutyDaysRepository.update(dayRecord.id, {
-            shiftTemplateIds: [...existingIds, finalShiftId],
-          });
-        }
-      }
+    return created;
+  }
+
+  async createActualKip(payload: GenericRecord, actorId: Identifier) {
+    if (!payload.shiftId) throw ApiError.badRequest('shiftId là bắt buộc');
+    const shift = await dutyShiftsRepository.findById(payload.shiftId);
+    if (!shift) throw ApiError.notFound('Ca trực không tồn tại');
+
+    // Validate time range against parent shift
+    if (payload.startTime && !this.isTimeInShiftRange(payload.startTime, shift.startTime, shift.endTime)) {
+      throw ApiError.badRequest(
+        `Giờ bắt đầu (${payload.startTime}) phải nằm trong khung giờ của ca (${shift.startTime} - ${shift.endTime})`,
+      );
+    }
+    if (payload.endTime && !this.isTimeInShiftRange(payload.endTime, shift.startTime, shift.endTime)) {
+      throw ApiError.badRequest(
+        `Giờ kết thúc (${payload.endTime}) phải nằm trong khung giờ của ca (${shift.startTime} - ${shift.endTime})`,
+      );
     }
 
-    const data = this.buildSlotPayload({ ...payload, dayId: dayRecord.id, shiftId: finalShiftId }, actorId);
+    const createdKip = await dutyKipsRepository.create({
+      shiftId: shift.id,
+      date: shift.date,
+      name: payload.name,
+      coefficient: Number(payload.coefficient) || 1,
+      capacity: Number(payload.capacity) || 1,
+      startTime: payload.startTime || null,
+      endTime: payload.endTime || null,
+      slotStructure: payload.slotStructure || [],
+      config: payload.config || {},
+      status: 'open',
+      note: payload.note || '',
+    });
+
+    // Create a slot for this kip
+    await dutySlotsRepository.create({
+      kipId: createdKip.id,
+      shiftDate: shift.date,
+      capacity: createdKip.capacity,
+      status: 'open',
+      createdBy: normalizeId(actorId),
+    });
+
+    // --- LOGGING ---
+    await dutyLogsRepository.create({
+      type: 'manual_update',
+      action: 'system',
+      slotId: 0,
+      userId: normalizeId(actorId),
+      performerId: normalizeId(actorId),
+      details: `Tạo kíp trực mới: ${createdKip.name} thuộc ca ${shift.name}.`,
+      createdAt: new Date(),
+    });
+
+    return createdKip;
+  }
+
+  async createSlot(payload: GenericRecord, actorId: Identifier) {
+    if (!payload.kipId) throw ApiError.badRequest('kipId là bắt buộc');
+    const kip = await dutyKipsRepository.findById(payload.kipId);
+    if (!kip) throw ApiError.notFound('Kíp không tồn tại');
+
+    const data = {
+      kipId: kip.id,
+      shiftDate: kip.date,
+      capacity: payload.capacity || kip.capacity,
+      assignedUserIds: normalizeIdList(payload.assignedUserIds || []),
+      status: 'open',
+      createdBy: normalizeId(actorId),
+      note: payload.note || '',
+      config: payload.config || {},
+    };
+
     const created = await dutySlotsRepository.create(data);
 
     // --- LOGGING ---
@@ -1014,9 +1080,9 @@ class DutyService extends BaseService {
       type: 'manual_update',
       action: 'system',
       slotId: created.id,
-      userId: actorId, // In this case, the actor is the one created/assigned? Or just log the action.
-      performerId: actorId,
-      details: `Admin tạo kíp trực mới: ${created.shiftLabel}`,
+      userId: normalizeId(actorId),
+      performerId: normalizeId(actorId),
+      details: `Admin tạo phiên đăng ký mới cho kíp: ${kip.name}`,
       createdAt: new Date(),
     });
 
@@ -1025,67 +1091,106 @@ class DutyService extends BaseService {
 
   async deleteSlot(id: Identifier, performerId: Identifier) {
     const slot = await dutySlotsRepository.findById(id);
-    if (!slot) throw ApiError.notFound('Slot not found');
+    if (!slot) throw ApiError.notFound('Phiên không tồn tại');
 
     // --- LOGGING ---
     await dutyLogsRepository.create({
       type: 'unassigned',
       action: 'removed',
       slotId: normalizeId(id),
-      userId: performerId, // We just know it's deleted
+      userId: normalizeId(performerId), // Use performer as target
       performerId: normalizeId(performerId),
-      details: `Admin xóa kíp trực: ${slot.shiftLabel} ngày ${new Date(slot.shiftDate).toLocaleDateString()}`,
+      details: `Admin xóa phiên đăng ký của ngày ${new Date(slot.shiftDate).toLocaleDateString()}`,
       createdAt: new Date(),
     });
 
-    // Simplified: Delete ONLY the requested slot, no cascading
     await dutySlotsRepository.delete(id);
-
     return { success: true };
   }
 
   async deleteShiftSlots(date: string, shiftId: number, performerId: Identifier) {
-    const d = new Date(date);
-    d.setUTCHours(0, 0, 0, 0);
-    const deletedCount = await dutySlotsRepository.deleteMany({ shiftDate: d, shiftId: Number(shiftId) });
+    // This now deletes all kips and slots of a shift
+    const kips = await dutyKipsRepository.findByShiftId(shiftId);
+    for (const k of kips) {
+      await dutySlotsRepository.deleteMany({ kipId: k.id });
+      await dutyKipsRepository.delete(k.id);
+    }
+    await dutyShiftsRepository.delete(shiftId);
 
-    // --- LOGGING ---
-    await dutyLogsRepository.create({
-      type: 'unassigned',
-      action: 'removed',
-      slotId: normalizeId(shiftId),
-      userId: performerId,
-      performerId: normalizeId(performerId),
-      details: `Admin xóa tất cả kíp của ca ID ${shiftId} ngày ${date}`,
-      createdAt: new Date(),
-    });
-
-    return deletedCount;
+    return { success: true };
   }
 
   async updateSlot(slotId: Identifier, payload: GenericRecord = {}, performerId: Identifier) {
     const slot = await dutySlotsRepository.findById(slotId);
     if (!slot) throw ApiError.notFound('Slot not found');
 
+    // 1. Validation BEFORE any database modification
+    if (slot.kipId && (payload.startTime !== undefined || payload.endTime !== undefined)) {
+      const kip = await dutyKipsRepository.findById(slot.kipId);
+      const shiftId = kip?.shiftId || slot.shiftId;
+
+      if (shiftId) {
+        const shift = await dutyShiftsRepository.findById(shiftId);
+        if (shift) {
+          const st = payload.startTime ?? slot.startTime ?? kip?.startTime;
+          const et = payload.endTime ?? slot.endTime ?? kip?.endTime;
+
+          if (st && !this.isTimeInShiftRange(st, shift.startTime, shift.endTime)) {
+            throw ApiError.badRequest(
+              `Giờ bắt đầu (${st}) phải nằm trong khung giờ của ca (${shift.startTime} - ${shift.endTime})`,
+            );
+          }
+          if (et && !this.isTimeInShiftRange(et, shift.startTime, shift.endTime)) {
+            throw ApiError.badRequest(
+              `Giờ kết thúc (${et}) phải nằm trong khung giờ của ca (${shift.startTime} - ${shift.endTime})`,
+            );
+          }
+        }
+      }
+    }
+
+    // 2. Perform Slot update
     const patch: GenericRecord = { ...payload, updatedAt: new Date().toISOString() };
-    if (payload.shiftDate || payload.weekStart) {
-      const sDate = payload.shiftDate ? new Date(payload.shiftDate) : new Date(slot.shiftDate);
-      sDate.setUTCHours(0, 0, 0, 0);
-      patch.shiftDate = sDate;
-      patch.weekStart = new Date(getWeekStartISO(payload.weekStart || sDate));
+    if (payload.shiftDate) {
+      patch.shiftDate = toUTCMidnight(payload.shiftDate);
     }
     if (payload.assignedUserIds) patch.assignedUserIds = normalizeIdList(payload.assignedUserIds);
 
     const updated = await dutySlotsRepository.update(slotId, patch);
 
+    // 3. Synchronize capacity and times with parent Kip if changed
+    if (slot.kipId) {
+      const kipUpdate: GenericRecord = { updatedAt: new Date().toISOString() };
+      let changed = false;
+
+      if (payload.capacity !== undefined) {
+        kipUpdate.capacity = Number(payload.capacity);
+        changed = true;
+      }
+
+      if (payload.startTime !== undefined) {
+        kipUpdate.startTime = payload.startTime;
+        changed = true;
+      }
+      if (payload.endTime !== undefined) {
+        kipUpdate.endTime = payload.endTime;
+        changed = true;
+      }
+
+      if (changed) {
+        await dutyKipsRepository.update(slot.kipId, kipUpdate);
+      }
+    }
+
     // --- LOGGING ---
+    const label = await this.getSlotLabel(slot);
     await dutyLogsRepository.create({
       type: 'manual_update',
       action: 'system',
       slotId: normalizeId(slotId),
-      userId: performerId,
+      userId: normalizeId(performerId), // Use performer as target if general update
       performerId: normalizeId(performerId),
-      details: `Admin cập nhật thông tin kíp trực: ${slot.shiftLabel}`,
+      details: `Admin cập nhật thông tin kíp trực: ${label}`,
       createdAt: new Date(),
     });
 
@@ -1212,6 +1317,18 @@ class DutyService extends BaseService {
       type: 'shift',
       refId: slot.id,
     });
+
+    // --- LOGGING ---
+    await dutyLogsRepository.create({
+      type: 'manual_update',
+      action: 'assign',
+      slotId: normalizeId(slot.id),
+      userId: normalizeId(userId),
+      performerId: normalizeId(userId),
+      details: `Đăng ký kíp trực: ${slot.shiftLabel}.`,
+      createdAt: new Date(),
+    });
+
     return updated;
   }
 
@@ -1239,7 +1356,7 @@ class DutyService extends BaseService {
     });
 
     await dutyLogsRepository.create({
-      type: 'registration',
+      type: 'manual_update',
       action: 'cancel',
       slotId: normalizeId(slotId),
       userId,
@@ -1292,6 +1409,18 @@ class DutyService extends BaseService {
       }
     }
 
+    // --- LOGGING ---
+    await dutyLogsRepository.create({
+      type: 'swap_transfer',
+      action: 'request',
+      requestId: normalizeId(created.id),
+      slotId: normalizeId(toSlotId),
+      userId: normalizeId(requesterUser.id),
+      performerId: normalizeId(requesterUser.id),
+      details: `Yêu cầu đổi/chuyển kíp: ${toSlot.shiftLabel}. ${fromSlotId ? `Từ kíp #${fromSlotId}` : 'Chuyển mới'}.`,
+      createdAt: new Date(),
+    });
+
     return created;
   }
 
@@ -1341,6 +1470,7 @@ class DutyService extends BaseService {
       });
 
       // --- LOGGING ---
+      const targetLabel = await this.getSlotLabel(targetSlot);
       await dutyLogsRepository.create({
         type: 'swap_transfer',
         action: 'transfer',
@@ -1348,14 +1478,14 @@ class DutyService extends BaseService {
         slotId: targetSlot.id,
         userId: req.requesterId,
         performerId: approverId,
-        details: `Điều chuyển nhân sự: ${req.requesterId}. Lộ trình: ${req.fromSlotId ? `Kíp #${req.fromSlotId}` : 'N/A'} -> ${targetSlot.shiftLabel} (#${targetSlot.id})`,
+        details: `Điều chuyển nhân sự: ${req.requesterId}. Lộ trình: ${req.fromSlotId ? `Kíp #${req.fromSlotId}` : 'N/A'} -> ${targetLabel} (#${targetSlot.id})`,
         createdAt: new Date(),
       });
 
       // Notifications
       await notificationService.notifyUser(req.requesterId as number, {
         title: 'Điều chuyển kíp trực thành công',
-        message: `Bạn đã được điều chuyển sang kíp trực: ${targetSlot.shiftLabel}.`,
+        message: `Bạn đã được điều chuyển sang kíp trực: ${targetLabel}.`,
         category: 'duty',
         type: 'swap',
         refId: req.id,
@@ -1368,6 +1498,18 @@ class DutyService extends BaseService {
         category: 'duty',
         type: 'swap',
         refId: req.id,
+      });
+
+      // --- LOGGING ---
+      await dutyLogsRepository.create({
+        type: 'swap_transfer',
+        action: 'rejected',
+        requestId: normalizeId(requestId),
+        slotId: normalizeId(req.dutySlotId),
+        userId: normalizeId(req.requesterId),
+        performerId: normalizeId(approverId),
+        details: `Từ chối yêu cầu đổi/chuyển kíp của nhân sự: ${req.requesterId}.`,
+        createdAt: new Date(),
       });
     }
 
@@ -1386,13 +1528,14 @@ class DutyService extends BaseService {
     const updated = await dutySlotsRepository.update(slotId, { attendedUserIds: userIds });
 
     // --- LOGGING ---
+    const label = await this.getSlotLabel(slot);
     await dutyLogsRepository.create({
       type: 'manual_update',
       action: 'system',
       slotId: normalizeId(slotId),
-      userId: performerId,
+      userId: normalizeId(performerId), // Admin responsible for this bulk action
       performerId: normalizeId(performerId),
-      details: `Điểm danh cho kíp: ${slot.shiftLabel}. Số người có mặt: ${userIds.length}`,
+      details: `Điểm danh cho kíp: ${label}. Danh sách người có mặt: ${userIds.join(', ')}`,
       createdAt: new Date(),
     });
 
@@ -1503,6 +1646,7 @@ class DutyService extends BaseService {
         });
 
         // --- LOGGING ---
+        const label = await this.getSlotLabel(slot);
         await dutyLogsRepository.create({
           type: 'leave',
           action: 'approved',
@@ -1510,14 +1654,14 @@ class DutyService extends BaseService {
           slotId: slot.id,
           userId: request.userId,
           performerId: normalizeId(approverId),
-          details: `Duyệt đơn nghỉ kíp: ${slot.shiftLabel || slot.id}`,
+          details: `Duyệt đơn nghỉ kíp: ${label || slot.id}`,
           createdAt: new Date(),
         });
 
         // Notify member
         await notificationService.notifyUser(request.userId as number, {
           title: 'Đơn xin nghỉ đã được duyệt',
-          message: `Yêu cầu xin nghỉ cho kíp ${slot.shiftLabel || ''} của bạn đã được chấp thuận.`,
+          message: `Yêu cầu xin nghỉ cho kíp ${label || ''} của bạn đã được chấp thuận.`,
           category: 'duty',
           type: 'leave',
           refId: request.id,
@@ -1604,7 +1748,6 @@ class DutyService extends BaseService {
     }
 
     const results: any[] = [];
-    const allSlots: any[] = [];
 
     // 3. Process concurrently in chunks (Batch Size: 15 days) to avoid DB overload
     // By grouping by date, we guarantee NO race conditions on dayRecords.
@@ -1612,51 +1755,37 @@ class DutyService extends BaseService {
     const totalDays = datesToInit.length;
     for (let i = 0; i < totalDays; i += BATCH_SIZE) {
       if (jobId) {
-        const percent = Math.floor(10 + (i / totalDays) * 70); // Tăng dần từ 10% đến 80%
+        const percent = Math.floor(10 + (i / totalDays) * 85); // 10% -> 95%
         socketService.emitToRoom(jobId, 'job_progress', {
           percent,
-          text: `Đang cấp phát Ca trực từ ngày ${dayjs(datesToInit[i]).format('DD/MM')}...`,
+          text: `Đang xử lý dữ liệu từ ngày ${dayjs(datesToInit[i]).format('DD/MM')}...`,
         });
       }
 
       const batchDates = datesToInit.slice(i, i + BATCH_SIZE);
       const batchPromises = batchDates.map(async (dateStr) => {
         const dIdx = (dayjs.utc(dateStr).day() + 6) % 7; // Mon=0...Sun=6
-        const localSlots: any[] = [];
         const localResults: any[] = [];
 
         for (const s of shifts as any[]) {
           const shiftDays = s.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
           if (shiftDays.includes(dIdx)) {
             // Sequentially add shifts for THIS specific day to prevent row overwrites
-            const { slots } = await this.addShiftToDay(dateStr, s.id, actorId, null, mode, true);
-            if (slots) localSlots.push(...slots);
+            await this.stampTemplateShift(dateStr, s.id, actorId, mode);
             localResults.push({ date: dateStr, shiftId: s.id });
           }
         }
-        return { localSlots, localResults };
+        return { localResults };
       });
 
       const chunkResults = await Promise.all(batchPromises);
       for (const res of chunkResults) {
-        allSlots.push(...res.localSlots);
         results.push(...res.localResults);
       }
     }
 
-    // 4. Batch Insert Slots
-    if (allSlots.length > 0) {
-      if (jobId) {
-        socketService.emitToRoom(jobId, 'job_progress', {
-          percent: 85,
-          text: `Đang chèn Atomic đồng loạt ${allSlots.length} Slots vào DB...`,
-        });
-      }
-      await dutySlotsRepository.insertMany(allSlots);
-    }
-
     if (jobId) {
-      socketService.emitToRoom(jobId, 'job_progress', { percent: 100, text: 'Xong! Hoàn tất chiến dịch lập lịch.' });
+      socketService.emitToRoom(jobId, 'job_progress', { percent: 100, text: 'Hoàn tất chiến dịch lập lịch.' });
     }
 
     return { success: true, results };
@@ -1664,137 +1793,33 @@ class DutyService extends BaseService {
 
   async addShiftToDay(
     date: string,
-    shiftId: number,
+    shiftTemplateId: number,
     actorId: Identifier,
     overrides: any = null,
     mode: string = 'kips',
     batchMode: boolean = false,
   ) {
-    const dayRecord = await this.findOrCreateDay(date, actorId);
-    const shiftTemplate = await dutyShiftsRepository.findById(shiftId);
-    if (!shiftTemplate) throw ApiError.notFound('Shift not found');
+    const d = toUTCMidnight(date);
+    const isoDate = d.toISOString();
 
-    let finalShiftId = normalizeId(shiftId);
-    let finalKipIds: number[] = [];
+    const actualShift = await this.stampTemplateShift(isoDate, shiftTemplateId, actorId);
+    if (!actualShift) throw ApiError.badRequest('Không thể tạo ca từ bản mẫu này');
 
-    // Deep Copy if it's from a template
-    if (shiftTemplate.templateId) {
-      const newShift = await dutyShiftsRepository.create({
-        name: overrides?.name || shiftTemplate.name,
-        startTime: overrides?.startTime || shiftTemplate.startTime,
-        endTime: overrides?.endTime || shiftTemplate.endTime,
-        order: overrides?.order !== undefined ? Number(overrides.order) : shiftTemplate.order,
-        description: 'INSTANCE',
-        templateId: null, // DISCONNECT
-        isSpecialEvent:
-          overrides?.isSpecialEvent !== undefined ? !!overrides.isSpecialEvent : !!shiftTemplate.isSpecialEvent,
-        daysOfWeek: shiftTemplate.daysOfWeek,
-      });
-      finalShiftId = newShift.id as number;
-
-      // ALSO CLONE KIPS for this shift
-      const kips = await dutyKipsRepository.findMany({ shiftId: normalizeId(shiftId) });
-      for (const k of kips) {
-        const newKip = await dutyKipsRepository.create({
-          shiftId: finalShiftId,
-          name: k.name,
-          coefficient: k.coefficient,
-          capacity: k.capacity,
-          startTime: k.startTime,
-          endTime: k.endTime,
-          order: k.order,
-          endPeriod: k.endPeriod,
-          daysOfWeek: k.daysOfWeek,
-          description: 'INSTANCE',
-        });
-        finalKipIds.push(newKip.id as number);
-      }
-    }
-
-    const existingIds = dayRecord.shiftTemplateIds || [];
-    if (!existingIds.map(String).includes(String(finalShiftId))) {
-      await dutyDaysRepository.update(dayRecord.id, {
-        shiftTemplateIds: [...existingIds, finalShiftId],
+    // If there are overrides (e.g. name, time), update the instance
+    if (overrides) {
+      await dutyShiftsRepository.update(actualShift.id, {
+        name: overrides.name || actualShift.name,
+        startTime: overrides.startTime || actualShift.startTime,
+        endTime: overrides.endTime || actualShift.endTime,
       });
     }
 
-    // IMPORTANT: Stamping must also create the Slot records in duty_slots or they won't appear as kips
-    const dayOfWeek = (dayjs.utc(date).day() + 6) % 7;
-    const weekStartIso = getWeekStartISO(date);
-
-    // Fetch newly created kips or original kips if already an instance
-    const effectiveShift = await dutyShiftsRepository.findById(finalShiftId);
-    const effectiveKips = await dutyKipsRepository.findMany({ shiftId: finalShiftId });
-
-    // Idempotency: Fetch existing slots for this shift instance on this day
-    const existingSlots = await dutySlotsRepository.findMany({
-      shiftDate: new Date(date).toISOString(),
-      shiftId: finalShiftId,
+    // Fetch slots created by stampTemplateShift
+    const kips = await dutyKipsRepository.findMany({ shiftId: actualShift.id });
+    const kipIds = kips.map((k) => k.id);
+    const slots = await dutySlotsRepository.findMany({
+      kipId: { $in: kipIds },
     });
-
-    const slots = [];
-
-    // 1. Shift-level Slot
-    if (mode === 'shifts') {
-      const hasShiftSlot = existingSlots.some((s: any) => s.kipId === null);
-      if (!hasShiftSlot && effectiveShift) {
-        slots.push(
-          this.buildSlotPayload(
-            {
-              weekStart: weekStartIso,
-              shiftDate: date,
-              dayId: dayRecord.id,
-              shiftId: finalShiftId,
-              kipId: null,
-              shiftLabel: effectiveShift.name,
-              startTime: effectiveShift.startTime,
-              endTime: effectiveShift.endTime,
-              capacity: 1,
-              order: effectiveShift.order,
-              isSpecialEvent: !!effectiveShift.isSpecialEvent,
-              note: 'Individual Shift Slot',
-            },
-            actorId,
-          ),
-        );
-      }
-    }
-
-    // 2. Kip-level Slots
-    if (mode === 'kips' || mode === 'all') {
-      for (const kip of effectiveKips) {
-        const kipDays = kip.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
-        if (!kipDays.includes(dayOfWeek)) continue;
-
-        const hasKipSlot = existingSlots.some((s: any) => normalizeId(s.kipId) === normalizeId(kip.id as number));
-        if (hasKipSlot) continue;
-
-        slots.push(
-          this.buildSlotPayload(
-            {
-              weekStart: weekStartIso,
-              shiftDate: date,
-              dayId: dayRecord.id,
-              shiftId: finalShiftId,
-              kipId: kip.id,
-              shiftLabel: `${effectiveShift?.name || ''} - ${kip.name}`,
-              startTime: kip.startTime || effectiveShift?.startTime,
-              endTime: kip.endTime || effectiveShift?.endTime,
-              capacity: kip.capacity,
-              order: kip.order,
-              endPeriod: kip.endPeriod,
-              isSpecialEvent: effectiveShift ? !!effectiveShift.isSpecialEvent : false,
-              note: kip.description || '',
-            },
-            actorId,
-          ),
-        );
-      }
-    }
-
-    if (slots.length > 0 && !batchMode) {
-      await dutySlotsRepository.insertMany(slots);
-    }
 
     return { success: true, slots };
   }
@@ -1874,27 +1899,71 @@ class DutyService extends BaseService {
     return { ...result, data };
   }
 
-  async removeShiftFromDay(date: string, shiftId: number) {
-    const d = toUTCMidnight(date);
-    const dayRecord = await dutyDaysRepository.findOne({ date: d.toISOString() });
-    if (!dayRecord) throw ApiError.notFound('Day not found');
+  async removeShiftFromDay(_date: string, shiftInstanceId: number) {
+    const shift = await dutyShiftsRepository.findById(shiftInstanceId);
+    if (!shift) throw ApiError.notFound('Ca thực tế không tồn tại');
 
-    const existingIds = dayRecord.shiftTemplateIds || [];
-    // Remove ONLY ONE instance of this shiftId to support duplicate boundaries
-    const index = existingIds.findIndex((id: any) => String(id) === String(shiftId));
+    // 1. Find all kips belonging to this shift
+    const kips = await dutyKipsRepository.findMany({ shiftId: shift.id });
 
-    if (index !== -1) {
-      const newIds = [...existingIds];
-      newIds.splice(index, 1);
-      await dutyDaysRepository.update(dayRecord.id, { shiftTemplateIds: newIds });
+    // 2. For each kip, delete its slots and associated requests, then delete the kip
+    for (const kip of kips) {
+      const kipSlots = await dutySlotsRepository.findMany({ kipId: kip.id });
+      const kipSlotIds = kipSlots.map((s) => s.id);
 
-      // Cascade: Delete all slots (both shift-level and kips) belonging to this shift instance on this day
-      // shiftId here is the instance ID
-      await dutySlotsRepository.deleteMany({
-        shiftDate: d.toISOString(),
-        shiftId: Number(shiftId),
-      });
+      if (kipSlotIds.length > 0) {
+        await dutySwapRequestsRepository.deleteMany({ dutySlotId: { $in: kipSlotIds } });
+        await dutyLeaveRequestsRepository.deleteMany({ slotId: { $in: kipSlotIds } });
+        await dutySlotsRepository.deleteMany({ kipId: kip.id });
+      }
+
+      await dutyKipsRepository.delete(kip.id);
     }
+
+    // 3. Delete any orphan slots directly linked to shiftId
+    const orphanSlots = await dutySlotsRepository.findMany({ shiftId: shift.id });
+    const orphanSlotIds = orphanSlots.map((s) => s.id);
+    if (orphanSlotIds.length > 0) {
+      await dutySwapRequestsRepository.deleteMany({ dutySlotId: { $in: orphanSlotIds } });
+      await dutyLeaveRequestsRepository.deleteMany({ slotId: { $in: orphanSlotIds } });
+      await dutySlotsRepository.deleteMany({ shiftId: shift.id });
+    }
+
+    // 4. Delete the shift instance itself
+    await dutyShiftsRepository.delete(shift.id);
+
+    return { success: true };
+  }
+
+  async updateActualShift(shiftId: number, data: GenericRecord) {
+    const shift = await dutyShiftsRepository.findById(shiftId);
+    if (!shift) throw ApiError.notFound('Ca thực tế không tồn tại');
+
+    const updated = await dutyShiftsRepository.update(shiftId, {
+      ...data,
+      updatedAt: new Date().toISOString(),
+    });
+
+    return updated;
+  }
+
+  async deleteActualKip(kipId: number) {
+    const kip = await dutyKipsRepository.findById(kipId);
+    if (!kip) throw ApiError.notFound('Kíp thực tế không tồn tại');
+
+    // 1. Find and delete all slots of this kip, including their associated requests
+    const slots = await dutySlotsRepository.findMany({ kipId: kip.id });
+    const slotIds = slots.map((s) => s.id);
+
+    if (slotIds.length > 0) {
+      await dutySwapRequestsRepository.deleteMany({ dutySlotId: { $in: slotIds } });
+      await dutyLeaveRequestsRepository.deleteMany({ slotId: { $in: slotIds } });
+      await dutySlotsRepository.deleteMany({ kipId: kip.id });
+    }
+
+    // 2. Delete the kip
+    await dutyKipsRepository.delete(kip.id);
+
     return { success: true };
   }
 

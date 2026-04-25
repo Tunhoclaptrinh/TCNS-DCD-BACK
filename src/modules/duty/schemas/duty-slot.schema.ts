@@ -9,7 +9,8 @@ export default defineSchema({
   },
   weekStart: {
     type: 'date',
-    required: true,
+    required: false,
+    description: 'Ngày bắt đầu tuần (ISO)',
   },
   shiftDate: {
     type: 'date',
@@ -20,26 +21,22 @@ export default defineSchema({
     type: 'number',
     required: false,
     foreignKey: 'duty_days',
-    description: 'ID Ngày trực (Parent)',
-  },
-  kipId: {
-    type: 'number',
-    required: false,
-    foreignKey: 'duty_kips',
-    description: 'ID Kíp (Template)',
   },
   shiftId: {
     type: 'number',
     required: false,
     foreignKey: 'duty_shifts',
-    description: 'ID Ca trực (Template)',
   },
+  kipId: {
+    type: 'number',
+    required: true,
+    foreignKey: 'duty_kips',
+    description: 'ID Kíp thực tế cha (Bắt buộc theo kế hoạch)',
+  },
+
   shiftLabel: {
     type: 'string',
-    required: true,
-    minLength: 1,
-    maxLength: 100,
-    description: 'Tên hiển thị (Kíp)',
+    required: false,
   },
   startTime: {
     type: 'string',
@@ -83,28 +80,6 @@ export default defineSchema({
     type: 'string',
     required: false,
     maxLength: 500,
-  },
-  order: {
-    type: 'number',
-    required: false,
-    description: 'Tiết bắt đầu',
-  },
-  endPeriod: {
-    type: 'number',
-    required: false,
-    description: 'Tiết kết thúc',
-  },
-  isSpecialEvent: {
-    type: 'boolean',
-    required: false,
-    default: false,
-    description: 'Đánh dấu là sự kiện đặc biệt',
-  },
-  slotStructure: {
-    type: 'array',
-    required: false,
-    default: [],
-    description: 'Cơ cấu nhân sự (Loại: {label, positions, slots})',
   },
   config: {
     type: 'object',
