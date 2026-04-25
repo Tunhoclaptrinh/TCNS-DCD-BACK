@@ -68,6 +68,19 @@ class UserController extends BaseController {
   });
 
   update = this.handle(async (req, res) => {
+    // Prevent self-update via admin endpoint if it contains sensitive fields
+    if (req.params.id === String(req.user.id)) {
+      const sensitiveFields = ['position', 'department', 'role', 'isActive', 'status'];
+      const hasSensitive = sensitiveFields.some((f) => req.body[f] !== undefined);
+      if (hasSensitive) {
+        throw ApiError.badRequest('Không thể tự cập nhật chức vụ hoặc trạng thái của bản thân');
+      }
+    } else {
+      // Hierarchy check for others
+      const targetUser = await this.service.findById(req.params.id);
+      userAccessService.assertAuthority(req.user, targetUser, req.body.position);
+    }
+
     const data = await userAvatarService.updateUserWithAvatar(
       req.params.id,
       req.body,
@@ -103,12 +116,19 @@ class UserController extends BaseController {
   });
 
   promoteUser = this.handle(async (req, res) => {
-    userAccessService.assertNotSelfAction(req.user, req.params.id, 'Cannot change your own role');
+    userAccessService.assertNotSelfAction(
+      req.user,
+      req.params.id,
+      'Không thể tự thay đổi vai trò hệ thống của chính mình',
+    );
 
     const { role, reason } = req.body;
     if (!role) {
       throw ApiError.badRequest('role is required');
     }
+
+    const targetUser = await this.service.findById(req.params.id);
+    userAccessService.assertAuthority(req.user, targetUser);
 
     const data = await this.service.promoteUser(req.params.id, role, reason, req.user.id, req.user.role);
     this.ok(res, data);
