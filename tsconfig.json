@@ -26,6 +26,6 @@
     "noImplicitAny": false,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["index.ts", "src/**/*.ts", "src/**/*.d.ts"],
+  "include": ["index.ts", "src/**/*.ts", "src/**/*.d.ts", "scratch/**/*.ts"],
   "exclude": ["dist", "node_modules"]
 }

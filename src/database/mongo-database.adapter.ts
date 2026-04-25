@@ -99,13 +99,18 @@ class MongoConnect implements DatabaseAdapter {
     if (text === 'true') return true;
     if (text === 'false') return false;
 
+    // Cast numeric strings to numbers
     if (/^-?\d+(\.\d+)?$/.test(text)) {
       return Number(text);
     }
 
-    const maybeDate = new Date(text);
-    if (!Number.isNaN(maybeDate.getTime())) {
-      return maybeDate;
+    // Only cast strings that look like explicit ISO dates (YYYY-MM-DD or full ISO 8601)
+    // This avoids false positives on random strings that Date.parse() happens to accept
+    if (/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$/.test(text)) {
+      const maybeDate = new Date(text);
+      if (!Number.isNaN(maybeDate.getTime())) {
+        return maybeDate;
+      }
     }
 
     return text;
@@ -216,39 +221,7 @@ class MongoConnect implements DatabaseAdapter {
     }
 
     if (options.filter) {
-      for (const [key, val] of Object.entries(options.filter)) {
-        if (key.startsWith('$')) {
-          query[key] = val;
-          continue;
-        }
-
-        const { field: rawField, suffix } = splitKeyBySuffix(key, FILTER_SUFFIXES);
-        const field = toCamelCase(rawField);
-
-        if (suffix === '_gte') {
-          query[field] = { ...query[field], $gte: this.castQueryValue(val) };
-        } else if (suffix === '_lte') {
-          query[field] = { ...query[field], $lte: this.castQueryValue(val) };
-        } else if (suffix === '_gt') {
-          query[field] = { ...query[field], $gt: this.castQueryValue(val) };
-        } else if (suffix === '_lt') {
-          query[field] = { ...query[field], $lt: this.castQueryValue(val) };
-        } else if (suffix === '_ne') {
-          query[field] = { $ne: this.castQueryValue(val) };
-        } else if (suffix === '_like' || suffix === '_ilike') {
-          query[field] = { $regex: val, $options: 'i' };
-        } else if (suffix === '_not_like') {
-          query[field] = { $not: { $regex: val, $options: 'i' } };
-        } else if (suffix === '_in') {
-          const values = Array.isArray(val) ? val : String(val).split(',');
-          query[field] = { $in: values.map((item) => this.castQueryValue(item)) };
-        } else if (suffix === '_nin') {
-          const values = Array.isArray(val) ? val : String(val).split(',');
-          query[field] = { $nin: values.map((item) => this.castQueryValue(item)) };
-        } else {
-          query[toCamelCase(key)] = this.castQueryValue(val);
-        }
-      }
+      Object.assign(query, this.buildMongoQuery(options.filter));
     }
 
     const page = parseInt(String(options.page || 1), 10) || 1;
@@ -307,7 +280,15 @@ class MongoConnect implements DatabaseAdapter {
   async findById(collection: string, id: Identifier) {
     const Model = this.getModel(collection);
     if (!Model) return null;
-    const doc = await Model.findOne({ id: parseInt(String(id), 10) }).lean();
+
+    const query: any = {};
+    if (/^\d+$/.test(String(id))) {
+      query.id = parseInt(String(id), 10);
+    } else {
+      query._id = id;
+    }
+
+    const doc = await Model.findOne(query).lean();
     return this.mapId(doc);
   }
 
@@ -316,7 +297,7 @@ class MongoConnect implements DatabaseAdapter {
     if (!doc) return doc;
     const result = { ...doc };
     if (result._id && !result.id) {
-      result.id = result._id; // Preserve as MongoDB ID if numeric ID missing
+      result.id = result._id.toString();
     }
     return result;
   }
@@ -353,7 +334,12 @@ class MongoConnect implements DatabaseAdapter {
         const values = Array.isArray(val) ? val : String(val).split(',');
         mongoQuery[field] = { $nin: values.map((item) => this.castQueryValue(item)) };
       } else {
-        mongoQuery[key] = this.castQueryValue(val);
+        // Special case for MongoDB internal _id
+        if (key === '_id') {
+          mongoQuery['_id'] = val;
+        } else {
+          mongoQuery[field] = this.castQueryValue(val);
+        }
       }
     }
     return mongoQuery;
@@ -400,7 +386,18 @@ class MongoConnect implements DatabaseAdapter {
     const Model = this.getModel(collection);
     if (!Model) return null;
 
-    const updated = await Model.findOneAndUpdate({ id: parseInt(String(id), 10) }, camelizeObjectKeys(data), {
+    const query: any = {};
+    if (/^\d+$/.test(String(id))) {
+      query.id = parseInt(String(id), 10);
+    } else {
+      query._id = id;
+    }
+
+    const updateData = camelizeObjectKeys(data);
+    delete updateData.id;
+    delete updateData._id;
+
+    const updated = await Model.findOneAndUpdate(query, updateData, {
       new: true,
       runValidators: true,
     });
@@ -411,7 +408,14 @@ class MongoConnect implements DatabaseAdapter {
     const Model = this.getModel(collection);
     if (!Model) return false;
 
-    const deleted = await Model.findOneAndDelete({ id: parseInt(String(id), 10) });
+    const query: any = {};
+    if (/^\d+$/.test(String(id))) {
+      query.id = parseInt(String(id), 10);
+    } else {
+      query._id = id;
+    }
+
+    const deleted = await Model.findOneAndDelete(query);
     return !!deleted;
   }
 
@@ -430,10 +434,11 @@ class MongoConnect implements DatabaseAdapter {
 
     try {
       const existing = await CounterModel.findOne({ _id: collection }).lean();
-      if (!existing) {
-        const lastItem = await Model.findOne().sort({ id: -1 }).select('id').lean();
-        const maxVal = lastItem ? parseInt(lastItem.id, 10) : 0;
-        await CounterModel.updateOne({ _id: collection }, { $setOnInsert: { seq: maxVal } }, { upsert: true });
+      const lastItem = await Model.findOne().sort({ id: -1 }).select('id').lean();
+      const maxVal = lastItem ? Number(lastItem.id) : 0;
+
+      if (!existing || (existing as any).seq < maxVal) {
+        await CounterModel.updateOne({ _id: collection }, { seq: maxVal }, { upsert: true });
       }
     } catch (err) {
       console.error(`Failed to initialize counter for ${collection}`, err);
@@ -460,8 +465,12 @@ class MongoConnect implements DatabaseAdapter {
       const counter = await CounterModel.findOneAndUpdate(
         { _id: collection },
         { $inc: { seq: reserveCount } },
-        { new: true },
+        { new: true, upsert: true },
       );
+
+      if (!counter) {
+        throw new Error(`Failed to generate or increment counter for ${collection}`);
+      }
 
       return (counter as any).seq - reserveCount + 1;
     } catch (error) {
@@ -501,15 +510,24 @@ class MongoConnect implements DatabaseAdapter {
     const Model = this.getModel(collection);
     if (!Model) return 0;
 
-    const result = await Model.deleteMany(query);
+    const mongooseQuery = this.buildMongoQuery(query);
+    const result = await Model.deleteMany(mongooseQuery);
     return result.deletedCount;
+  }
+
+  async count(collection: string, query: AnyRecord = {}) {
+    const Model = this.getModel(collection);
+    if (!Model) return 0;
+    const mongooseQuery = this.buildMongoQuery(query);
+    return await Model.countDocuments(mongooseQuery);
   }
 
   async exists(collection: string, query: AnyRecord) {
     const Model = this.getModel(collection);
     if (!Model) return false;
 
-    const doc = await Model.exists(camelizeObjectKeys(query));
+    const mongooseQuery = this.buildMongoQuery(query);
+    const doc = await Model.exists(mongooseQuery);
     return !!doc;
   }
 
@@ -518,13 +536,6 @@ class MongoConnect implements DatabaseAdapter {
     if (!Model) return [];
 
     return await Model.distinct(toCamelCase(field), camelizeObjectKeys(query));
-  }
-
-  async count(collection: string, query: AnyRecord = {}) {
-    const Model = this.getModel(collection);
-    if (!Model) return 0;
-
-    return await Model.countDocuments(camelizeObjectKeys(query));
   }
 
   async getSlice(collection: string, start: number, end: number) {

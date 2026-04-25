@@ -14,6 +14,9 @@ import dutyTemplates from '@modules/duty/schemas/duty-template.schema';
 import dutyTemplateAssignments from '@modules/duty/schemas/duty-template-assignment.schema';
 import dutyLogs from '@modules/duty/schemas/duty-log.schema';
 import dutySettings from '@modules/duty/schemas/duty-settings.schema';
+import dutyTemplateShifts from '@modules/duty/schemas/duty-template-shift.schema';
+import dutyTemplateKips from '@modules/duty/schemas/duty-template-kip.schema';
+
 import generations from '@modules/generations/schemas/generation.schema';
 import roles from '@modules/roles/schemas/role.schema';
 
@@ -28,7 +31,10 @@ const schemas: SchemaMap = {
   notification_settings: notificationSettings,
   files,
   duty_templates: dutyTemplates,
+  duty_template_shifts: dutyTemplateShifts,
+  duty_template_kips: dutyTemplateKips,
   duty_shifts: dutyShifts,
+
   duty_kips: dutyKips,
   duty_slots: dutySlots,
   duty_swap_requests: dutySwapRequests,
