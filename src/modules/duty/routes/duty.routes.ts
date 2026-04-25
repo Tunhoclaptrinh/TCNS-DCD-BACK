@@ -12,6 +12,10 @@ router.get('/stats/summary', requirePermission('duty:view'), dutyController.getS
 
 // Slots
 router.post('/slots', requirePermission('duty:manage'), dutyController.createSlot);
+router.post('/shifts', requirePermission('duty:manage'), dutyController.createActualShift);
+router.post('/kips', requirePermission('duty:manage'), dutyController.createActualKip);
+router.delete('/kips/:id', requirePermission('duty:manage'), dutyController.deleteActualKip);
+
 router.put('/slots/:id', requirePermission('duty:manage'), dutyController.updateSlot);
 router.delete('/slots/:id', requirePermission('duty:manage'), dutyController.deleteSlot);
 router.patch('/slots/:id/register', requirePermission('duty:register'), dutyController.registerToSlot);

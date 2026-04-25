@@ -5,8 +5,12 @@ class DutyShiftsRepository extends BaseRepository {
     super('duty_shifts');
   }
 
-  async findByTemplateId(templateId: string | number | null) {
-    return await this.findMany({ templateId });
+  async findByDayId(dayId: string | number) {
+    return await this.findMany({ dayId });
+  }
+
+  async findByDate(date: string) {
+    return await this.findMany({ date });
   }
 }
 

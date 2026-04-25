@@ -129,10 +129,28 @@ function startKeepAlive() {
 }
 
 // ==================== START ====================
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import { socketService } from './services/socket.service';
+
 async function bootstrap() {
   await initDatabase();
 
-  app.listen(PORT, () => {
+  const httpServer = createServer(app);
+
+  // Initialize Socket.IO with CORS
+  const io = new Server(httpServer, {
+    cors: {
+      origin: process.env.CORS_ORIGIN
+        ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim().replace(/\/$/, ''))
+        : '*',
+      credentials: Boolean(process.env.CORS_CREDENTIALS) || true,
+    },
+  });
+
+  socketService.init(io);
+
+  httpServer.listen(PORT, () => {
     const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
     logger.success(`Server is running at http://localhost:${PORT}`, 'SERVER');
     logger.info(`API Docs: ${baseUrl}/api-docs`, 'SERVER');
