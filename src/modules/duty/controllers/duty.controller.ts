@@ -20,6 +20,16 @@ class DutyController extends BaseController {
     this.created(res, data);
   });
 
+  createActualShift = this.handle(async (req, res) => {
+    const data = await dutyService.createActualShift(req.body, req.user.id);
+    this.created(res, data);
+  });
+
+  createActualKip = this.handle(async (req, res) => {
+    const data = await dutyService.createActualKip(req.body, req.user.id);
+    this.created(res, data);
+  });
+
   updateSlot = this.handle(async (req, res) => {
     const data = await dutyService.updateSlot(req.params.id, req.body, req.user.id);
     this.ok(res, data);
@@ -27,6 +37,11 @@ class DutyController extends BaseController {
 
   deleteSlot = this.handle(async (req, res) => {
     const data = await dutyService.deleteSlot(req.params.id, req.user.id);
+    this.ok(res, data);
+  });
+
+  deleteActualKip = this.handle(async (req, res) => {
+    const data = await dutyService.deleteActualKip(parseInt(req.params.id, 10));
     this.ok(res, data);
   });
 
@@ -194,8 +209,8 @@ class DutyController extends BaseController {
 
   // Advanced Operations
   generateRangeSlots = this.handle(async (req, res) => {
-    const { startDate, endDate, templateId, mode } = req.body;
-    const data = await dutyService.generateRangeSlots(startDate, endDate, req.user.id, templateId, mode);
+    const { startDate, endDate, templateId, mode, jobId } = req.body;
+    const data = await dutyService.generateRangeSlots(startDate, endDate, req.user.id, templateId, mode, jobId);
     this.ok(res, data);
   });
 
