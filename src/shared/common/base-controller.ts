@@ -21,14 +21,16 @@ class BaseController {
 
   protected ok(res: Response, data: any) {
     if (typeof data === 'object' && data !== null && typeof data.success === 'boolean') {
-      return res.json(data);
+      const statusCode = data.statusCode || 200;
+      return res.status(statusCode).json(data);
     }
     return res.json({ success: true, data });
   }
 
   protected created(res: Response, data: any) {
     if (typeof data === 'object' && data !== null && typeof data.success === 'boolean') {
-      return res.status(201).json(data);
+      const statusCode = data.statusCode || 201;
+      return res.status(statusCode).json(data);
     }
     return res.status(201).json({ success: true, data });
   }
