@@ -17,12 +17,12 @@ export default defineSchema({
   },
   lastName: {
     type: 'string',
-    required: false,
+    required: true,
     label: 'Họ và tên đệm',
   },
   firstName: {
     type: 'string',
-    required: false,
+    required: true,
     label: 'Tên',
   },
   gender: {
@@ -53,7 +53,7 @@ export default defineSchema({
   },
   position: {
     type: 'enum',
-    enum: ['ctc', 'tv', 'tvb', 'pb', 'tb', 'dt'],
+    enum: ['ctv', 'tv', 'tvb', 'pb', 'tb', 'ctc', 'dt'],
     required: false,
     label: 'Chức vụ',
   },
@@ -119,7 +119,7 @@ export default defineSchema({
   },
   generationId: {
     type: 'number',
-    required: false,
+    required: true,
     foreignKey: 'generations',
     label: 'ID Khóa/Thế hệ',
   },

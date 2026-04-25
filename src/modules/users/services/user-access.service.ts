@@ -5,12 +5,13 @@ import db from '@database';
 const CAN_READ_OTHERS_ROLES = new Set(['admin', 'staff', 'researcher']);
 
 const POSITION_LEVELS: Record<string, number> = {
-  ctc: 0, // Cộng tác viên
-  tv: 1, // Thành viên
+  ctv: 0, // Cộng tác viên
+  tv: 1, // Thành viên thường
   tvb: 2, // Thành viên ban
   pb: 3, // Phó ban
   tb: 4, // Trưởng ban
-  dt: 5, // Đội trưởng
+  ctc: 5, // Chủ tịch
+  dt: 6, // Đội trưởng
 };
 
 class UserAccessService {
