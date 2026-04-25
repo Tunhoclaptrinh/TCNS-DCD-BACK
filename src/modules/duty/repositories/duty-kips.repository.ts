@@ -12,6 +12,10 @@ class DutyKipsRepository extends BaseRepository {
   async deleteByShiftId(shiftId: string | number) {
     return await this.deleteMany({ shiftId });
   }
+
+  async findByDate(date: string) {
+    return await this.findMany({ date });
+  }
 }
 
 export default new DutyKipsRepository();

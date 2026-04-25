@@ -11,20 +11,26 @@ export default defineSchema({
     type: 'number',
     required: true,
     foreignKey: 'duty_shifts',
-    description: 'ID Ca cha',
+    description: 'ID Ca thực tế cha',
   },
+  date: {
+    type: 'date',
+    required: true,
+    description: 'Ngày trực cụ thể (ISO Date)',
+  },
+
   name: {
     type: 'string',
     required: true,
     minLength: 1,
     maxLength: 100,
-    description: 'Tên kíp (e.g., Kíp 1, Kíp 2)',
+    description: 'Tên kíp thực tế (e.g., Kíp 1)',
   },
   coefficient: {
     type: 'number',
     required: true,
     default: 1,
-    description: 'Số kíp được tính (e.g., 0.5, 1)',
+    description: 'Số kíp được tính',
   },
   capacity: {
     type: 'number',
@@ -36,47 +42,47 @@ export default defineSchema({
   startTime: {
     type: 'string',
     required: false,
-    description: 'Giờ bắt đầu cụ thể nếu khác Ca (HH:mm)',
+    description: 'Giờ bắt đầu cụ thể (HH:mm)',
   },
   endTime: {
     type: 'string',
     required: false,
-    description: 'Giờ kết thúc cụ thể nếu khác Ca (HH:mm)',
+    description: 'Giờ kết thúc cụ thể (HH:mm)',
   },
-  daysOfWeek: {
-    type: 'array',
-    items: { type: 'number' },
+  fromTemplateKipId: {
+    type: 'number',
     required: false,
-    default: [0, 1, 2, 3, 4, 5, 6],
-    description: 'Thứ trong tuần áp dụng (0: Thứ 2, ..., 6: Chủ Nhật)',
+    foreignKey: 'duty_template_kips',
+    description: 'ID Kíp bản mẫu gốc (nếu có)',
+  },
+  status: {
+    type: 'string',
+    required: false,
+    default: 'open',
+    description: 'Trạng thái kíp (open, locked)',
+  },
+  note: {
+    type: 'string',
+    required: false,
+    maxLength: 500,
+    description: 'Ghi chú cụ thể cho kíp này',
   },
   order: {
     type: 'number',
     required: false,
     default: 0,
-    description: 'Tiết bắt đầu',
-  },
-  endPeriod: {
-    type: 'number',
-    required: false,
-    description: 'Tiết kết thúc (để tạo đoạn dải)',
-  },
-  description: {
-    type: 'string',
-    required: false,
-    maxLength: 500,
-    description: 'Ghi chú/Địa điểm mặc định',
+    description: 'Thứ tự hiển thị',
   },
   slotStructure: {
     type: 'array',
     required: false,
     default: [],
-    description: 'Cơ cấu nhân sự (Loại: {label, positions, slots})',
+    description: 'Cơ cấu nhân sự thực tế',
   },
   config: {
     type: 'object',
     required: false,
     default: {},
-    description: 'Cấu hình nâng cao (Privacy, visibility, etc.)',
+    description: 'Cấu hình cụ thể',
   },
 });

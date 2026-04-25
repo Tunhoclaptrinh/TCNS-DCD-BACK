@@ -26,13 +26,6 @@ export default defineSchema({
     default: 'open',
     description: 'Trạng thái khóa/mở cho toàn bộ ngày',
   },
-  shiftTemplateIds: {
-    type: 'array',
-    items: { type: 'number' },
-    required: false,
-    default: [],
-    description: 'Danh sách các ID Ca Bản mẫu được áp dụng cho ngày này',
-  },
   metadata: {
     type: 'object',
     required: false,

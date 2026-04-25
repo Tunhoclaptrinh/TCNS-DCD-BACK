@@ -7,45 +7,62 @@ export default defineSchema({
     unique: true,
     description: 'ID định danh duy nhất (Numeric)',
   },
-  templateId: {
+  dayId: {
     type: 'number',
-    required: false,
-    foreignKey: 'duty_templates',
-    description: 'ID Bản mẫu cha',
+    required: true,
+    foreignKey: 'duty_days',
+    description: 'ID Ngày trực thực tế',
   },
+  date: {
+    type: 'date',
+    required: true,
+    description: 'Ngày trực cụ thể (ISO Date)',
+  },
+
   name: {
     type: 'string',
     required: true,
     minLength: 1,
     maxLength: 100,
-    description: 'Tên ca (e.g., Ca Sáng, Ca Chiều)',
+    description: 'Tên ca thực tế (e.g., Ca Sáng)',
   },
   startTime: {
     type: 'string',
     required: true,
-    description: 'Giờ bắt đầu mặc định (HH:mm)',
+    description: 'Giờ bắt đầu (HH:mm)',
   },
   endTime: {
     type: 'string',
     required: true,
-    description: 'Giờ kết thúc mặc định (HH:mm)',
+    description: 'Giờ kết thúc (HH:mm)',
   },
-  description: {
+  status: {
+    type: 'string',
+    required: false,
+    default: 'open',
+    description: 'Trạng thái ca (open, locked)',
+  },
+  fromTemplateShiftId: {
+    type: 'number',
+    required: false,
+    foreignKey: 'duty_template_shifts',
+    description: 'ID Ca bản mẫu gốc (nếu có)',
+  },
+  createdBy: {
+    type: 'number',
+    required: false,
+    foreignKey: 'users',
+    description: 'Người tạo ca này',
+  },
+  note: {
     type: 'string',
     required: false,
     maxLength: 500,
-  },
-  daysOfWeek: {
-    type: 'array',
-    items: { type: 'number' },
-    required: false,
-    default: [0, 1, 2, 3, 4, 5, 6],
-    description: 'Thứ trong tuần áp dụng (0: Thứ 2, ..., 6: Chủ Nhật)',
   },
   isSpecialEvent: {
     type: 'boolean',
     required: false,
     default: false,
-    description: 'Đánh dấu là sự kiện đặc biệt (lễ hội)',
+    description: 'Đánh dấu là sự kiện đặc biệt',
   },
 });
