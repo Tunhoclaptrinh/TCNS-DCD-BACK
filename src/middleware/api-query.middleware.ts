@@ -109,8 +109,8 @@ export const parseApiQuery = (req: Request, res: Response, next: NextFunction) =
     return sendInvalidPaginationResponse(res, 'Invalid page number. Must be a positive integer.');
   }
 
-  if (rawLimit !== undefined && (!parsedLimit || parsedLimit < 1 || parsedLimit > 100)) {
-    return sendInvalidPaginationResponse(res, 'Invalid limit. Must be between 1 and 100.');
+  if (rawLimit !== undefined && (!parsedLimit || parsedLimit < 1 || parsedLimit > 1000)) {
+    return sendInvalidPaginationResponse(res, 'Invalid limit. Must be between 1 and 1000.');
   }
 
   req.parsedQuery = {
