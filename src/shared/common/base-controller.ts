@@ -61,6 +61,11 @@ class BaseController {
     this.ok(res, data);
   });
 
+  patch = this.handle(async (req: Request, res: Response) => {
+    const data = await this.requireService().patch(req.params.id, req.body);
+    this.ok(res, data);
+  });
+
   delete = this.handle(async (req: Request, res: Response) => {
     const result = await this.requireService().delete(req.params.id);
     this.ok(res, result);
