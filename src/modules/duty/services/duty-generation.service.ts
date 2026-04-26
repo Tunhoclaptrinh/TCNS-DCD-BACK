@@ -29,6 +29,7 @@ class DutyGenerationService {
         endTime: ts.endTime,
         isSpecialEvent: !!ts.isSpecialEvent,
         fromTemplateShiftId: ts.id,
+        slotStructure: ts.slotStructure || [],
         status: 'open',
         createdBy: normalizeId(actorId),
       });
@@ -70,6 +71,7 @@ class DutyGenerationService {
           startTime: ak.startTime,
           endTime: ak.endTime,
           capacity: ak.capacity,
+          slotStructure: ak.slotStructure || [],
           status: 'open',
           createdBy: normalizeId(actorId),
           note: 'INSTANCE',

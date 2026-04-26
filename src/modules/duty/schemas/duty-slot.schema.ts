@@ -87,4 +87,10 @@ export default defineSchema({
     default: {},
     description: 'Cấu hình nâng cao (Privacy, visibility, etc.)',
   },
+  slotStructure: {
+    type: 'array',
+    required: false,
+    default: [],
+    description: 'Cơ cấu nhân sự thực tế cho kíp này',
+  },
 });

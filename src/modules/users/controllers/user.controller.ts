@@ -2,6 +2,7 @@ import { sanitizeUser } from '@utils/helpers';
 import userService from '@modules/users/services/user.service';
 import userAvatarService from '@modules/users/services/user-avatar.service';
 import userAccessService from '@modules/users/services/user-access.service';
+import dutyService from '@modules/duty/services/duty.service';
 import BaseController from '@shared/common/base-controller';
 import ApiError from '@utils/api-error';
 import type { AnyRecord } from '@app-types/common';
@@ -102,6 +103,11 @@ class UserController extends BaseController {
 
   getUserStats = this.handle(async (_req, res) => {
     const data = await this.service.getUserStats();
+    this.ok(res, data);
+  });
+
+  getMeStats = this.handle(async (req, res) => {
+    const data = await dutyService.getUserStats(req.user.id);
     this.ok(res, data);
   });
 

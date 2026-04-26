@@ -65,4 +65,10 @@ export default defineSchema({
     default: false,
     description: 'Đánh dấu là sự kiện đặc biệt',
   },
+  slotStructure: {
+    type: 'array',
+    required: false,
+    default: [],
+    description: 'Cơ cấu nhân sự thực tế (kế thừa từ bản mẫu)',
+  },
 });

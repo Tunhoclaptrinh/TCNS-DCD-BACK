@@ -135,6 +135,7 @@ class DutyService extends BaseService {
   markAttendance = (slotId: Identifier, userIds: Identifier[], performerId: Identifier) =>
     dutySlotsService.markAttendance(slotId, userIds, performerId);
   getStats = () => dutySlotsService.getStats();
+  getUserStats = (userId: Identifier) => dutySlotsService.getUserStats(userId);
 
   // ==================== SWAP REQUESTS ====================
   requestSwap = (payload: GenericRecord, requesterUser: GenericRecord) =>

@@ -9,6 +9,7 @@ const router = express.Router();
 
 // === USER PROFILE ROUTES (Must be before :id routes) ===
 router.put('/profile', requireAuth, userController.getAvatarUploadMiddleware(), userController.updateProfile);
+router.get('/me/stats', requireAuth, userController.getMeStats);
 
 // === BASE & SEARCH ROUTES ===
 router.get('/search', requireAuth, userController.search);

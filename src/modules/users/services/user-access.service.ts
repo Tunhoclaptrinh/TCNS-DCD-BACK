@@ -27,13 +27,30 @@ class UserAccessService {
     if (!user) return [];
 
     // 1. Get permissions from all roles
-    const roleIds = Array.isArray(user.roleIds) ? user.roleIds : [];
+    let roleIds = Array.isArray(user.roleIds) ? user.roleIds : [];
+
+    // Backward compatibility: If no roleIds but has legacy role string
+    if (roleIds.length === 0 && user.role) {
+      const legacyRole = await db.findOne('roles', { key: user.role });
+      if (legacyRole) {
+        roleIds = [legacyRole.id];
+      }
+    }
+
     const roles = await db.findMany('roles', { id_in: roleIds });
 
     const permissionSet = new Set<string>();
     roles.forEach((role: any) => {
       if (Array.isArray(role.permissions)) {
-        role.permissions.forEach((p: string) => permissionSet.add(p));
+        role.permissions.forEach((p: string) => {
+          if (p === '*') {
+            // If it's a super-admin role, we might want to expand all permissions
+            // or just keep it as '*' and handle it in rbac middleware.
+            permissionSet.add('*');
+          } else {
+            permissionSet.add(p);
+          }
+        });
       }
     });
 
@@ -45,10 +62,10 @@ class UserAccessService {
     const denied = user.customPermissions?.denied || [];
     denied.forEach((p: string) => permissionSet.delete(p));
 
-    // Special case for legacy 'admin' role if needed
-    if (user.role === 'admin') {
-      // In a real system, you might want to auto-grant all permissions to admins
-      // But for now, we rely on the seeded 'admin' role in roleIds.
+    // Super-admin logic: if has '*', add all available permissions
+    if (permissionSet.has('*')) {
+      const allPermissions = await db.findAll('permissions');
+      allPermissions.forEach((p: any) => permissionSet.add(p.key));
     }
 
     return Array.from(permissionSet);
