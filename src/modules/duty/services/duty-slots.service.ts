@@ -288,9 +288,56 @@ class DutySlotsService {
 
     const patch: GenericRecord = { ...payload, updatedAt: new Date().toISOString() };
     if (payload.shiftDate) patch.shiftDate = toUTCMidnight(payload.shiftDate);
-    if (payload.assignedUserIds) patch.assignedUserIds = normalizeIdList(payload.assignedUserIds);
+
+    const oldAssignedIds = normalizeIdList(slot.assignedUserIds || []).map(Number);
+    if (payload.assignedUserIds) {
+      const newIds = normalizeIdList(payload.assignedUserIds).map(Number);
+      patch.assignedUserIds = newIds;
+      // Mark these users as Admin-Assigned in config
+      patch.config = {
+        ...(slot.config || {}),
+        ...(payload.config || {}),
+        adminAssignedUserIds: newIds,
+      };
+    }
 
     const updated = await dutySlotsRepository.update(slotId, patch);
+    const newAssignedIds = normalizeIdList(updated.assignedUserIds || []).map(Number);
+
+    // Notification Logic
+    const addedUsers = newAssignedIds.filter((id) => !oldAssignedIds.includes(id));
+    const removedUsers = oldAssignedIds.filter((id) => !newAssignedIds.includes(id));
+    const slotLabel = await this.getSlotLabel(updated);
+    const dateStr = new Date(updated.shiftDate).toLocaleDateString('vi-VN');
+
+    if (addedUsers.length > 0) {
+      console.log(`[Duty] Notifying ${addedUsers.length} added users for slot ${slotId}`);
+      await Promise.all(
+        addedUsers.map((userId) =>
+          notificationService.notifyUser(userId, {
+            title: 'Thông báo phân công trực',
+            message: `Admin đã phân công bạn trực kíp: ${slotLabel} ngày ${dateStr}`,
+            category: 'shift',
+            type: 'shift',
+            refId: updated.id,
+          }),
+        ),
+      );
+    }
+
+    if (removedUsers.length > 0) {
+      await Promise.all(
+        removedUsers.map((userId) =>
+          notificationService.notifyUser(userId, {
+            title: 'Thay đổi lịch trực',
+            message: `Bạn đã được rút tên khỏi kíp: ${slotLabel} ngày ${dateStr}`,
+            category: 'shift',
+            type: 'shift',
+            refId: updated.id,
+          }),
+        ),
+      );
+    }
 
     if (slot.kipId) {
       const kipUpdate: GenericRecord = { updatedAt: new Date().toISOString() };
@@ -431,10 +478,15 @@ class DutySlotsService {
 
     const settings = await dutySettingsService.getSettings();
     const isAdmin = typeof user === 'object' && (user as any).role === 'admin';
+    const isStaff = typeof user === 'object' && (user as any).role === 'staff';
     const isFull = assigned.length >= (slot.capacity || 1);
 
-    if (!settings.allowUnregisterWhenFull && isFull && !isAdmin) {
-      throw ApiError.badRequest('Kíp đã đủ người, không thể tự ý hủy. Hãy liên hệ Admin.');
+    if (slot.status === 'locked' && !isAdmin && !isStaff) {
+      throw ApiError.badRequest('Kíp trực đã bị khóa, không thể tự ý hủy. Hãy liên hệ Admin.');
+    }
+
+    if (!settings.allowUnregisterWhenFull && isFull && !isAdmin && !isStaff) {
+      throw ApiError.badRequest('Kíp đã đủ người, không thể tự ý hủy theo quy định. Hãy liên hệ Admin.');
     }
 
     const updated = await dutySlotsRepository.update(slot.id, {
@@ -518,6 +570,55 @@ class DutySlotsService {
         swapPending: swaps.filter((r: any) => r.status === 'pending').length,
         swapApproved: swaps.filter((r: any) => r.status === 'approved').length,
       },
+    };
+  }
+
+  async getUserStats(userId: Identifier) {
+    const id = normalizeId(userId);
+    const [slots, leaves, swaps] = await Promise.all([
+      dutySlotsRepository.findMany({ assignedUserIds_contains: id }),
+      dutyLeaveRequestsRepository.findMany({ userId: id }),
+      dutySwapRequestsRepository.findMany({ requesterId: id }),
+    ]);
+
+    // Calculate total hours from attended slots
+    // We need to fetch kips for duration info
+    const kipIds = normalizeIdList(slots.map((s: any) => s.kipId).filter(Boolean));
+    const kips = await dutyKipsRepository.findMany({ id_in: kipIds });
+    const kipMap = new Map(kips.map((k: any) => [normalizeId(k.id), k]));
+
+    let totalMinutes = 0;
+    let attendedCount = 0;
+    let points = 0;
+
+    slots.forEach((slot: any) => {
+      const isAttended = normalizeIdList(slot.attendedUserIds || []).includes(id);
+      if (isAttended) {
+        attendedCount++;
+        const kip = kipMap.get(normalizeId(slot.kipId));
+        if (kip) {
+          const startTime = slot.startTime || kip.startTime;
+          const endTime = slot.endTime || kip.endTime;
+          if (startTime && endTime) {
+            const [sh, sm] = startTime.split(':').map(Number);
+            const [eh, em] = endTime.split(':').map(Number);
+            let diff = eh * 60 + em - (sh * 60 + sm);
+            if (diff < 0) diff += 24 * 60;
+            totalMinutes += diff;
+          }
+          points += (kip.coefficient || 1) * 10; // Basic point formula
+        }
+      }
+    });
+
+    return {
+      totalHours: Math.round((totalMinutes / 60) * 10) / 10,
+      attendedCount,
+      points,
+      pendingRequests:
+        leaves.filter((r: any) => r.status === 'pending').length +
+        swaps.filter((r: any) => r.status === 'pending').length,
+      upcomingCount: slots.filter((s: any) => dayjs(s.shiftDate).isAfter(dayjs())).length,
     };
   }
 }

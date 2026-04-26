@@ -49,9 +49,12 @@ const PERMISSIONS = [
   { key: 'users:delete', name: 'Xóa vĩnh viễn tài khoản', module: 'users' },
 
   // Lịch trực
+  { key: 'duty:view', name: 'Xem lịch trực cơ bản', module: 'duty' },
   { key: 'duty:view:all', name: 'Xem lịch trực toàn đội', module: 'duty' },
   { key: 'duty:register:self', name: 'Đăng ký / Hủy kíp cá nhân', module: 'duty' },
-  { key: 'duty:register:proxy', name: 'Đăng ký / Hủy kíp hộ', module: 'duty' },
+  { key: 'duty:register', name: 'Đăng ký kíp cho thành viên', module: 'duty' },
+  { key: 'duty:register:proxy', name: 'Đăng ký / Hủy kíp hộ (Nâng cao)', module: 'duty' },
+  { key: 'duty:update', name: 'Cập nhật trạng thái kíp trực', module: 'duty' },
   { key: 'duty:manage:template', name: 'Tạo / Sửa Bản mẫu (Template)', module: 'duty' },
   { key: 'duty:manage:clone', name: 'Dập khuôn lịch tuần', module: 'duty' },
   { key: 'duty:manage:force', name: 'Gắn kíp thủ công (Force assign)', module: 'duty' },
@@ -110,9 +113,12 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'users:expel',
     'users:import',
     'users:export',
+    'duty:view',
     'duty:view:all',
     'duty:register:self',
+    'duty:register',
     'duty:register:proxy',
+    'duty:update',
     'duty:manage:template',
     'duty:manage:clone',
     'duty:manage:force',
@@ -158,9 +164,12 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'users:expel',
     'users:import',
     'users:export',
+    'duty:view',
     'duty:view:all',
     'duty:register:self',
+    'duty:register',
     'duty:register:proxy',
+    'duty:update',
     'duty:manage:template',
     'duty:manage:clone',
     'duty:manage:force',
@@ -206,9 +215,12 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'users:expel',
     'users:import',
     'users:export',
+    'duty:view',
     'duty:view:all',
     'duty:register:self',
+    'duty:register',
     'duty:register:proxy',
+    'duty:update',
     'duty:manage:template',
     'duty:manage:clone',
     'duty:manage:force',
@@ -247,8 +259,10 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'users:read:self',
     'users:update:profile',
     'users:export',
+    'duty:view',
     'duty:view:all',
     'duty:register:self',
+    'duty:update',
     'duty:attendance',
     'reward:create',
     'reward:approve',
@@ -269,8 +283,10 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'users:read:self',
     'users:update:profile',
     'users:export',
+    'duty:view',
     'duty:view:all',
     'duty:register:self',
+    'duty:update',
     'duty:attendance',
     'reward:create',
     'reward:approve',
@@ -288,8 +304,10 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
   member: [
     'users:read:self',
     'users:update:profile',
+    'duty:view',
     'duty:view:all',
     'duty:register:self',
+    'duty:update',
     'reward:history:self',
     'feedback:send',
     'file:upload',
@@ -297,8 +315,10 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
   ctv: [
     'users:read:self',
     'users:update:profile',
+    'duty:view',
     'duty:view:all',
     'duty:register:self',
+    'duty:update',
     'reward:history:self',
     'feedback:send',
     'file:upload',
@@ -320,6 +340,17 @@ async function seed() {
     // 2. Insert Permissions
     console.log(`Inserting ${PERMISSIONS.length} permissions...`);
     await db.insertMany('permissions', PERMISSIONS);
+
+    // 3. Clear user-specific overrides to prevent "weird" UI behavior
+    console.log('Resetting custom permissions for all users...');
+    try {
+      const mongoose = require('mongoose');
+      if (mongoose.models['users']) {
+        await mongoose.models['users'].updateMany({}, { $unset: { customPermissions: 1 } });
+      }
+    } catch (e) {
+      console.warn('Could not reset custom permissions:', e.message);
+    }
 
     // 3. Insert Roles with mapped permissions
     console.log(`Inserting ${ROLES.length} roles...`);

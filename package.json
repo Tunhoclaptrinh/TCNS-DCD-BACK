@@ -8,6 +8,7 @@
     "dev": "npx kill-port 3000 && tsx watch index.ts",
     "duty:clear": "tsx ./src/scripts/clear-duty.ts",
     "duty:seed": "tsx ./src/scripts/seed-duty.ts",
+    "seed:rbac": "tsx ./src/scripts/seed-rbac.ts",
     "build": "tsc && tsc-alias",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
