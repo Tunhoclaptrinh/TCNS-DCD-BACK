@@ -131,7 +131,7 @@ function startKeepAlive() {
 // ==================== START ====================
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { socketService } from './services/socket.service';
+import { socketService } from './shared/socket/socket.service';
 
 async function bootstrap() {
   await initDatabase();
