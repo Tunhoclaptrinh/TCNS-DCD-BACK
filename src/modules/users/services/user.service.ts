@@ -8,6 +8,7 @@ import { sanitizeUser, hashPassword } from '@utils/helpers';
 import ApiError from '@utils/api-error';
 import userSchema from '@modules/users/schemas/user.schema';
 import notificationService from '@modules/notifications/services/notification.service';
+import auditLogsService from '@modules/audit-logs/services/audit-logs.service';
 import { getSuggestedRoles } from '../utils/user-mapping.utils';
 import type { AnyRecord, Identifier } from '@app-types/common';
 
@@ -97,10 +98,62 @@ class UserService extends BaseService {
     return Number.isNaN(parsedUserId) ? userId : parsedUserId;
   }
 
+  extractActorId(actor?: AnyRecord | Identifier) {
+    if (actor && typeof actor === 'object') {
+      return actor.id as Identifier;
+    }
+
+    return actor;
+  }
+
+  toAuditUserId(actor?: AnyRecord | Identifier, fallback?: Identifier) {
+    const candidate = this.extractActorId(actor) ?? fallback;
+    const normalized = Number(candidate);
+    return Number.isFinite(normalized) ? normalized : 0;
+  }
+
+  getUserDisplayName(user: AnyRecord = {}) {
+    return String(user.name || user.email || user.studentId || user.id || 'unknown');
+  }
+
+  async create(data: AnyRecord, performer?: AnyRecord | Identifier) {
+    const result = await super.create(data);
+
+    if (result.success && result.data) {
+      const createdUser = result.data as AnyRecord;
+      await auditLogsService.log({
+        userId: this.toAuditUserId(performer, createdUser.id as Identifier),
+        action: 'THÊM NGƯỜI DÙNG',
+        module: 'USERS',
+        description: `Tạo người dùng ${this.getUserDisplayName(createdUser)}`,
+        resourceId: String(createdUser.id),
+      });
+    }
+
+    return result;
+  }
+
+  async update(id: Identifier, data: AnyRecord, performer?: AnyRecord | Identifier) {
+    const result = await super.update(id, data);
+
+    if (result.success && result.data) {
+      const updatedUser = result.data as AnyRecord;
+      await auditLogsService.log({
+        userId: this.toAuditUserId(performer, updatedUser.id as Identifier),
+        action: 'CẬP NHẬT NGƯỜI DÙNG',
+        module: 'USERS',
+        description: `Cập nhật người dùng ${this.getUserDisplayName(updatedUser)}`,
+        resourceId: String(updatedUser.id),
+      });
+    }
+
+    return result;
+  }
+
   async findUserOrThrow(userId: Identifier) {
     const user = (await this.repository.findById(userId)) as UserRecord | null;
     if (!user) {
-      throw ApiError.notFound('User not found');
+      throw ApiError.notFound('Không tìm thấy người dùng');
     }
     return user;
   }
@@ -170,14 +223,14 @@ class UserService extends BaseService {
     if (data.email) {
       const existingEmail = await this.repository.findOne({ email: data.email });
       if (existingEmail && (excludeId === undefined || String(existingEmail.id) !== String(excludeId))) {
-        errors.push(`Email '${data.email}' already exists`);
+        errors.push(`Email '${data.email}' đã tồn tại`);
       }
     }
 
     if (data.studentId) {
       const existingStudentId = await this.repository.findOne({ studentId: data.studentId });
       if (existingStudentId && (excludeId === undefined || String(existingStudentId.id) !== String(excludeId))) {
-        errors.push(`Mã sinh viên '${data.studentId}' already exists`);
+        errors.push(`Mã sinh viên '${data.studentId}' đã tồn tại`);
       }
     }
 
@@ -323,12 +376,20 @@ class UserService extends BaseService {
     };
   }
 
-  async toggleUserStatus(userId: Identifier) {
+  async toggleUserStatus(userId: Identifier, performer?: AnyRecord | Identifier) {
     const user = await this.findUserOrThrow(userId);
 
     const updated = await this.repository.update(userId, {
       isActive: !user.isActive,
       updatedAt: new Date().toISOString(),
+    });
+
+    await auditLogsService.log({
+      userId: this.toAuditUserId(performer, user.id),
+      action: updated?.isActive ? 'KÍCH HOẠT NGƯỜI DÙNG' : 'VÔ HIỆU HÓA NGƯỜI DÙNG',
+      module: 'USERS',
+      description: `${updated?.isActive ? 'Kích hoạt' : 'Vô hiệu hóa'} người dùng ${this.getUserDisplayName(user)}`,
+      resourceId: String(user.id),
     });
 
     return sanitizeUser(updated);
@@ -343,19 +404,19 @@ class UserService extends BaseService {
   ) {
     const allowedRoles = ['customer', 'staff', 'admin'];
     if (!allowedRoles.includes(role)) {
-      throw ApiError.badRequest(`Invalid role. Allowed roles: ${allowedRoles.join(', ')}`);
+      throw ApiError.badRequest(`Vai trò không hợp lệ. Vai trò cho phép: ${allowedRoles.join(', ')}`);
     }
 
     const user = await this.findUserOrThrow(userId);
-    if (user.expelled) throw ApiError.badRequest('Cannot promote expelled user');
-    if (Number(actorId) === Number(user.id)) throw ApiError.badRequest('Cannot change your own role');
+    if (user.expelled) throw ApiError.badRequest('Không thể thăng quyền người dùng đã bị khai trừ');
+    if (Number(actorId) === Number(user.id)) throw ApiError.badRequest('Không thể tự thay đổi vai trò của chính mình');
 
     if (actorRole !== 'admin') {
       if (role === 'admin') {
-        throw ApiError.forbidden('Only admin can assign admin role');
+        throw ApiError.forbidden('Chỉ admin mới có thể gán vai trò admin');
       }
       if (user.role === 'admin') {
-        throw ApiError.forbidden('Only admin can change admin role');
+        throw ApiError.forbidden('Chỉ admin mới có thể thay đổi vai trò của admin');
       }
     }
 
@@ -379,15 +440,24 @@ class UserService extends BaseService {
       },
     });
 
+    await auditLogsService.log({
+      userId: this.toAuditUserId(actorId),
+      action: 'THAY ĐỔI VAI TRÒ NGƯỜI DÙNG',
+      module: 'USERS',
+      description: `Thay đổi vai trò người dùng ${this.getUserDisplayName(user)} sang ${role}`,
+      resourceId: String(user.id),
+    });
+
     return sanitizeUser(updated);
   }
 
   async expelUser(userId: Identifier, reason: string | null | undefined, actorId: Identifier, actorRole: string) {
     const user = await this.findUserOrThrow(userId);
-    if (Number(actorId) === Number(user.id)) throw ApiError.badRequest('Cannot expel your own account');
+    if (Number(actorId) === Number(user.id))
+      throw ApiError.badRequest('Không thể tự khai trừ tài khoản của chính mình');
 
     if (actorRole !== 'admin' && user.role === 'admin') {
-      throw ApiError.forbidden('Only admin can expel admin account');
+      throw ApiError.forbidden('Chỉ admin mới có thể khai trừ tài khoản admin');
     }
 
     if (user.expelled) {
@@ -414,15 +484,23 @@ class UserService extends BaseService {
       },
     });
 
+    await auditLogsService.log({
+      userId: this.toAuditUserId(actorId),
+      action: 'KHAI TRỪ NGƯỜI DÙNG',
+      module: 'USERS',
+      description: `Khai trừ người dùng ${this.getUserDisplayName(user)}`,
+      resourceId: String(user.id),
+    });
+
     return sanitizeUser(updated);
   }
 
   async permanentDeleteUser(userId: Identifier, actorId: Identifier, actorRole: string) {
     const user = await this.findUserOrThrow(userId);
-    if (Number(actorId) === Number(user.id)) throw ApiError.badRequest('Cannot delete your own account');
+    if (Number(actorId) === Number(user.id)) throw ApiError.badRequest('Không thể tự xóa tài khoản của chính mình');
 
     if (actorRole !== 'admin' && user.role === 'admin') {
-      throw ApiError.forbidden('Only admin can delete admin account');
+      throw ApiError.forbidden('Chỉ admin mới có thể xóa tài khoản admin');
     }
 
     const normalizedUserId = this.normalizeUserId(userId);
@@ -432,6 +510,14 @@ class UserService extends BaseService {
     await this.removeUserFromDutySlots(normalizedUserId);
 
     await this.repository.delete(userId);
+
+    await auditLogsService.log({
+      userId: this.toAuditUserId(actorId),
+      action: 'XÓA NGƯỜI DÙNG',
+      module: 'USERS',
+      description: `Xóa vĩnh viễn người dùng ${this.getUserDisplayName(user)}`,
+      resourceId: String(user.id),
+    });
 
     return { user: 1, notifications: notificationCount };
   }

@@ -10,5 +10,6 @@ router.use(requireAuth);
 router.get('/', requirePermission('reward_penalty:view'), rewardPenaltyController.getHistory);
 router.get('/stats/financial', requirePermission('reward_penalty:view'), rewardPenaltyController.getFinancialStats);
 router.post('/', requirePermission('reward_penalty:manage'), rewardPenaltyController.createEntry);
+router.put('/:id', requirePermission('reward_penalty:manage'), rewardPenaltyController.updateEntry);
 
 export default router;

@@ -35,12 +35,12 @@ class UserAvatarService {
   async updateUserWithAvatar(targetUserId: Identifier, payload: AnyRecord = {}, file?: any, actorId?: Identifier) {
     const existingUserResult = await userService.findById(targetUserId);
     if (!existingUserResult?.success || !existingUserResult.data) {
-      throw ApiError.notFound('User not found');
+      throw ApiError.notFound('Không tìm thấy người dùng');
     }
 
     const sanitizedPayload = this.removeInternalUpdateFields(payload);
     if (!file) {
-      return await userService.update(targetUserId, sanitizedPayload);
+      return await userService.update(targetUserId, sanitizedPayload, actorId ?? targetUserId);
     }
 
     const previousAvatar = existingUserResult.data.avatar;
@@ -53,7 +53,7 @@ class UserAvatarService {
     };
 
     try {
-      const updatedUser = await userService.update(targetUserId, nextPayload);
+      const updatedUser = await userService.update(targetUserId, nextPayload, actorId ?? targetUserId);
 
       if (previousAvatar && previousAvatar !== nextPayload.avatar) {
         await this.safelyDeleteAvatar(previousAvatar);
