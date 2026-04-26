@@ -32,6 +32,21 @@ Hệ thống không giới hạn model cố định mà sử dụng cơ chế **
 2. Nếu gặp lỗi `429 (Rate Limit)` hoặc `Context Overflow`, tự động hạ xuống **Cấp 2**.
 3. Nếu vẫn không được hoặc cần xử lý số lượng lớn (Batch), sử dụng **Cấp 3** để tối ưu hóa token.
 
+## Chiến lược Kỹ thuật & Coding (Codex Strategy)
+
+Riêng với các tác vụ lập trình (Coding), ưu tiên hàng đầu là **Độ chính xác logic** hơn là tiết kiệm token.
+
+| Tác vụ Code              | **Cấp 1: Elite**    | **Cấp 2: Pro** | **Cấp 3: Flash** |
+| :----------------------- | :------------------ | :------------- | :--------------- |
+| **Architect / Refactor** | `claude-4.6-sonnet` | `gpt-5.5`      | `gemini-3-pro`   |
+| **Debug / Fix Bug**      | `claude-4.6-sonnet` | `gpt-5.5`      | `gpt-5.5-mini`   |
+| **Unit Test / Doc**      | `gpt-5.5`           | `gemini-3-pro` | `gemini-3-flash` |
+
+**Nguyên tắc kỹ thuật:**
+
+1. **No Flash for Core Logic**: Tuyệt đối không dùng model Cấp 3 để sửa logic lõi nếu Cấp 1 & 2 chưa thử nghiệm thành công.
+2. **XML for Context**: Khi gửi Code cho Claude, luôn bọc trong thẻ `<file path="...">...</file>` để tối ưu khả năng đọc hiểu.
+
 ## Kết luận (Conclusion)
 
 Việc áp dụng AI vào Backend nên bắt đầu từ sự đơn giản:
