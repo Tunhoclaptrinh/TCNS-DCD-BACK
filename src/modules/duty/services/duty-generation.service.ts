@@ -6,7 +6,7 @@ import dutySwapRequestsRepository from '@modules/duty/repositories/duty-swap-req
 import dutyLeaveRequestsRepository from '@modules/duty/repositories/duty-leave-requests.repository';
 import dutyTemplateAssignmentsRepository from '@modules/duty/repositories/duty-template-assignments.repository';
 import ApiError from '@utils/api-error';
-import { socketService } from '../../../services/socket.service';
+import { socketService } from '../../../shared/socket/socket.service';
 import dayjs from 'dayjs';
 import { Identifier, normalizeId, toUTCMidnight, getWeekStartISO } from './duty-utils';
 import dutyLogsService from './duty-logs.service';

@@ -3,6 +3,7 @@ import rewardPenaltiesRepository from '@modules/reward-penalties/repositories/re
 import usersRepository from '@modules/users/repositories/users.repository';
 import ApiError from '@utils/api-error';
 import notificationService from '@modules/notifications/services/notification.service';
+import auditLogsService from '@modules/audit-logs/services/audit-logs.service';
 import type { AnyRecord, Identifier } from '@app-types/common';
 
 function normalizeId(id: any): Identifier {
@@ -21,6 +22,92 @@ function toIsoDate(value: any, fallback: string | null = null) {
 class RewardPenaltyService extends BaseService {
   constructor() {
     super('reward_penalties', rewardPenaltiesRepository);
+  }
+
+  async updateEntry(id: Identifier, payload: AnyRecord = {}, actorId: Identifier) {
+    const entryId = normalizeId(id);
+    const existing = await this.repository.findById(entryId);
+    if (!existing) throw ApiError.notFound('Không tìm thấy bản ghi thưởng/phạt');
+
+    const nextPayload: AnyRecord = {};
+    const targetUserId = normalizeId(payload.userId ?? existing.userId);
+    if (!targetUserId) throw ApiError.badRequest('userId là bắt buộc');
+
+    const user = await usersRepository.findById(targetUserId);
+    if (!user) throw ApiError.notFound('Không tìm thấy người dùng');
+
+    if (payload.userId !== undefined) {
+      nextPayload.userId = targetUserId;
+    }
+
+    const type = String(payload.type ?? existing.type ?? '').toLowerCase();
+    if (!['reward', 'penalty'].includes(type)) {
+      throw ApiError.badRequest("type phải là 'reward' hoặc 'penalty'");
+    }
+    if (payload.type !== undefined) {
+      nextPayload.type = type;
+    }
+
+    const amount = payload.amount !== undefined ? Number(payload.amount) : Number(existing.amount);
+    if (Number.isNaN(amount) || amount < 0) {
+      throw ApiError.badRequest('amount phải là số không âm');
+    }
+    if (payload.amount !== undefined) {
+      nextPayload.amount = amount;
+    }
+
+    const reason =
+      payload.reason !== undefined ? String(payload.reason || '').trim() : String(existing.reason || '').trim();
+    if (!reason) {
+      throw ApiError.badRequest('reason là bắt buộc');
+    }
+    if (payload.reason !== undefined) {
+      nextPayload.reason = reason;
+    }
+
+    if (payload.eventDate !== undefined) {
+      const eventDate = toIsoDate(payload.eventDate);
+      if (!eventDate) {
+        throw ApiError.badRequest('eventDate không hợp lệ');
+      }
+      nextPayload.eventDate = eventDate;
+    }
+
+    if (payload.note !== undefined) {
+      nextPayload.note = payload.note || '';
+    }
+
+    if (Object.keys(nextPayload).length === 0) {
+      throw ApiError.badRequest('Không có dữ liệu để cập nhật');
+    }
+
+    const now = new Date().toISOString();
+    const updated = await this.repository.update(entryId, {
+      ...nextPayload,
+      updatedAt: now,
+    });
+
+    await auditLogsService.log({
+      userId: Number(actorId) || 0,
+      action: 'CẬP NHẬT THƯỞNG/PHẠT',
+      module: 'REWARD_PENALTIES',
+      description: `${type === 'reward' ? 'Cập nhật thưởng' : 'Cập nhật phạt'} cho người dùng #${targetUserId}`,
+      resourceId: String(entryId),
+    });
+
+    await notificationService.notifyUser(targetUserId, {
+      title: 'Thông tin thưởng/phạt được cập nhật',
+      message:
+        type === 'reward'
+          ? `Mức thưởng của bạn đã được cập nhật thành ${amount.toLocaleString('vi-VN')} VNĐ.`
+          : `Mức phạt của bạn đã được cập nhật thành ${amount.toLocaleString('vi-VN')} VNĐ.`,
+      category: 'system',
+      type: 'system',
+      refId: entryId,
+      metadata: { type, amount, reason },
+    });
+
+    return updated;
   }
 
   async createEntry(payload: AnyRecord = {}, actorId: Identifier) {
@@ -56,6 +143,14 @@ class RewardPenaltyService extends BaseService {
       note: payload.note || '',
       createdAt: now,
       updatedAt: now,
+    });
+
+    await auditLogsService.log({
+      userId: Number(actorId) || 0,
+      action: 'THÊM THƯỞNG/PHẠT',
+      module: 'REWARD_PENALTIES',
+      description: `${type === 'reward' ? 'Tạo thưởng' : 'Tạo phạt'} cho người dùng #${userId}`,
+      resourceId: String(created.id),
     });
 
     await notificationService.notifyUser(userId, {

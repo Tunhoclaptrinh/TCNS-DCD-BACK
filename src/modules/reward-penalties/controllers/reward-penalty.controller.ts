@@ -7,6 +7,11 @@ class RewardPenaltyController extends BaseController {
     this.created(res, data);
   });
 
+  updateEntry = this.handle(async (req, res) => {
+    const data = await rewardPenaltyService.updateEntry(req.params.id, req.body, req.user.id);
+    this.ok(res, data);
+  });
+
   getHistory = this.handle(async (req, res) => {
     const data = await rewardPenaltyService.getHistory(req.user, req.parsedQuery);
     this.ok(res, data);

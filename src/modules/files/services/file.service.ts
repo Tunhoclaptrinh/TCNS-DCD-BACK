@@ -2,6 +2,7 @@ import path from 'path';
 import ApiError from '@utils/api-error';
 import BaseService from '@shared/common/base-service';
 import filesRepository from '@modules/files/repositories/files.repository';
+import auditLogsService from '@modules/audit-logs/services/audit-logs.service';
 import type { AnyRecord, Identifier } from '@app-types/common';
 import type { QueryOptions } from '@app-types/database';
 
@@ -132,14 +133,17 @@ class FileService extends BaseService {
     return {
       idFile: options.idFile,
       urlFile: options.urlFile,
+      sourceType: 'file', // Mac dinh luon la file cho Cloudinary/Storage
       uploadedBy: normalizeNumericId(options.uploadedBy),
       fileType: this.detectFileType(mimeType, filename),
       mimeType,
       provider: options.provider || 'cloudinary',
       filename,
+      originalName: options.filename || null,
       extension: path.extname(filename).replace('.', '').toLowerCase() || null,
       bytes: options.bytes ?? null,
       data: this.toBoolean(options.storeData, false) ? this.buildBase64Data(options.dataBuffer, mimeType) : null,
+      isPublic: true,
     };
   }
 
@@ -152,25 +156,75 @@ class FileService extends BaseService {
     const existing = await this.findRecordByStorageId(payload.idFile);
 
     if (existing) {
-      return await this.repository.update(existing.id, {
+      const updated = await this.repository.update(existing.id, {
         ...payload,
         updatedAt: new Date().toISOString(),
       });
+
+      await auditLogsService.log({
+        userId: normalizeNumericId(options.uploadedBy) || 0,
+        action: 'CẬP NHẬT FILE',
+        module: 'FILES',
+        description: `Cập nhật thông tin tập tin: ${payload.filename}`,
+        resourceId: String(existing.id),
+      });
+
+      return updated;
     }
 
     const created = await this.create(payload);
     if (!created.success || !created.data) {
-      throw ApiError.badRequest(created.message || 'Unable to save file metadata');
+      throw ApiError.badRequest(created.message || 'Không thể lưu thông tin tệp');
     }
+
+    await auditLogsService.log({
+      userId: normalizeNumericId(options.uploadedBy) || 0,
+      action: 'TẢI LÊN FILE',
+      module: 'FILES',
+      description: `Tải lên tập tin mới: ${payload.filename}`,
+      resourceId: String(created.data.id),
+    });
 
     return created.data;
   }
 
-  async deleteByIdFile(idFile: string) {
+  async createUrlOnly(data: { url: string; filename: string; uploadedBy?: Identifier }) {
+    const payload = {
+      idFile: `url_${Date.now()}`,
+      urlFile: data.url,
+      filename: data.filename,
+      sourceType: 'url',
+      uploadedBy: normalizeNumericId(data.uploadedBy),
+      isPublic: true,
+      provider: 'external',
+    };
+
+    const created = await this.create(payload);
+
+    await auditLogsService.log({
+      userId: normalizeNumericId(data.uploadedBy) || 0,
+      action: 'TẠO LIÊN KẾT URL',
+      module: 'FILES',
+      description: `Tạo liên kết URL mới: ${data.filename}`,
+      resourceId: String(created.data?.id),
+    });
+
+    return created.data;
+  }
+
+  async deleteByIdFile(idFile: string, performerId?: Identifier) {
     const items = await this.repository.findMany({ idFile });
 
     for (const item of items) {
       await this.repository.delete(item.id);
+      await auditLogsService.log({
+        userId: normalizeNumericId(performerId) || 0,
+        action: 'XÓA FILE',
+        module: 'FILES',
+        description: `Xóa tập tin: ${item.filename}`,
+        resourceId: String(item.id),
+        dataBefore: item,
+      });
     }
 
     return items.length;
@@ -194,14 +248,14 @@ class FileService extends BaseService {
   async getAccessibleFileById(id: Identifier, user: AnyRecord, includeData = false) {
     const item = await this.repository.findById(id);
     if (!item) {
-      throw ApiError.notFound('File record not found');
+      throw ApiError.notFound('Không tìm thấy bản ghi tệp');
     }
 
     const uploadedBy = normalizeNumericId(user?.id);
     const itemUploader = normalizeNumericId(item.uploadedBy);
 
     if (!this.canReadAllFiles(user) && uploadedBy !== itemUploader) {
-      throw ApiError.forbidden('Not authorized to view this file');
+      throw ApiError.forbidden('Bạn không có quyền xem tệp này');
     }
 
     return this.sanitizeRecord(item, includeData);
