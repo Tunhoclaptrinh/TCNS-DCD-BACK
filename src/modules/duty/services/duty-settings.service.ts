@@ -1,29 +1,36 @@
-import BaseService from '@shared/common/base-service';
 import dutySettingsRepository from '@modules/duty/repositories/duty-settings.repository';
 import { GenericRecord } from './duty-utils';
 
-class DutySettingService extends BaseService {
-  constructor() {
-    super('duty_settings', dutySettingsRepository);
-  }
-
+class DutySettingsService {
   async getSettings() {
-    const s = await dutySettingsRepository.findOne({});
-    if (!s) {
-      return await dutySettingsRepository.create({
+    const settings = await dutySettingsRepository.getGlobalSettings();
+    if (!settings) {
+      return {
         weeklyKipLimit: 0,
-        allowUnregisterWhenFull: false,
-        allowSwap: true,
-        allowLeaveRequest: true,
-      });
+        allowUnregisterWhenFull: true,
+        currentGeneration: '',
+        generations: [],
+        updatedAt: new Date().toISOString(),
+      };
     }
-    return s;
+    return settings;
   }
 
   async updateSettings(data: GenericRecord) {
-    const s = await this.getSettings();
-    return await dutySettingsRepository.update(s.id, data);
+    const settings = await dutySettingsRepository.getGlobalSettings();
+    const payload = {
+      weeklyKipLimit: Number(data.weeklyKipLimit) || 0,
+      allowUnregisterWhenFull: data.allowUnregisterWhenFull !== false,
+      currentGeneration: data.currentGeneration || '',
+      generations: Array.isArray(data.generations) ? data.generations : [],
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (!settings) {
+      return await dutySettingsRepository.create(payload);
+    }
+    return await dutySettingsRepository.update(settings.id, payload);
   }
 }
 
-export default new DutySettingService();
+export default new DutySettingsService();

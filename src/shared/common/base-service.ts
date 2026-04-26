@@ -131,6 +131,26 @@ class BaseService {
     };
   }
 
+  async patch(id: Identifier, data: AnyRecord): Promise<ServiceResult> {
+    const existCheck = await this.findById(id);
+    if (!existCheck.success) return existCheck;
+
+    // For patch, we merge with existing data before validation if we want strict schema check
+    // Or we can perform partial validation. Here we follow a simple merge & update approach
+    const customValidation = await this.validateUpdate(id, data);
+    if (!customValidation.success) return customValidation;
+
+    const transformedData = await this.beforeUpdate(id, data);
+    const updated = await this.repository.update(id, transformedData);
+    await this.afterUpdate(updated);
+
+    return {
+      success: true,
+      message: `${this.getModelName()} patched successfully`,
+      data: updated,
+    };
+  }
+
   async delete(id: Identifier): Promise<ServiceResult> {
     const existCheck = await this.findById(id);
     if (!existCheck.success) return existCheck;

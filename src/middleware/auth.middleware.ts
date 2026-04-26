@@ -46,6 +46,10 @@ async function findUser(userId: Identifier) {
   return (await db.findById('users', userId)) as AuthenticatedUser | null;
 }
 
+import userAccessService from '@modules/users/services/user-access.service';
+
+// ... (existing helper functions)
+
 // Kiểm tra JWT, nạp thông tin user hiện tại và gắn vào `req.user`.
 export const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -76,7 +80,10 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
       return sendUnauthorizedResponse(res, 'Token has been invalidated. Please login again.');
     }
 
-    req.user = user;
+    // Compute and attach permissions
+    const permissions = await userAccessService.computePermissions(user);
+    req.user = { ...user, permissions };
+
     next();
   } catch (error) {
     next(error);

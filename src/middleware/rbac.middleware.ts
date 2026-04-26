@@ -1,44 +1,42 @@
 import type { NextFunction, Request, Response } from 'express';
-import { hasPermission } from '@shared/security/permission-policy';
 import db from '@database';
 
-// Kiểm tra role hiện tại có quyền thực hiện action được yêu cầu hay không.
+/**
+ * Middleware kiểm tra quyền hạn của người dùng.
+ * Hỗ trợ cả kiểm tra quyền trực tiếp và logic tự động chuyển Read-only cho thế hệ cũ.
+ */
 export const requirePermission = (permission: string) => {
   return async (req: Request, res: Response, next: NextFunction) => {
-    let userRole = req.user?.role;
-    const userDepartment = req.user?.department;
-    const userGenerationId = req.user?.generationId;
+    const user = req.user;
 
-    if (!userRole) {
+    if (!user) {
       return res.status(401).json({
         success: false,
         message: 'Yêu cầu đăng nhập',
       });
     }
 
-    // 1. HR Department specialists get Staff role automatically
-    if (userDepartment === 'Ban Nhân sự' && userRole === 'customer') {
-      userRole = 'staff';
-    }
+    const userPermissions: string[] = user.permissions || [];
+    const userRole = user.role; // Legacy role
+    const userGenerationId = user.generationId;
 
-    // 2. Archive Logic: Generation Check
-    // If user is from an older generation, they only get view-only permissions
-    // unless they are explicitly an admin.
+    // 1. Logic Thế hệ cũ (Archive): Tự động giới hạn quyền nếu không phải Admin
     if (userRole !== 'admin') {
       const settings = await db.findAll('duty_settings');
       const currentGenId = settings?.[0]?.currentGenerationId || settings?.[0]?.currentGeneration;
 
       if (currentGenId && userGenerationId && String(userGenerationId) !== String(currentGenId)) {
-        // Only allow view-only permissions for old generations
+        // Danh sách quyền được phép cho thế hệ cũ
         const viewOnlyPermissions = [
-          'users:list',
-          'users:read',
+          'users:list:all',
+          'users:list:dept',
+          'users:read:all',
+          'users:read:self',
+          'duty:view',
+          'reward:view:all',
+          'reward:view:self',
           'dashboard:view',
           'reports:view',
-          'duty:view',
-          'reward_penalty:view',
-          'profile:read',
-          'profile:update',
         ];
 
         if (!viewOnlyPermissions.includes(permission)) {
@@ -47,14 +45,14 @@ export const requirePermission = (permission: string) => {
             message: `Tài khoản thuộc thế hệ cũ. Bạn chỉ có quyền xem dữ liệu.`,
           });
         }
-        return next();
       }
     }
 
-    if (!hasPermission(userRole, permission)) {
+    // 2. Kiểm tra quyền trực tiếp (Tính cả Đa vai trò và Ghi đè cá nhân)
+    if (!userPermissions.includes(permission) && userRole !== 'admin') {
       return res.status(403).json({
         success: false,
-        message: `Bạn không có quyền: ${permission}`,
+        message: `Bạn không có quyền thực hiện hành động này: ${permission}`,
       });
     }
 

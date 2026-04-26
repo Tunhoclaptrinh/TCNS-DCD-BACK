@@ -22,6 +22,7 @@ const SCHEMA_MODEL_MAP = {
   'duty-log.schema': 'duty_logs',
   'generation.schema': 'generations',
   'role.schema': 'roles',
+  'permission.schema': 'permissions',
   'duty-settings.schema': 'duty_settings',
 };
 const FILTER_SUFFIXES = ['_not_like', '_ilike', '_like', '_gte', '_lte', '_gt', '_lt', '_ne', '_in', '_nin'];
@@ -45,6 +46,7 @@ class MongoConnect implements DatabaseAdapter {
         notificationSettings: { ref: 'notification_settings', localField: 'id', foreignField: 'userId' },
         files: { ref: 'files', localField: 'id', foreignField: 'uploadedBy' },
         generation: { ref: 'generations', localField: 'generationId', foreignField: 'id', justOne: true },
+        roles: { ref: 'roles', localField: 'roleIds', foreignField: 'id', justOne: false },
       },
       files: {
         uploader: { ref: 'users', localField: 'uploadedBy', foreignField: 'id', justOne: true },

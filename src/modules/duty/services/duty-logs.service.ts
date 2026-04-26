@@ -1,10 +1,27 @@
-import BaseService from '@shared/common/base-service';
 import dutyLogsRepository from '@modules/duty/repositories/duty-logs.repository';
+import { Identifier, normalizeId } from './duty-utils';
 
-class DutyLogService extends BaseService {
-  constructor() {
-    super('duty_logs', dutyLogsRepository);
+class DutyLogsService {
+  async log(
+    type: string,
+    action: string,
+    details: string,
+    performerId: Identifier,
+    userId?: Identifier,
+    slotId?: Identifier,
+    requestId?: Identifier,
+  ) {
+    return await dutyLogsRepository.create({
+      type,
+      action,
+      slotId: slotId ? normalizeId(slotId) : 0,
+      requestId: requestId ? normalizeId(requestId) : undefined,
+      userId: userId ? normalizeId(userId) : normalizeId(performerId),
+      performerId: normalizeId(performerId),
+      details,
+      createdAt: new Date(),
+    });
   }
 }
 
-export default new DutyLogService();
+export default new DutyLogsService();
