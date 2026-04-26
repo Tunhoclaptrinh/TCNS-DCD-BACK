@@ -18,6 +18,7 @@ import dutySettings from '@modules/duty/schemas/duty-settings.schema';
 import generations from '@modules/generations/schemas/generation.schema';
 import roles from '@modules/roles/schemas/role.schema';
 import permissions from '@modules/permissions/schemas/permission.schema';
+import auditLogs from '@modules/audit-logs/schemas/audit-log.schema';
 
 const schemas: SchemaMap = {
   // Auth & User
@@ -25,6 +26,7 @@ const schemas: SchemaMap = {
   generations,
   roles,
   permissions,
+  audit_logs: auditLogs,
 
   // User Content
   notifications,

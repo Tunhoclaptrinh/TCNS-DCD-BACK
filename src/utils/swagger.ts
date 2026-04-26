@@ -377,6 +377,11 @@ const EXTRA_SCHEMAS: AnyRecord = {
     ['userId', 'type', 'amount', 'reason'],
     'Tạo bản ghi thưởng hoặc phạt. `createdBy` được xác định từ người dùng đang đăng nhập.',
   ),
+  RewardPenaltyUpdateRequest: buildObjectSchema(
+    buildPropertiesFromSchemaFields(omitFields(rewardPenaltySchema, ['createdBy'])),
+    [],
+    'Cập nhật bản ghi thưởng hoặc phạt. Chỉ cần truyền các trường muốn thay đổi.',
+  ),
   UploadAvatarRequest: {
     type: 'object',
     description: 'Payload upload avatar. Có thể dùng field `avatar` hoặc `image`.',
@@ -1021,6 +1026,17 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
     responses: {
       201: { description: 'Tạo bản ghi thành công' },
       400: { description: 'Dữ liệu không hợp lệ' },
+    },
+  },
+  'PUT /reward-penalties/{id}': {
+    summary: 'Cập nhật bản ghi thưởng phạt',
+    protected: true,
+    permission: 'reward_penalty:manage',
+    requestBody: buildSchemaRefBody('RewardPenaltyUpdateRequest', false),
+    responses: {
+      200: { description: 'Cập nhật bản ghi thành công' },
+      400: { description: 'Dữ liệu không hợp lệ' },
+      404: { description: 'Không tìm thấy bản ghi' },
     },
   },
   'GET /reward-penalties/stats/financial': {
