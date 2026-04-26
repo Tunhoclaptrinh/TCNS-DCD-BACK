@@ -77,8 +77,11 @@ class UserController extends BaseController {
       }
     } else {
       // Hierarchy check for others
-      const targetUser = await this.service.findById(req.params.id);
-      userAccessService.assertAuthority(req.user, targetUser, req.body.position);
+      const targetUserResult = await this.service.findById(req.params.id);
+      if (!targetUserResult.success) {
+        throw ApiError.notFound('Target user not found');
+      }
+      userAccessService.assertAuthority(req.user, targetUserResult.data, req.body.position);
     }
 
     const data = await userAvatarService.updateUserWithAvatar(

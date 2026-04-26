@@ -8,6 +8,7 @@ import { sanitizeUser, hashPassword } from '@utils/helpers';
 import ApiError from '@utils/api-error';
 import userSchema from '@modules/users/schemas/user.schema';
 import notificationService from '@modules/notifications/services/notification.service';
+import { getSuggestedRoles } from '../utils/user-mapping.utils';
 import type { AnyRecord, Identifier } from '@app-types/common';
 
 function generateAvatarUrl(name: string) {
@@ -168,14 +169,14 @@ class UserService extends BaseService {
 
     if (data.email) {
       const existingEmail = await this.repository.findOne({ email: data.email });
-      if (existingEmail && (excludeId === undefined || existingEmail.id !== excludeId)) {
+      if (existingEmail && (excludeId === undefined || String(existingEmail.id) !== String(excludeId))) {
         errors.push(`Email '${data.email}' already exists`);
       }
     }
 
     if (data.studentId) {
       const existingStudentId = await this.repository.findOne({ studentId: data.studentId });
-      if (existingStudentId && (excludeId === undefined || existingStudentId.id !== excludeId)) {
+      if (existingStudentId && (excludeId === undefined || String(existingStudentId.id) !== String(excludeId))) {
         errors.push(`Mã sinh viên '${data.studentId}' already exists`);
       }
     }
@@ -228,6 +229,11 @@ class UserService extends BaseService {
       transformed.avatar = generateAvatarUrl(transformed.name);
     }
 
+    // Auto-sync roles based on position if roleIds are not provided
+    if (!transformed.roleIds || (Array.isArray(transformed.roleIds) && transformed.roleIds.length === 0)) {
+      transformed.roleIds = getSuggestedRoles(transformed.position as string, transformed.department as string);
+    }
+
     return {
       ...transformed,
       isActive: transformed.isActive !== undefined ? transformed.isActive : true,
@@ -247,11 +253,31 @@ class UserService extends BaseService {
       payload.password = await hashPassword(payload.password);
     }
 
+    // Optional: Auto-sync roles if position/department changed AND roleIds were not explicitly sent
+    if (
+      (payload.position || payload.department) &&
+      (!payload.roleIds || (Array.isArray(payload.roleIds) && payload.roleIds.length === 0))
+    ) {
+      const current = (await this.repository.findById(id)) as UserRecord;
+      if (current) {
+        const pos = (payload.position as string) || current.position;
+        const dept = (payload.department as string) || current.department;
+        payload.roleIds = getSuggestedRoles(pos, dept);
+      }
+    }
+
     if (payload.firstName || payload.lastName) {
       const current = (await this.repository.findById(id)) as UserRecord;
-      const lastName = payload.lastName !== undefined ? payload.lastName : current.lastName;
-      const firstName = payload.firstName !== undefined ? payload.firstName : current.firstName;
-      payload.name = `${lastName || ''} ${firstName || ''}`.trim();
+      if (current) {
+        const lastName = payload.lastName !== undefined ? payload.lastName : current.lastName;
+        const firstName = payload.firstName !== undefined ? payload.firstName : current.firstName;
+
+        // Neu name trong payload hien tai dang bi trong hoac khong co, moi tu dong generate tu ho ten.
+        // Dieu nay de tranh viec ghi de username (name) neu nguoi dung da co tinh dat khac.
+        if (!payload.name) {
+          payload.name = `${lastName || ''} ${firstName || ''}`.trim();
+        }
+      }
     }
 
     // Luon whitelist theo schema de field noi bo tu controller khong bi luu nham vao user.
