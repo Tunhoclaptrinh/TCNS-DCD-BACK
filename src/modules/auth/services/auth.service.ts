@@ -6,6 +6,8 @@ import ApiError from '@utils/api-error';
 import { comparePassword, generateRefreshToken, generateToken, hashPassword, sanitizeUser } from '@utils/helpers';
 import type { AnyRecord } from '@app-types/common';
 
+import userAccessService from '@modules/users/services/user-access.service';
+
 class AuthService {
   constructor(private readonly userRepository = usersRepository) {}
 
@@ -15,10 +17,10 @@ class AuthService {
       .trim();
   }
 
-  buildAuthResponse(user: AnyRecord, token?: string, refreshToken?: string) {
+  async buildAuthResponse(user: AnyRecord, token?: string, refreshToken?: string) {
     return {
       user: sanitizeUser(user),
-      permissions: getRolePermissions(user.role),
+      permissions: await userAccessService.computePermissions(user),
       ...(token ? { token } : {}),
       ...(refreshToken ? { refreshToken } : {}),
     };
@@ -48,7 +50,7 @@ class AuthService {
       updatedAt: now,
     });
 
-    return this.buildAuthResponse(user);
+    return await this.buildAuthResponse(user);
   }
 
   async login(payload: AnyRecord) {
@@ -72,10 +74,10 @@ class AuthService {
     return this.buildAuthResponse(updatedUser, token, refreshToken);
   }
 
-  getMe(user: AnyRecord) {
+  async getMe(user: AnyRecord) {
     return {
       ...sanitizeUser(user),
-      permissions: getRolePermissions(user.role),
+      permissions: await userAccessService.computePermissions(user),
     };
   }
 

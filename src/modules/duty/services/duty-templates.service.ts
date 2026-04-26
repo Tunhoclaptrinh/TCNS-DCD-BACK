@@ -1,214 +1,186 @@
-import BaseService from '@shared/common/base-service';
 import dutyTemplatesRepository from '@modules/duty/repositories/duty-templates.repository';
-import dutyShiftsRepository from '@modules/duty/repositories/duty-shifts.repository';
-import dutyKipsRepository from '@modules/duty/repositories/duty-kips.repository';
-import dutySlotsRepository from '@modules/duty/repositories/duty-slots.repository';
-import dutyDaysRepository from '@modules/duty/repositories/duty-days.repository';
 import ApiError from '@utils/api-error';
-import { Identifier, GenericRecord, normalizeId, toUTCMidnight } from './duty-utils';
+import { Identifier, GenericRecord, normalizeId } from './duty-utils';
 
-class DutyTemplatesService extends BaseService {
-  constructor() {
-    super('duty_templates', dutyTemplatesRepository);
-    setTimeout(() => this.ensureDataIntegrity(), 2000);
-  }
-
-  private async ensureDataIntegrity() {
-    try {
-      const mongoose = (await import('mongoose')).default;
-      const db = mongoose.connection.db;
-      if (!db) return;
-
-      const collections = await db.listCollections().toArray();
-      const collNames = collections.map((c) => c.name);
-      const templatesColl = db.collection('duty_templates');
-
-      // 1. Groups
-      await templatesColl.updateMany(
-        { $or: [{ type: { $exists: false } }, { type: null }, { type: '' }] },
-        { $set: { type: 'group' } },
-      );
-
-      // 2. Shifts
-      if (collNames.includes('duty_template_shifts')) {
-        const shiftsColl = db.collection('duty_template_shifts');
-        const shifts = await shiftsColl.find({}).toArray();
-
-        if (shifts.length > 0) {
-          const maxIdDoc = await templatesColl.find().sort({ id: -1 }).limit(1).toArray();
-          let nextId = (maxIdDoc[0]?.id || 0) + 1;
-          if (nextId < 100) nextId = 100;
-
-          const shiftOldToNewMap = new Map();
-
-          for (const s of shifts) {
-            const { _id, id: oldId, templateId, ...rest } = s as any;
-            const newId = nextId++;
-            shiftOldToNewMap.set(oldId, newId);
-
-            await templatesColl.updateOne(
-              { oldId: oldId, oldType: 'shift' },
-              {
-                $set: { ...rest, id: newId, type: 'shift', parentId: templateId, templateId, oldId, oldType: 'shift' },
-              },
-              { upsert: true },
-            );
-          }
-
-          // 3. Kips
-          if (collNames.includes('duty_template_kips')) {
-            const kipsColl = db.collection('duty_template_kips');
-            const kips = await kipsColl.find({}).toArray();
-            for (const k of kips) {
-              const { _id, id: oldKipId, templateShiftId, ...rest } = k as any;
-              const newKipId = nextId++;
-              const newParentId = shiftOldToNewMap.get(templateShiftId) || templateShiftId;
-
-              const originalShift = shifts.find((s) => s.id === templateShiftId);
-              const groupId = originalShift?.templateId;
-
-              await templatesColl.updateOne(
-                { oldId: oldKipId, oldType: 'kip' },
-                {
-                  $set: {
-                    ...rest,
-                    id: newKipId,
-                    type: 'kip',
-                    parentId: newParentId,
-                    templateId: groupId,
-                    oldId: oldKipId,
-                    oldType: 'kip',
-                  },
-                },
-                { upsert: true },
-              );
-            }
-          }
-          console.log('✅ Migration triggered from service successful');
-        }
-      }
-    } catch (err) {
-      console.error('❌ Migration failed:', err);
-    }
-  }
-
+class DutyTemplatesService {
   async getTemplates() {
-    return await dutyTemplatesRepository.findAll();
+    const all = await dutyTemplatesRepository.findGroups();
+    return all.sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '', 'vi'));
   }
 
   async createTemplate(data: GenericRecord) {
-    return await dutyTemplatesRepository.create(data);
+    const template = await dutyTemplatesRepository.create({
+      name: data.name,
+      type: 'group',
+      isDefault: !!data.isDefault,
+      description: data.description || '',
+    });
+    if (data.isDefault) {
+      const all = await dutyTemplatesRepository.findGroups();
+      for (const t of all) {
+        if (normalizeId(t.id) !== normalizeId(template.id) && t.isDefault) {
+          await dutyTemplatesRepository.update(t.id, { isDefault: false });
+        }
+      }
+    }
+    return template;
   }
 
   async updateTemplate(id: Identifier, data: GenericRecord) {
-    return await dutyTemplatesRepository.update(id, data);
+    const updated = await dutyTemplatesRepository.update(id, {
+      name: data.name,
+      isDefault: !!data.isDefault,
+      description: data.description || '',
+    });
+    if (data.isDefault) {
+      const all = await dutyTemplatesRepository.findGroups();
+      for (const t of all) {
+        if (normalizeId(t.id) !== normalizeId(id) && t.isDefault) {
+          await dutyTemplatesRepository.update(t.id, { isDefault: false });
+        }
+      }
+    }
+    return updated;
   }
 
   async deleteTemplate(id: Identifier) {
+    const shifts = await dutyTemplatesRepository.findShiftsByGroupId(normalizeId(id));
+    for (const s of shifts) {
+      await this.deleteShiftTemplate(s.id);
+    }
     return await dutyTemplatesRepository.delete(id);
   }
 
-  async getShiftTemplates(templateId?: string | number) {
-    const filter = templateId ? { templateId: normalizeId(templateId), isTemplate: true } : { isTemplate: true };
-    return await dutyShiftsRepository.findMany(filter);
+  async getShiftTemplates(templateId?: Identifier | null) {
+    let filter: any = { type: 'shift' };
+    if (templateId !== undefined) {
+      if (templateId) {
+        filter.parentId = normalizeId(templateId);
+      } else if (templateId === null) {
+        filter.parentId = null;
+      }
+    }
+
+    const shifts = await dutyTemplatesRepository.findMany(filter);
+    const kips = await dutyTemplatesRepository.findMany({ type: 'kip' });
+    return shifts
+      .map((shift: any) => ({
+        ...shift,
+        kips: kips
+          .filter((k: any) => normalizeId(k.parentId) === normalizeId(shift.id))
+          .sort((a: any, b: any) => (a.startTime || '').localeCompare(b.startTime || '')),
+      }))
+      .sort((a: any, b: any) => (a.startTime || '').localeCompare(b.startTime || ''));
   }
 
   async createShiftTemplate(data: GenericRecord) {
-    return await dutyShiftsRepository.create({ ...data, isTemplate: true });
+    return await dutyTemplatesRepository.create({
+      type: 'shift',
+      parentId: data.templateId ? normalizeId(data.templateId) : null,
+      name: data.name,
+      startTime: data.startTime,
+      endTime: data.endTime,
+      description: data.description || '',
+      isSpecialEvent: !!data.isSpecialEvent,
+      daysOfWeek: Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : [0, 1, 2, 3, 4, 5, 6],
+    });
+  }
+
+  private getDayName(day: number) {
+    const days = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'];
+    return days[day] || `Ngày ${day}`;
   }
 
   async updateShiftTemplate(id: Identifier, data: GenericRecord) {
-    return await dutyShiftsRepository.update(id, data);
-  }
-
-  async deleteShiftTemplate(id: Identifier) {
-    return await dutyShiftsRepository.delete(id);
-  }
-
-  async createKipTemplate(data: GenericRecord) {
-    return await dutyKipsRepository.create({ ...data, isTemplate: true });
-  }
-
-  async updateKipTemplate(id: Identifier, data: GenericRecord) {
-    return await dutyKipsRepository.update(id, data);
-  }
-
-  async deleteKipTemplate(id: Identifier) {
-    return await dutyKipsRepository.delete(id);
-  }
-
-  async stampTemplateShift(dateStr: string, templateShiftId: Identifier, actorId: Identifier, mode: string = 'kips') {
-    const templateShift = await dutyShiftsRepository.findById(templateShiftId);
-    if (!templateShift) return null;
-
-    const shiftDate = toUTCMidnight(dateStr);
-    const isoDate = shiftDate.toISOString();
-
-    const existingShift = await dutyShiftsRepository.findOne({
-      shiftDate: isoDate,
-      templateId: templateShift.templateId,
-      name: templateShift.name,
-      isTemplate: false,
-    });
-
-    let actualShift = existingShift;
-    if (!actualShift) {
-      actualShift = await dutyShiftsRepository.create({
-        ...templateShift,
-        id: undefined,
-        _id: undefined,
-        isTemplate: false,
-        shiftDate: isoDate,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-    }
-
-    if (mode === 'kips' || mode === 'all') {
-      const kipTemplates = await dutyKipsRepository.findMany({
-        shiftId: templateShift.id,
-        isTemplate: true,
-      });
-
-      for (const kt of kipTemplates) {
-        const existingKip = await dutyKipsRepository.findOne({
-          shiftId: actualShift.id,
-          name: kt.name,
-          isTemplate: false,
-        });
-
-        if (!existingKip) {
-          const actualKip = await dutyKipsRepository.create({
-            ...kt,
-            id: undefined,
-            _id: undefined,
-            isTemplate: false,
-            shiftId: actualShift.id,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
-
-          await dutySlotsRepository.create({
-            kipId: actualKip.id,
-            shiftId: actualShift.id,
-            shiftDate: isoDate,
-            shiftLabel: `${actualShift.name} - ${actualKip.name}`,
-            startTime: actualKip.startTime || actualShift.startTime,
-            endTime: actualKip.endTime || actualShift.endTime,
-            capacity: actualKip.capacity || 1,
-            slotStructure: actualKip.slotStructure || [],
-            assignedUserIds: [],
-            attendedUserIds: [],
-            status: 'open',
-            weekStart: actualShift.weekStart || actualShift.shiftDate,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
+    const newDays = Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : undefined;
+    if (newDays) {
+      const kips = await dutyTemplatesRepository.findKipsByShiftId(id);
+      for (const kip of kips) {
+        const kipDays = kip.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
+        const invalid = kipDays.filter((d: number) => !newDays.includes(d));
+        if (invalid.length > 0) {
+          const invalidNames = invalid.map((d: number) => this.getDayName(d)).join(', ');
+          throw ApiError.badRequest(
+            `Không thể cập nhật: Kíp '${kip.name}' đang có ngày trực (${invalidNames}) không nằm trong danh sách ngày mới của Ca.`,
+          );
         }
       }
     }
 
-    return actualShift;
+    return await dutyTemplatesRepository.update(id, {
+      parentId: data.templateId ? normalizeId(data.templateId) : undefined,
+      name: data.name,
+      startTime: data.startTime,
+      endTime: data.endTime,
+      description: data.description || '',
+      isSpecialEvent: data.isSpecialEvent !== undefined ? !!data.isSpecialEvent : undefined,
+      daysOfWeek: newDays,
+    });
+  }
+
+  async deleteShiftTemplate(id: Identifier) {
+    await dutyTemplatesRepository.deleteByParentId(normalizeId(id));
+    return await dutyTemplatesRepository.delete(id);
+  }
+
+  async createKipTemplate(data: GenericRecord) {
+    const shiftId = normalizeId(data.templateShiftId || data.shiftId || data.parentId);
+    const kipDays = Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : [0, 1, 2, 3, 4, 5, 6];
+
+    const shift = await dutyTemplatesRepository.findById(shiftId);
+    if (shift) {
+      const shiftDays = shift.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
+      const invalid = kipDays.filter((d) => !shiftDays.includes(d));
+      if (invalid.length > 0) {
+        const invalidNames = invalid.map((d) => this.getDayName(d)).join(', ');
+        throw ApiError.badRequest(`Kíp có ngày trực không thuộc Ca trực (${invalidNames}).`);
+      }
+    }
+
+    return await dutyTemplatesRepository.create({
+      type: 'kip',
+      parentId: shiftId,
+      name: data.name,
+      coefficient: Number(data.coefficient) || 1,
+      capacity: Number(data.capacity) || 1,
+      startTime: data.startTime || null,
+      endTime: data.endTime || null,
+      daysOfWeek: kipDays,
+      description: data.description || '',
+    });
+  }
+
+  async updateKipTemplate(id: Identifier, data: GenericRecord) {
+    const kip = await dutyTemplatesRepository.findById(id);
+    if (!kip) throw ApiError.notFound('Kíp không tồn tại');
+
+    const kipDays = Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : undefined;
+
+    if (kipDays) {
+      const shift = await dutyTemplatesRepository.findById(kip.parentId);
+      if (shift) {
+        const shiftDays = shift.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
+        const invalid = kipDays.filter((d) => !shiftDays.includes(d));
+        if (invalid.length > 0) {
+          const invalidNames = invalid.map((d) => this.getDayName(d)).join(', ');
+          throw ApiError.badRequest(`Kíp có ngày trực không thuộc Ca trực (${invalidNames}).`);
+        }
+      }
+    }
+
+    return await dutyTemplatesRepository.update(id, {
+      name: data.name,
+      coefficient: Number(data.coefficient) || 1,
+      capacity: Number(data.capacity) || 1,
+      startTime: data.startTime || null,
+      endTime: data.endTime || null,
+      daysOfWeek: kipDays || kip.daysOfWeek,
+      description: data.description || '',
+    });
+  }
+
+  async deleteKipTemplate(id: Identifier) {
+    return await dutyTemplatesRepository.delete(id);
   }
 }
 

@@ -9,6 +9,7 @@ import rewardPenaltyRoutes from '@modules/reward-penalties/routes/reward-penalty
 import reportRoutes from '@modules/reports/routes/report.routes';
 import generationRoutes from '@modules/generations/routes/generation.routes';
 import roleRoutes from '@modules/roles/routes/role.routes';
+import permissionRoutes from '@modules/permissions/routes/permission.routes';
 
 const router = express.Router();
 
@@ -22,5 +23,6 @@ router.use('/reward-penalties', rewardPenaltyRoutes);
 router.use('/reports', reportRoutes);
 router.use('/generations', generationRoutes);
 router.use('/roles', roleRoutes);
+router.use('/permissions', permissionRoutes);
 
 export default router;

@@ -17,12 +17,14 @@ import dutySettings from '@modules/duty/schemas/duty-settings.schema';
 
 import generations from '@modules/generations/schemas/generation.schema';
 import roles from '@modules/roles/schemas/role.schema';
+import permissions from '@modules/permissions/schemas/permission.schema';
 
 const schemas: SchemaMap = {
   // Auth & User
   users,
   generations,
   roles,
+  permissions,
 
   // User Content
   notifications,

@@ -1,17 +1,13 @@
-import BaseService from '@shared/common/base-service';
 import dutyLeaveRequestsRepository from '@modules/duty/repositories/duty-leave-requests.repository';
 import dutySlotsRepository from '@modules/duty/repositories/duty-slots.repository';
-import dutyLogsRepository from '@modules/duty/repositories/duty-logs.repository';
 import usersRepository from '@modules/users/repositories/users.repository';
 import notificationService from '@modules/notifications/services/notification.service';
 import ApiError from '@utils/api-error';
 import { Identifier, GenericRecord, normalizeId, normalizeIdList } from './duty-utils';
+import dutyLogsService from './duty-logs.service';
+import dutySlotsService from './duty-slots.service';
 
-class DutyLeaveRequestsService extends BaseService {
-  constructor() {
-    super('duty_leave_requests', dutyLeaveRequestsRepository);
-  }
-
+class DutyLeaveRequestsService {
   async requestLeave(slotId: Identifier, userId: Identifier, reason: string) {
     return await dutyLeaveRequestsRepository.create({
       slotId: normalizeId(slotId),
@@ -23,7 +19,6 @@ class DutyLeaveRequestsService extends BaseService {
 
   async createLeaveManual(data: GenericRecord, performerId: Identifier) {
     const { userId, slotId, reason, status = 'pending', rejectionReason = '' } = data;
-
     const request = await dutyLeaveRequestsRepository.create({
       userId: normalizeId(userId),
       slotId: normalizeId(slotId),
@@ -38,23 +33,16 @@ class DutyLeaveRequestsService extends BaseService {
     if (status === 'approved') {
       await this.resolveLeaveRequest(request.id, 'approved', performerId, rejectionReason);
     }
-
     return request;
   }
 
   async updateLeaveRequest(id: Identifier, data: GenericRecord, performerId: Identifier) {
     const old = await dutyLeaveRequestsRepository.findById(id);
     if (!old) throw ApiError.notFound('Mục không tồn tại');
-
-    const updated = await dutyLeaveRequestsRepository.update(id, {
-      ...data,
-      updatedAt: new Date().toISOString(),
-    });
-
+    const updated = await dutyLeaveRequestsRepository.update(id, { ...data, updatedAt: new Date().toISOString() });
     if (data.status === 'approved' && old.status !== 'approved') {
       await this.resolveLeaveRequest(id, 'approved', performerId, data.rejectionReason || '');
     }
-
     return updated;
   }
 
@@ -69,12 +57,10 @@ class DutyLeaveRequestsService extends BaseService {
       order: options.order || 'desc',
     });
 
-    const users = await usersRepository.findAll();
+    const [users, slots] = await Promise.all([usersRepository.findAll(), dutySlotsRepository.findAll()]);
     const userMap = new Map(
       (users as any[]).map((u) => [normalizeId(u.id), { id: u.id, name: u.name, avatar: u.avatar }]),
     );
-
-    const slots = await dutySlotsRepository.findAll();
     const slotMap = new Map((slots as any[]).map((s) => [normalizeId(s.id), s]));
 
     const data = result.data.map((req: any) => ({
@@ -107,43 +93,40 @@ class DutyLeaveRequestsService extends BaseService {
       const slot = await dutySlotsRepository.findById(request.slotId);
       if (slot) {
         const assigned = normalizeIdList(slot.assignedUserIds || []);
-        const nextAssigned = assigned.filter((id) => normalizeId(id) !== normalizeId(request.userId));
         await dutySlotsRepository.update(slot.id, {
-          assignedUserIds: nextAssigned,
+          assignedUserIds: assigned.filter((id) => normalizeId(id) !== normalizeId(request.userId)),
           updatedAt: now,
         });
 
-        await dutyLogsRepository.create({
-          type: 'leave',
-          action: 'approved',
-          requestId: normalizeId(requestId),
-          slotId: slot.id,
-          userId: request.userId,
-          performerId: normalizeId(approverId),
-          details: `Duyệt đơn nghỉ kíp: ${slot.shiftLabel || slot.id}`,
-          createdAt: new Date(),
-        });
+        const label = await dutySlotsService.getSlotLabel(slot);
+        await dutyLogsService.log(
+          'leave',
+          'approved',
+          `Duyệt đơn nghỉ kíp: ${label || slot.id}`,
+          approverId,
+          request.userId,
+          slot.id,
+          requestId,
+        );
 
         await notificationService.notifyUser(request.userId as number, {
           title: 'Đơn xin nghỉ đã được duyệt',
-          message: `Yêu cầu xin nghỉ cho kíp ${slot.shiftLabel || ''} của bạn đã được chấp thuận.`,
+          message: `Yêu cầu xin nghỉ cho kíp ${label || ''} của bạn đã được chấp thuận.`,
           category: 'duty',
           type: 'leave',
           refId: request.id,
         });
       }
     } else if (status === 'rejected') {
-      await dutyLogsRepository.create({
-        type: 'leave',
-        action: 'rejected',
-        requestId: normalizeId(requestId),
-        slotId: request.slotId,
-        userId: request.userId,
-        performerId: normalizeId(approverId),
-        details: `Từ chối đơn nghỉ. Lý do: ${rejectionReason || 'Không có'}`,
-        createdAt: new Date(),
-      });
-
+      await dutyLogsService.log(
+        'leave',
+        'rejected',
+        `Từ chối đơn nghỉ. Lý do: ${rejectionReason || 'Không có'}`,
+        approverId,
+        request.userId,
+        request.slotId,
+        requestId,
+      );
       await notificationService.notifyUser(request.userId as number, {
         title: 'Đơn xin nghỉ bị từ chối',
         message: `Yêu cầu xin nghỉ của bạn đã bị từ chối. Lý do: ${rejectionReason || 'Không có'}`,

@@ -1,0 +1,340 @@
+import dns from 'dns';
+import db, { initDatabase } from '../database';
+import dotenv from 'dotenv';
+import path from 'path';
+
+dotenv.config({ path: path.join(__dirname, '../../.env') });
+
+// ép Node dùng DNS ngoài
+dns.setServers(['8.8.8.8', '1.1.1.1']);
+
+const ROLES = [
+  { id: 1, key: 'admin', name: 'Đội trưởng (Admin)', description: 'Quyền tối cao', isActive: true },
+  { id: 2, key: 'ns_leader', name: 'NS - Trưởng ban', description: 'Trưởng ban Nhân sự', isActive: true },
+  { id: 3, key: 'ns_sub_leader', name: 'NS - Phó ban', description: 'Phó ban Nhân sự', isActive: true },
+  { id: 4, key: 'ns_specialist', name: 'NS - Chuyên viên', description: 'Chuyên viên Nhân sự', isActive: true },
+  {
+    id: 5,
+    key: 'other_leader',
+    name: 'Ban khác - Trưởng ban',
+    description: 'Trưởng ban các ban chuyên môn khác',
+    isActive: true,
+  },
+  {
+    id: 6,
+    key: 'other_sub_leader',
+    name: 'Ban khác - Phó ban',
+    description: 'Phó ban các ban chuyên môn khác',
+    isActive: true,
+  },
+  { id: 7, key: 'member', name: 'Thành viên', description: 'Thành viên chính thức', isActive: true },
+  { id: 8, key: 'ctv', name: 'CTV', description: 'Cộng tác viên', isActive: true },
+  { id: 9, key: 'other_role', name: 'Vai trò khác', description: 'Vai trò tùy chỉnh', isActive: true },
+];
+
+const PERMISSIONS = [
+  // Thành viên
+  { key: 'users:list:all', name: 'Xem danh sách toàn bộ thành viên', module: 'users' },
+  { key: 'users:list:dept', name: 'Xem danh sách thành viên trong Ban', module: 'users' },
+  { key: 'users:view_stats', name: 'Xem thống kê nhân sự', module: 'users' },
+  { key: 'users:read:all', name: 'Xem chi tiết bất kỳ thành viên nào', module: 'users' },
+  { key: 'users:read:self', name: 'Xem hồ sơ chi tiết (Cá nhân)', module: 'users' },
+  { key: 'users:create', name: 'Thêm mới thành viên', module: 'users' },
+  { key: 'users:update:profile', name: 'Sửa Profile (Họ tên, SĐT, ...)', module: 'users' },
+  { key: 'users:update:org', name: 'Sửa Chức vụ / Ban / Khóa', module: 'users' },
+  { key: 'users:promote', name: 'Nâng hạng (Promote)', module: 'users' },
+  { key: 'users:expel', name: 'Khai trừ (Expel)', module: 'users' },
+  { key: 'users:import', name: 'Nhập dữ liệu Excel (Import)', module: 'users' },
+  { key: 'users:export', name: 'Xuất dữ liệu Excel (Export)', module: 'users' },
+  { key: 'users:delete', name: 'Xóa vĩnh viễn tài khoản', module: 'users' },
+
+  // Lịch trực
+  { key: 'duty:view:all', name: 'Xem lịch trực toàn đội', module: 'duty' },
+  { key: 'duty:register:self', name: 'Đăng ký / Hủy kíp cá nhân', module: 'duty' },
+  { key: 'duty:register:proxy', name: 'Đăng ký / Hủy kíp hộ', module: 'duty' },
+  { key: 'duty:manage:template', name: 'Tạo / Sửa Bản mẫu (Template)', module: 'duty' },
+  { key: 'duty:manage:clone', name: 'Dập khuôn lịch tuần', module: 'duty' },
+  { key: 'duty:manage:force', name: 'Gắn kíp thủ công (Force assign)', module: 'duty' },
+  { key: 'duty:manage:lock', name: 'Khóa kíp (Lock/Disable slot)', module: 'duty' },
+  { key: 'duty:approve:request', name: 'Phê duyệt Đổi ca / Nghỉ phép', module: 'duty' },
+  { key: 'duty:attendance', name: 'Điểm danh (Attendance)', module: 'duty' },
+
+  // Thưởng phạt
+  { key: 'reward:create', name: 'Ghi nhận thưởng / phạt', module: 'reward' },
+  { key: 'reward:approve', name: 'Duyệt yêu cầu cộng điểm', module: 'reward' },
+  { key: 'reward:history:all', name: 'Xem lịch sử (Toàn đội)', module: 'reward' },
+  { key: 'reward:history:self', name: 'Xem lịch sử (Cá nhân)', module: 'reward' },
+  { key: 'reward:stats:all', name: 'Thống kê tài chính toàn đội', module: 'reward' },
+  { key: 'reward:stats:dept', name: 'Thống kê tài chính Ban', module: 'reward' },
+
+  // Họp hành
+  { key: 'meeting:create:all', name: 'Tạo lịch họp (Toàn đội)', module: 'meeting' },
+  { key: 'meeting:create:dept', name: 'Tạo lịch họp (Ban)', module: 'meeting' },
+  { key: 'meeting:attendance', name: 'Điểm danh họp', module: 'meeting' },
+  { key: 'meeting:minutes', name: 'Ghi biên bản cuộc họp', module: 'meeting' },
+
+  // Góp ý
+  { key: 'feedback:send', name: 'Gửi ý kiến (Ẩn danh/Công khai)', module: 'feedback' },
+  { key: 'feedback:receive', name: 'Tiếp nhận & Phân loại ý kiến', module: 'feedback' },
+  { key: 'feedback:respond', name: 'Xử lý & Phản hồi ý kiến', module: 'feedback' },
+
+  // Hệ thống
+  { key: 'system:roles:view', name: 'Xem danh sách vai trò', module: 'system' },
+  { key: 'system:roles:create', name: 'Thêm mới vai trò', module: 'system' },
+  { key: 'system:roles:update', name: 'Cập nhật vai trò', module: 'system' },
+  { key: 'system:roles:delete', name: 'Xóa vai trò', module: 'system' },
+  { key: 'system:permissions:view', name: 'Xem ma trận phân quyền', module: 'system' },
+  { key: 'system:permissions:edit', name: 'Chỉnh sửa ma trận phân quyền', module: 'system' },
+  { key: 'system:manage:gen', name: 'Cấu hình Niên khóa / Thế hệ', module: 'system' },
+  { key: 'system:notify:all', name: 'Gửi thông báo toàn hệ thống', module: 'system' },
+  { key: 'system:notify:dept', name: 'Gửi thông báo theo Ban', module: 'system' },
+
+  // Tài liệu
+  { key: 'file:upload', name: 'Upload tài liệu minh chứng', module: 'file' },
+  { key: 'file:manage:all', name: 'Quản lý kho tài liệu chung', module: 'file' },
+  { key: 'file:manage:dept', name: 'Quản lý tài liệu nội bộ Ban', module: 'file' },
+];
+
+const ROLE_PERMISSIONS: Record<string, string[]> = {
+  admin: ['*'],
+  ns_leader: [
+    'users:list:all',
+    'users:list:dept',
+    'users:view_stats',
+    'users:read:all',
+    'users:read:self',
+    'users:create',
+    'users:update:profile',
+    'users:update:org',
+    'users:promote',
+    'users:expel',
+    'users:import',
+    'users:export',
+    'duty:view:all',
+    'duty:register:self',
+    'duty:register:proxy',
+    'duty:manage:template',
+    'duty:manage:clone',
+    'duty:manage:force',
+    'duty:manage:lock',
+    'duty:approve:request',
+    'duty:attendance',
+    'reward:create',
+    'reward:approve',
+    'reward:history:all',
+    'reward:history:self',
+    'reward:stats:all',
+    'reward:stats:dept',
+    'meeting:create:all',
+    'meeting:create:dept',
+    'meeting:attendance',
+    'meeting:minutes',
+    'feedback:send',
+    'feedback:receive',
+    'feedback:respond',
+    'system:roles:view',
+    'system:roles:create',
+    'system:roles:update',
+    'system:roles:delete',
+    'system:permissions:view',
+    'system:permissions:edit',
+    'system:manage:gen',
+    'system:notify:all',
+    'system:notify:dept',
+    'file:upload',
+    'file:manage:all',
+    'file:manage:dept',
+  ],
+  ns_sub_leader: [
+    'users:list:all',
+    'users:list:dept',
+    'users:view_stats',
+    'users:read:all',
+    'users:read:self',
+    'users:create',
+    'users:update:profile',
+    'users:update:org',
+    'users:promote',
+    'users:expel',
+    'users:import',
+    'users:export',
+    'duty:view:all',
+    'duty:register:self',
+    'duty:register:proxy',
+    'duty:manage:template',
+    'duty:manage:clone',
+    'duty:manage:force',
+    'duty:manage:lock',
+    'duty:approve:request',
+    'duty:attendance',
+    'reward:create',
+    'reward:approve',
+    'reward:history:all',
+    'reward:history:self',
+    'reward:stats:all',
+    'reward:stats:dept',
+    'meeting:create:all',
+    'meeting:create:dept',
+    'meeting:attendance',
+    'meeting:minutes',
+    'feedback:send',
+    'feedback:receive',
+    'feedback:respond',
+    'system:roles:view',
+    'system:roles:create',
+    'system:roles:update',
+    'system:roles:delete',
+    'system:permissions:view',
+    'system:permissions:edit',
+    'system:manage:gen',
+    'system:notify:all',
+    'system:notify:dept',
+    'file:upload',
+    'file:manage:all',
+    'file:manage:dept',
+  ],
+  ns_specialist: [
+    'users:list:all',
+    'users:list:dept',
+    'users:view_stats',
+    'users:read:all',
+    'users:read:self',
+    'users:create',
+    'users:update:profile',
+    'users:update:org',
+    'users:promote',
+    'users:expel',
+    'users:import',
+    'users:export',
+    'duty:view:all',
+    'duty:register:self',
+    'duty:register:proxy',
+    'duty:manage:template',
+    'duty:manage:clone',
+    'duty:manage:force',
+    'duty:manage:lock',
+    'duty:approve:request',
+    'duty:attendance',
+    'reward:create',
+    'reward:approve',
+    'reward:history:all',
+    'reward:history:self',
+    'reward:stats:all',
+    'reward:stats:dept',
+    'meeting:create:all',
+    'meeting:create:dept',
+    'meeting:attendance',
+    'meeting:minutes',
+    'feedback:send',
+    'feedback:receive',
+    'feedback:respond',
+    'system:roles:view',
+    'system:roles:create',
+    'system:roles:update',
+    'system:roles:delete',
+    'system:permissions:view',
+    'system:permissions:edit',
+    'system:manage:gen',
+    'system:notify:all',
+    'system:notify:dept',
+    'file:upload',
+    'file:manage:all',
+    'file:manage:dept',
+  ],
+  other_leader: [
+    'users:list:dept',
+    'users:read:all',
+    'users:read:self',
+    'users:update:profile',
+    'users:export',
+    'duty:view:all',
+    'duty:register:self',
+    'duty:attendance',
+    'reward:create',
+    'reward:approve',
+    'reward:history:self',
+    'reward:stats:dept',
+    'meeting:create:dept',
+    'meeting:attendance',
+    'meeting:minutes',
+    'feedback:send',
+    'feedback:respond',
+    'system:notify:dept',
+    'file:upload',
+    'file:manage:dept',
+  ],
+  other_sub_leader: [
+    'users:list:dept',
+    'users:read:all',
+    'users:read:self',
+    'users:update:profile',
+    'users:export',
+    'duty:view:all',
+    'duty:register:self',
+    'duty:attendance',
+    'reward:create',
+    'reward:approve',
+    'reward:history:self',
+    'reward:stats:dept',
+    'meeting:create:dept',
+    'meeting:attendance',
+    'meeting:minutes',
+    'feedback:send',
+    'feedback:respond',
+    'system:notify:dept',
+    'file:upload',
+    'file:manage:dept',
+  ],
+  member: [
+    'users:read:self',
+    'users:update:profile',
+    'duty:view:all',
+    'duty:register:self',
+    'reward:history:self',
+    'feedback:send',
+    'file:upload',
+  ],
+  ctv: [
+    'users:read:self',
+    'users:update:profile',
+    'duty:view:all',
+    'duty:register:self',
+    'reward:history:self',
+    'feedback:send',
+    'file:upload',
+  ],
+  other_role: [],
+};
+
+async function seed() {
+  try {
+    console.log('Connecting to MongoDB...');
+    await initDatabase();
+
+    // 1. Clear existing RBAC data
+    console.log('Cleaning up existing data...');
+
+    await db.deleteMany('roles', {});
+    await db.deleteMany('permissions', {});
+
+    // 2. Insert Permissions
+    console.log(`Inserting ${PERMISSIONS.length} permissions...`);
+    await db.insertMany('permissions', PERMISSIONS);
+
+    // 3. Insert Roles with mapped permissions
+    console.log(`Inserting ${ROLES.length} roles...`);
+    const rolesToInsert = ROLES.map((role) => ({
+      ...role,
+      permissions: ROLE_PERMISSIONS[role.key] || [],
+    }));
+    await db.insertMany('roles', rolesToInsert);
+
+    console.log('RBAC Seed completed successfully!');
+  } catch (error) {
+    console.error('Seed error:', error);
+  } finally {
+    process.exit();
+  }
+}
+
+seed();
