@@ -79,11 +79,15 @@ class UserAccessService {
     const normalizedTargetId = this.normalizeTargetId(targetId);
 
     if (actor.id !== normalizedTargetId && !this.canReadOtherProfiles(actor)) {
-      throw ApiError.forbidden('Not authorized to view this profile');
+      throw ApiError.forbidden('Bạn không có quyền xem hồ sơ này');
     }
   }
 
-  assertNotSelfAction(actor, targetId: Identifier, message = 'Cannot perform this action on your own account') {
+  assertNotSelfAction(
+    actor,
+    targetId: Identifier,
+    message = 'Không thể thực hiện thao tác này trên chính tài khoản của bạn',
+  ) {
     if (actor.id === this.normalizeTargetId(targetId)) {
       throw ApiError.badRequest(message);
     }

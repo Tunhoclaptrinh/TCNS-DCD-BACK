@@ -8,5 +8,6 @@ router.use(requireAuth);
 
 router.get('/', fileController.getFiles);
 router.get('/:id', fileController.getFileById);
+router.post('/url', fileController.createUrlOnly);
 
 export default router;

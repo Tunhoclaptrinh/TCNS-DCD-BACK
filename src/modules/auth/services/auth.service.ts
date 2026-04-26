@@ -1,7 +1,6 @@
 import jwt from 'jsonwebtoken';
 import passwordResetService from '@modules/auth/services/password-reset.service';
 import usersRepository from '@modules/users/repositories/users.repository';
-import { getRolePermissions } from '@shared/security/permission-policy';
 import ApiError from '@utils/api-error';
 import { comparePassword, generateRefreshToken, generateToken, hashPassword, sanitizeUser } from '@utils/helpers';
 import type { AnyRecord } from '@app-types/common';
