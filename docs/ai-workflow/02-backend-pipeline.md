@@ -1,69 +1,52 @@
-# Proposed Backend LLM Pipeline
+# Backend LLM Pipeline (Efficiency Focused)
 
-Tài liệu này mô tả chi tiết quy trình (pipeline) xử lý yêu cầu người dùng sử dụng mô hình kết hợp (Prompt Chaining + Routing + Validation) được đề xuất cho Backend.
+Tài liệu này mô tả chi tiết quy trình (pipeline) xử lý AI trên Backend, tối ưu hóa cho tốc độ phản hồi và tiết kiệm Token.
 
-## Sơ đồ luồng xử lý (Workflow Diagram)
+## Sơ đồ luồng xử lý (Modular Workflow)
 
-Sơ đồ dưới đây thể hiện đường đi của một `User Request` qua các node xử lý của hệ thống trước khi trả về `Final Response`.
+Quy trình được điều khiển bởi Backend (Node.js), LLM chỉ thực hiện các nhiệm vụ chuyên biệt trong từng bước.
 
 ```mermaid
 graph TD
-    A[User Request] --> B[Intent Router]
-    B --> C[Permission / Auth Check]
-    C --> D[Prompt Chain theo từng Use-case]
-    D --> E[Schema Validator]
-    E --> F[Business Rule Validator]
-    F --> G[Final Response / Action]
+    A[User Request] --> B[Router: Intent Classification]
+    B -- Intent found --> C[Extraction: Schema-based JSON]
+    C -- Valid JSON --> D[Business Logic / Action]
+    D -- Need Refinement --> E[Evaluator / Optimizer]
+    E --> D
+    D --> F[Final Response]
 
-    style A fill:#f9f,stroke:#333,stroke-width:2px
-    style G fill:#bbf,stroke:#333,stroke-width:2px
+    style A fill:#f9f,stroke:#333
+    style F fill:#bbf,stroke:#333
 ```
 
-## Chi tiết các bước thực hiện (Step-by-Step Implementation)
+## Các bước thực hiện & Tối ưu Token
 
-### 1. Router Prompt (Phân luồng intent)
+### 1. Router Step (Phân loại)
 
-Bước đầu tiên tiếp nhận câu nói/yêu cầu của người dùng bằng ngôn ngữ tự nhiên và phân loại nó.
+- **Model**: `gpt-5.5-mini` / `gemini-3-flash` (Dự phòng: `claude-4-haiku`).
+- **Optimization**: Dùng prompt cực ngắn. Không gửi context nghiệp vụ.
+- **Output**: Trả về Enum (ví dụ: `DUTY_LEAVE`).
 
-- **Mục tiêu:** Xác định xem người dùng đang muốn làm gì (auth, check permission, xếp lịch duty shift, lấy report...).
-- **Hành động:** Trả về một `intent_category` rõ ràng.
+### 2. Extraction Step (Trích xuất)
 
-### 2. Extraction Prompt (Trích xuất dữ liệu)
+- **Model**: `claude-4.6-sonnet` / `gemini-3-flash`.
+- **Optimization**: Sử dụng **Native JSON Schema**. Chỉ gửi schema tối thiểu.
+- **Output**: JSON object sạch, đã parse.
 
-Sau khi đã định tuyến đúng luồng, LLM tiến hành phân tích câu nói để lấy ra các tham số nghiệp vụ.
+### 3. Action / Logic Step (Thực thi)
 
-- **Mục tiêu:** Lấy được dữ liệu cụ thể cần thiết từ câu hỏi để thực hiện tác vụ (ví dụ: ngày tháng, ID nhân viên, role cần cấp).
-- **Kết quả:** JSON object chứa các tham số thô.
+- **Backend Code**: Gọi các Service nghiệp vụ (`DutyService`, `UserService`).
+- **LLM Logic**: Chỉ gọi LLM cấp cao (`gpt-5.5`, `claude-4.6-sonnet`) nếu cần suy luận phức tạp.
 
-### 3. Business Prompt (Xử lý nghiệp vụ)
+### 4. Validation Layer (Kiểm soát)
 
-Đưa các tham số và logic nghiệp vụ vào prompt để LLM giải quyết bài toán cốt lõi.
+- **Công cụ**: `Zod` / `Joi`.
+- **Quy tắc**:
+  - Validate schema ngay sau bước Extraction.
+  - Áp dụng cơ chế **Cascading Fallback**: Nếu model cấp cao lỗi, hạ xuống model cấp thấp hơn để retry.
 
-- **Mục tiêu:** Áp dụng logic và các rule nghiệp vụ cụ thể của hệ thống.
-- **Ví dụ:** Dựa trên context lịch hiện tại và tham số trích xuất được, tạo lịch trực (duty) cho nhân viên sao cho hợp lý, hoặc sinh một truy vấn cơ sở dữ liệu.
+## Tại sao chọn mô hình này?
 
-### 4. Validation Step (Bước kiểm định)
-
-Sau khi có đầu ra từ LLM, bắt buộc phải có bước kiểm định. Có thể kết hợp Evaluator Prompt và các schema validator code (như Zod/Joi).
-
-- **Mục tiêu:**
-  - Kiểm tra format output (đúng chuẩn JSON, đủ các field bắt buộc).
-  - Đảm bảo không vượt quá giới hạn quyền (không thực hiện hành vi nguy hiểm).
-- **Hành động:** Nếu sai, kích hoạt cơ chế retry (Optimizing/Refining) để LLM tự sửa lỗi, hoặc fallback báo lỗi.
-
-### 5. Final Response (Trả kết quả)
-
-- **Mục tiêu:** Gọi service backend (gọi API, lưu DB) hoặc tạo câu trả lời tự nhiên hiển thị cho người dùng.
-- **Hành động:** Hoàn tất chu trình.
-
-## Chiến lược triển khai (Deployment Strategy)
-
-1.  **Giai đoạn 1:** Xây dựng luồng có cấu trúc chặt chẽ.
-    - _Mô hình:_ `Prompt Chaining` + `Validator`.
-    - _Áp dụng:_ Nếu workflow của nghiệp vụ đó rất rõ ràng, từng bước tuần tự.
-2.  **Giai đoạn 2:** Mở rộng linh hoạt.
-    - _Mô hình:_ Bổ sung thêm `Routing`.
-    - _Áp dụng:_ Khi endpoint tiếp nhận nhiều loại yêu cầu (ví dụ một con Chatbot chung cho nhiều tính năng).
-3.  **Giai đoạn 3:** Tự động hóa cao độ (Chỉ khi thật sự cần).
-    - _Mô hình:_ `Agentic Workflow`.
-    - _Áp dụng:_ Cần model tự động gọi API/DB/Tools nhiều lần lặp để đạt mục tiêu, nhưng phải thiết lập giới hạn tool rõ ràng để tránh rủi ro an ninh.
+1. **Tiết kiệm chi phí**: Giảm 80-90% token so với việc dùng một Agent lớn đọc toàn bộ docs.
+2. **Kiểm soát tuyệt đối**: Tránh việc AI tự ý thực hiện các hành động không được phép.
+3. **Dễ Debug**: Lỗi ở bước nào (Router hay Extraction) có thể xác định ngay lập tức.
