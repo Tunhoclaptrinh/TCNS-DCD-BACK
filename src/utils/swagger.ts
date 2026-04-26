@@ -107,6 +107,10 @@ const notificationSettingsSchema = schemas.notification_settings as SchemaDefini
 const dutySlotSchema = schemas.duty_slots as SchemaDefinition;
 const rewardPenaltySchema = schemas.reward_penalties as SchemaDefinition;
 const meetingSchema = schemas.meetings as SchemaDefinition;
+const bonusCampaignSchema = schemas.bonus_campaigns as SchemaDefinition;
+const bonusRegistrationSchema = schemas.bonus_registrations as SchemaDefinition;
+const academicPeriodSchema = schemas.academic_periods as SchemaDefinition;
+const auditLogSchema = schemas.audit_logs as SchemaDefinition;
 
 const userProfileFieldNames = [
   'name',
@@ -162,9 +166,25 @@ const TAG_METADATA: Record<string, { name: string; description: string }> = {
     name: 'Họp hành',
     description: 'Quản lý lịch họp, xác nhận tham gia, điểm danh và biên bản họp.',
   },
+  'bonus-campaigns': {
+    name: 'ĐRL, ĐƯT',
+    description: 'Quản lý đợt cộng điểm, đăng ký thành viên, xét duyệt và xuất danh sách duyệt.',
+  },
   reports: {
     name: 'Báo cáo',
     description: 'Tổng hợp và xuất báo cáo quản trị.',
+  },
+  'academic-periods': {
+    name: 'Đợt học kỳ',
+    description: 'Quản lý các đợt học kỳ, năm học của hệ thống.',
+  },
+  'audit-logs': {
+    name: 'Audit Logs',
+    description: 'Tra cứu lịch sử tác động và thay đổi dữ liệu của người dùng.',
+  },
+  'bonus-registrations': {
+    name: 'Đăng ký cộng điểm',
+    description: 'Quản lý chi tiết các bản đăng ký cộng điểm của thành viên.',
   },
 };
 
@@ -412,6 +432,51 @@ const EXTRA_SCHEMAS: AnyRecord = {
     },
     ['status'],
     'Xác nhận tham gia họp của người dùng hiện tại.',
+  ),
+  BonusCampaignCreateRequest: buildObjectSchema(
+    buildPropertiesFromSchemaFields(
+      omitFields(bonusCampaignSchema, ['createdBy', 'updatedBy', 'maDot', 'createdAt', 'updatedAt']),
+    ),
+    ['maHocKy', 'thoiGianBatDau', 'thoiGianKetThuc'],
+    'Tạo đợt cộng điểm DRL/HB.',
+  ),
+  BonusCampaignUpdateRequest: buildObjectSchema(
+    buildPropertiesFromSchemaFields(
+      omitFields(bonusCampaignSchema, ['createdBy', 'updatedBy', 'maDot', 'createdAt', 'updatedAt']),
+    ),
+    [],
+    'Cập nhật thông tin đợt cộng điểm.',
+  ),
+  AcademicPeriodRequest: buildObjectSchema(
+    buildPropertiesFromSchemaFields(omitFields(academicPeriodSchema, ['maHocKy', 'createdAt', 'updatedAt'])),
+    ['tenHocKy', 'tenNamHoc'],
+    'Dữ liệu đợt học kỳ.',
+  ),
+  BonusRegistrationUpdateRequest: buildObjectSchema(
+    buildPropertiesFromSchemaFields(
+      omitFields(bonusRegistrationSchema, ['campaignId', 'userId', 'registeredAt', 'createdAt', 'updatedAt']),
+    ),
+    [],
+    'Dữ liệu cập nhật đăng ký cộng điểm.',
+  ),
+  BonusCampaignReviewRequest: buildObjectSchema(
+    {
+      approvedUserIds: {
+        type: 'array',
+        items: { type: 'number' },
+        description: 'Danh sách ID thành viên được duyệt (nếu không truyền sẽ dùng danh sách đủ điều kiện tự động).',
+      },
+      approvedNote: {
+        type: 'string',
+        description: 'Ghi chú áp dụng cho thành viên được duyệt.',
+      },
+      rejectedNote: {
+        type: 'string',
+        description: 'Ghi chú áp dụng cho thành viên không được duyệt.',
+      },
+    },
+    [],
+    'Xét duyệt danh sách đăng ký cộng điểm của một đợt.',
   ),
   UploadAvatarRequest: {
     type: 'object',
@@ -1130,6 +1195,113 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
     requestBody: buildSchemaRefBody('MeetingRsvpRequest'),
   },
 
+  'GET /bonus-campaigns': {
+    summary: 'Danh sách đợt cộng điểm',
+    protected: true,
+    permission: 'duty:view',
+    parameters: [
+      {
+        name: 'openOnly',
+        in: 'query',
+        schema: { type: 'boolean', default: false },
+        description: 'Chỉ lấy các đợt đang mở đăng ký.',
+      },
+    ],
+  },
+  'POST /bonus-campaigns': {
+    summary: 'Tạo đợt cộng điểm mới',
+    protected: true,
+    permission: 'duty:manage',
+    requestBody: buildSchemaRefBody('BonusCampaignCreateRequest'),
+  },
+  'GET /bonus-campaigns/{id}': {
+    summary: 'Chi tiết đợt cộng điểm',
+    protected: true,
+    permission: 'duty:view',
+  },
+  'PUT /bonus-campaigns/{id}': {
+    summary: 'Cập nhật đợt cộng điểm',
+    protected: true,
+    permission: 'duty:manage',
+    requestBody: buildSchemaRefBody('BonusCampaignUpdateRequest'),
+  },
+  'DELETE /bonus-campaigns/{id}': {
+    summary: 'Xóa đợt cộng điểm',
+    protected: true,
+    permission: 'duty:manage',
+  },
+  'PATCH /bonus-campaigns/{id}/register': {
+    summary: 'Đăng ký tham gia đợt cộng điểm',
+    protected: true,
+    permission: 'duty:view',
+  },
+  'POST /bonus-campaigns/{id}/review': {
+    summary: 'Xét duyệt danh sách đăng ký',
+    protected: true,
+    permission: 'duty:manage',
+    requestBody: buildSchemaRefBody('BonusCampaignReviewRequest'),
+  },
+  'GET /bonus-campaigns/{id}/export': {
+    summary: 'Xuất Excel danh sách đã duyệt',
+    protected: true,
+    permission: 'duty:manage',
+  },
+
+  'GET /academic-periods': {
+    summary: 'Danh sách đợt học kỳ',
+    protected: true,
+  },
+  'GET /academic-periods/current': {
+    summary: 'Đợt học kỳ hiện tại',
+    protected: true,
+  },
+  'POST /academic-periods': {
+    summary: 'Tạo đợt học kỳ mới',
+    protected: true,
+    permission: 'system:manage',
+    requestBody: buildSchemaRefBody('AcademicPeriodRequest'),
+  },
+  'GET /academic-periods/{id}': {
+    summary: 'Chi tiết đợt học kỳ',
+    protected: true,
+  },
+  'PUT /academic-periods/{id}': {
+    summary: 'Cập nhật đợt học kỳ',
+    protected: true,
+    permission: 'system:manage',
+    requestBody: buildSchemaRefBody('AcademicPeriodRequest'),
+  },
+  'DELETE /academic-periods/{id}': {
+    summary: 'Xóa đợt học kỳ',
+    protected: true,
+    permission: 'system:manage',
+  },
+
+  'GET /audit-logs': {
+    summary: 'Danh sách nhật ký hệ thống',
+    protected: true,
+  },
+
+  'GET /bonus-registrations': {
+    summary: 'Danh sách đăng ký cộng điểm',
+    protected: true,
+  },
+  'GET /bonus-registrations/{id}': {
+    summary: 'Chi tiết bản đăng ký',
+    protected: true,
+  },
+  'PUT /bonus-registrations/{id}': {
+    summary: 'Cập nhật bản đăng ký',
+    protected: true,
+    permission: 'bonus-campaigns:review',
+    requestBody: buildSchemaRefBody('BonusRegistrationUpdateRequest'),
+  },
+  'DELETE /bonus-registrations/{id}': {
+    summary: 'Xóa bản đăng ký',
+    protected: true,
+    permission: 'bonus-campaigns:delete',
+  },
+
   'GET /reports/overview': {
     summary: 'Lấy báo cáo tổng quan',
     protected: true,
@@ -1167,6 +1339,7 @@ const LIST_ROUTE_KEYS = new Set([
   'GET /reward-penalties',
   'GET /duty/swaps',
   'GET /meetings',
+  'GET /bonus-campaigns',
 ]);
 
 const SUMMARY_MAP: Array<[RegExp, string, (entity: string) => string]> = [
