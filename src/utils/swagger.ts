@@ -42,6 +42,7 @@ function ruleToProperty(rule: SchemaRule) {
     ...(typeof base === 'function' ? base(rule) : base || { type: 'string' }),
   };
 
+  if (rule.description) property.description = rule.description;
   if (rule.minLength !== undefined) property.minLength = rule.minLength;
   if (rule.maxLength !== undefined) property.maxLength = rule.maxLength;
   if (rule.min !== undefined) property.minimum = rule.min;
@@ -105,6 +106,7 @@ const userSchema = schemas.users as SchemaDefinition;
 const notificationSettingsSchema = schemas.notification_settings as SchemaDefinition;
 const dutySlotSchema = schemas.duty_slots as SchemaDefinition;
 const rewardPenaltySchema = schemas.reward_penalties as SchemaDefinition;
+const meetingSchema = schemas.meetings as SchemaDefinition;
 
 const userProfileFieldNames = [
   'name',
@@ -155,6 +157,10 @@ const TAG_METADATA: Record<string, { name: string; description: string }> = {
   'reward-penalties': {
     name: 'Thưởng phạt',
     description: 'Quản lý bản ghi thưởng phạt và thống kê tài chính liên quan.',
+  },
+  meetings: {
+    name: 'Họp hành',
+    description: 'Quản lý lịch họp, xác nhận tham gia, điểm danh và biên bản họp.',
   },
   reports: {
     name: 'Báo cáo',
@@ -381,6 +387,31 @@ const EXTRA_SCHEMAS: AnyRecord = {
     buildPropertiesFromSchemaFields(omitFields(rewardPenaltySchema, ['createdBy'])),
     [],
     'Cập nhật bản ghi thưởng hoặc phạt. Chỉ cần truyền các trường muốn thay đổi.',
+  ),
+  MeetingCreateRequest: buildObjectSchema(
+    buildPropertiesFromSchemaFields(omitFields(meetingSchema, ['createdBy', 'updatedBy', 'confirmations'])),
+    ['title', 'location', 'meetingAt'],
+    'Tạo lịch họp mới và gửi thông báo đến các thành viên tham gia.',
+  ),
+  MeetingUpdateRequest: buildObjectSchema(
+    buildPropertiesFromSchemaFields(omitFields(meetingSchema, ['createdBy', 'updatedBy', 'confirmations'])),
+    [],
+    'Cập nhật thông tin cuộc họp đã tạo.',
+  ),
+  MeetingRsvpRequest: buildObjectSchema(
+    {
+      status: {
+        type: 'string',
+        enum: ['accepted', 'declined'],
+        description: 'Trạng thái phản hồi tham gia.',
+      },
+      reason: {
+        type: 'string',
+        description: 'Lý do khi từ chối tham gia.',
+      },
+    },
+    ['status'],
+    'Xác nhận tham gia họp của người dùng hiện tại.',
   ),
   UploadAvatarRequest: {
     type: 'object',
@@ -1066,6 +1097,39 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
     ],
   },
 
+  'GET /meetings': {
+    summary: 'Lấy danh sách lịch họp',
+    protected: true,
+    permission: 'duty:view',
+  },
+  'POST /meetings': {
+    summary: 'Tạo lịch họp mới',
+    protected: true,
+    permission: 'duty:manage',
+    requestBody: buildSchemaRefBody('MeetingCreateRequest'),
+  },
+  'GET /meetings/{id}': {
+    summary: 'Lấy chi tiết cuộc họp',
+    protected: true,
+    permission: 'duty:view',
+  },
+  'PUT /meetings/{id}': {
+    summary: 'Cập nhật thông tin cuộc họp',
+    protected: true,
+    permission: 'duty:manage',
+    requestBody: buildSchemaRefBody('MeetingUpdateRequest', false),
+  },
+  'DELETE /meetings/{id}': {
+    summary: 'Xóa cuộc họp',
+    protected: true,
+    permission: 'duty:manage',
+  },
+  'PATCH /meetings/{id}/rsvp': {
+    summary: 'Xác nhận tham gia họp',
+    protected: true,
+    requestBody: buildSchemaRefBody('MeetingRsvpRequest'),
+  },
+
   'GET /reports/overview': {
     summary: 'Lấy báo cáo tổng quan',
     protected: true,
@@ -1102,6 +1166,7 @@ const LIST_ROUTE_KEYS = new Set([
   'GET /notifications',
   'GET /reward-penalties',
   'GET /duty/swaps',
+  'GET /meetings',
 ]);
 
 const SUMMARY_MAP: Array<[RegExp, string, (entity: string) => string]> = [

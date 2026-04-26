@@ -25,6 +25,7 @@ const SCHEMA_MODEL_MAP: Record<string, string> = {
   'duty-template.schema': 'duty_templates',
   'duty-template-assignment.schema': 'duty_template_assignments',
   'duty-log.schema': 'duty_logs',
+  'meeting.schema': 'meetings',
 };
 
 async function sync() {

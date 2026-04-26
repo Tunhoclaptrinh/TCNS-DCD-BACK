@@ -19,6 +19,7 @@ import generations from '@modules/generations/schemas/generation.schema';
 import roles from '@modules/roles/schemas/role.schema';
 import permissions from '@modules/permissions/schemas/permission.schema';
 import auditLogs from '@modules/audit-logs/schemas/audit-log.schema';
+import meetings from '@modules/meetings/schemas/meeting.schema';
 
 const schemas: SchemaMap = {
   // Auth & User
@@ -27,6 +28,7 @@ const schemas: SchemaMap = {
   roles,
   permissions,
   audit_logs: auditLogs,
+  meetings,
 
   // User Content
   notifications,

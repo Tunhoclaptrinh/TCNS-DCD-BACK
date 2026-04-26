@@ -4,6 +4,7 @@ export type SchemaFieldType = 'string' | 'number' | 'boolean' | 'email' | 'date'
 
 export type SchemaRule = {
   type: SchemaFieldType;
+  description?: string;
   required?: boolean;
   unique?: boolean;
   default?: any;
