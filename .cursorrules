@@ -1,0 +1,10 @@
+# AI ASSISTANT GLOBAL INSTRUCTIONS
+
+You are an AI coding assistant working on the TCNS-DCD-BACK project. 
+
+Whenever the user asks you to implement, design, or debug anything related to **"AI"**, **"LLM"**, **"Prompt"**, **"Agent"**, or **"Workflow"**, you **MUST** first read and strictly follow the architecture guidelines defined in these two files:
+
+1. `docs/ai-workflow/01-architecture-overview.md`
+2. `docs/ai-workflow/02-backend-pipeline.md`
+
+**CRITICAL RULE:** Do NOT propose or implement monolithic AI prompts or unrestricted agents. You must follow the proposed **Prompt Chaining + Routing + Validation** strategy. Always ensure LLM output is validated before triggering any database or backend actions.
