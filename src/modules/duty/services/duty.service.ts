@@ -9,6 +9,7 @@ import dutySwapRequestsService from './duty-swap-requests.service';
 import dutyLeaveRequestsService from './duty-leave-requests.service';
 import dutyTemplateAssignmentsService from './duty-template-assignments.service';
 import dutyGenerationService from './duty-generation.service';
+import auditLogsService from '@modules/audit-logs/services/audit-logs.service';
 
 import { Identifier, GenericRecord } from './duty-utils';
 
@@ -119,75 +120,353 @@ class DutyService extends BaseService {
 
   // ==================== SLOT & SCHEDULE MANAGEMENT ====================
   getWeeklySchedule = (options: any = {}) => dutySlotsService.getWeeklySchedule(options);
-  createActualShift = (payload: GenericRecord, actorId: Identifier) =>
-    dutySlotsService.createActualShift(payload, actorId);
+  createActualShift = async (payload: GenericRecord, actorId: Identifier) => {
+    const data = await dutySlotsService.createActualShift(payload, actorId);
+
+    await auditLogsService.log({
+      userId: Number(actorId) || 0,
+      action: 'THÊM DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: `Tạo ca trực thực tế: ${data?.name || 'Không rõ tên'}`,
+      ...(data?.id !== undefined ? { resourceId: String(data.id) } : {}),
+    });
+
+    return data;
+  };
   updateActualShift = (shiftId: number, data: GenericRecord) => dutySlotsService.updateActualShift(shiftId, data);
-  createActualKip = (payload: GenericRecord, actorId: Identifier) => dutySlotsService.createActualKip(payload, actorId);
+  createActualKip = async (payload: GenericRecord, actorId: Identifier) => {
+    const data = await dutySlotsService.createActualKip(payload, actorId);
+
+    await auditLogsService.log({
+      userId: Number(actorId) || 0,
+      action: 'THÊM DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: `Tạo kíp trực thực tế: ${data?.name || 'Không rõ tên'}`,
+      ...(data?.id !== undefined ? { resourceId: String(data.id) } : {}),
+    });
+
+    return data;
+  };
   deleteActualKip = (kipId: number) => dutySlotsService.deleteActualKip(kipId);
-  createSlot = (payload: GenericRecord, actorId: Identifier) => dutySlotsService.createSlot(payload, actorId);
-  deleteSlot = (id: Identifier, performerId: Identifier) => dutySlotsService.deleteSlot(id, performerId);
-  updateSlot = (slotId: Identifier, payload: GenericRecord, performerId: Identifier) =>
-    dutySlotsService.updateSlot(slotId, payload, performerId);
-  registerToSlot = (slotId: Identifier, user: GenericRecord | Identifier) =>
-    dutySlotsService.registerToSlot(slotId, user);
-  cancelRegistration = (slotId: Identifier, user: GenericRecord | Identifier) =>
-    dutySlotsService.cancelRegistration(slotId, user);
-  markAttendance = (slotId: Identifier, userIds: Identifier[], performerId: Identifier) =>
-    dutySlotsService.markAttendance(slotId, userIds, performerId);
+  createSlot = async (payload: GenericRecord, actorId: Identifier) => {
+    const data = await dutySlotsService.createSlot(payload, actorId);
+
+    await auditLogsService.log({
+      userId: Number(actorId) || 0,
+      action: 'THÊM DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: 'Tạo slot trực mới',
+      ...(data?.id !== undefined ? { resourceId: String(data.id) } : {}),
+    });
+
+    return data;
+  };
+  deleteSlot = async (id: Identifier, performerId: Identifier) => {
+    const data = await dutySlotsService.deleteSlot(id, performerId);
+
+    await auditLogsService.log({
+      userId: Number(performerId) || 0,
+      action: 'XÓA DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: `Xóa slot trực #${id}`,
+      resourceId: String(id),
+    });
+
+    return data;
+  };
+  updateSlot = async (slotId: Identifier, payload: GenericRecord, performerId: Identifier) => {
+    const data = await dutySlotsService.updateSlot(slotId, payload, performerId);
+
+    await auditLogsService.log({
+      userId: Number(performerId) || 0,
+      action: 'CẬP NHẬT DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: `Cập nhật slot trực #${slotId}`,
+      resourceId: String(slotId),
+    });
+
+    return data;
+  };
+  registerToSlot = async (slotId: Identifier, user: GenericRecord | Identifier) => {
+    const data = await dutySlotsService.registerToSlot(slotId, user);
+    const userId = (typeof user === 'object' && user !== null ? Number(user.id) : Number(user)) || 0;
+
+    await auditLogsService.log({
+      userId,
+      action: 'CẬP NHẬT DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: `Đăng ký vào slot trực #${slotId}`,
+      resourceId: String(slotId),
+    });
+
+    return data;
+  };
+  cancelRegistration = async (slotId: Identifier, user: GenericRecord | Identifier) => {
+    const data = await dutySlotsService.cancelRegistration(slotId, user);
+    const userId = (typeof user === 'object' && user !== null ? Number(user.id) : Number(user)) || 0;
+
+    await auditLogsService.log({
+      userId,
+      action: 'CẬP NHẬT DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: `Hủy đăng ký slot trực #${slotId}`,
+      resourceId: String(slotId),
+    });
+
+    return data;
+  };
+  markAttendance = async (slotId: Identifier, userIds: Identifier[], performerId: Identifier) => {
+    const data = await dutySlotsService.markAttendance(slotId, userIds, performerId);
+
+    await auditLogsService.log({
+      userId: Number(performerId) || 0,
+      action: 'CẬP NHẬT DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: `Điểm danh cho slot trực #${slotId}`,
+      resourceId: String(slotId),
+    });
+
+    return data;
+  };
   getStats = () => dutySlotsService.getStats();
 
   // ==================== SWAP REQUESTS ====================
-  requestSwap = (payload: GenericRecord, requesterUser: GenericRecord) =>
-    dutySwapRequestsService.requestSwap(payload, requesterUser);
-  decideSwap = (requestId: Identifier, payload: GenericRecord, approver: any) =>
-    dutySwapRequestsService.decideSwap(requestId, payload, approver);
-  createSwapManual = (data: GenericRecord, performerId: Identifier) =>
-    dutySwapRequestsService.createSwapManual(data, performerId);
-  updateSwapRequest = (id: Identifier, data: GenericRecord, performerId: Identifier) =>
-    dutySwapRequestsService.updateSwapRequest(id, data, performerId);
+  requestSwap = async (payload: GenericRecord, requesterUser: GenericRecord) => {
+    const data = await dutySwapRequestsService.requestSwap(payload, requesterUser);
+
+    await auditLogsService.log({
+      userId: Number(requesterUser?.id) || 0,
+      action: 'THÊM DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: 'Tạo yêu cầu đổi/chuyển ca trực',
+      ...(data?.id !== undefined ? { resourceId: String(data.id) } : {}),
+    });
+
+    return data;
+  };
+  decideSwap = async (requestId: Identifier, payload: GenericRecord, approver: any) => {
+    const data = await dutySwapRequestsService.decideSwap(requestId, payload, approver);
+    const approverId = typeof approver === 'object' && approver !== null ? Number(approver.id) : Number(approver);
+
+    await auditLogsService.log({
+      userId: approverId || 0,
+      action: 'CẬP NHẬT DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: `Xử lý yêu cầu đổi ca #${requestId}`,
+      resourceId: String(requestId),
+    });
+
+    return data;
+  };
+  createSwapManual = async (data: GenericRecord, performerId: Identifier) => {
+    const created = await dutySwapRequestsService.createSwapManual(data, performerId);
+
+    await auditLogsService.log({
+      userId: Number(performerId) || 0,
+      action: 'THÊM DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: 'Tạo yêu cầu đổi ca thủ công',
+      ...(created?.id !== undefined ? { resourceId: String(created.id) } : {}),
+    });
+
+    return created;
+  };
+  updateSwapRequest = async (id: Identifier, data: GenericRecord, performerId: Identifier) => {
+    const updated = await dutySwapRequestsService.updateSwapRequest(id, data, performerId);
+
+    await auditLogsService.log({
+      userId: Number(performerId) || 0,
+      action: 'CẬP NHẬT DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: `Cập nhật yêu cầu đổi ca #${id}`,
+      resourceId: String(id),
+    });
+
+    return updated;
+  };
   deleteSwapRequest = (id: Identifier) => dutySwapRequestsService.deleteSwapRequest(id);
   getSwapRequests = (user: GenericRecord, options: GenericRecord) =>
     dutySwapRequestsService.getSwapRequests(user, options);
 
   // ==================== LEAVE REQUESTS ====================
-  requestLeave = (slotId: Identifier, userId: Identifier, reason: string) =>
-    dutyLeaveRequestsService.requestLeave(slotId, userId, reason);
-  createLeaveManual = (data: GenericRecord, performerId: Identifier) =>
-    dutyLeaveRequestsService.createLeaveManual(data, performerId);
-  updateLeaveRequest = (id: Identifier, data: GenericRecord, performerId: Identifier) =>
-    dutyLeaveRequestsService.updateLeaveRequest(id, data, performerId);
+  requestLeave = async (slotId: Identifier, userId: Identifier, reason: string) => {
+    const data = await dutyLeaveRequestsService.requestLeave(slotId, userId, reason);
+
+    await auditLogsService.log({
+      userId: Number(userId) || 0,
+      action: 'THÊM DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: `Tạo đơn xin nghỉ cho slot #${slotId}`,
+      ...(data?.id !== undefined ? { resourceId: String(data.id) } : {}),
+    });
+
+    return data;
+  };
+  createLeaveManual = async (data: GenericRecord, performerId: Identifier) => {
+    const created = await dutyLeaveRequestsService.createLeaveManual(data, performerId);
+
+    await auditLogsService.log({
+      userId: Number(performerId) || 0,
+      action: 'THÊM DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: 'Tạo đơn nghỉ thủ công',
+      ...(created?.id !== undefined ? { resourceId: String(created.id) } : {}),
+    });
+
+    return created;
+  };
+  updateLeaveRequest = async (id: Identifier, data: GenericRecord, performerId: Identifier) => {
+    const updated = await dutyLeaveRequestsService.updateLeaveRequest(id, data, performerId);
+
+    await auditLogsService.log({
+      userId: Number(performerId) || 0,
+      action: 'CẬP NHẬT DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: `Cập nhật đơn nghỉ #${id}`,
+      resourceId: String(id),
+    });
+
+    return updated;
+  };
   deleteLeaveRequest = (id: Identifier) => dutyLeaveRequestsService.deleteLeaveRequest(id);
   getLeaveRequests = (options: GenericRecord) => dutyLeaveRequestsService.getLeaveRequests(options);
-  resolveLeaveRequest = (requestId: Identifier, status: string, approverId: Identifier, rejectionReason: string) =>
-    dutyLeaveRequestsService.resolveLeaveRequest(requestId, status, approverId, rejectionReason);
+  resolveLeaveRequest = async (
+    requestId: Identifier,
+    status: string,
+    approverId: Identifier,
+    rejectionReason: string,
+  ) => {
+    const data = await dutyLeaveRequestsService.resolveLeaveRequest(requestId, status, approverId, rejectionReason);
+
+    await auditLogsService.log({
+      userId: Number(approverId) || 0,
+      action: 'CẬP NHẬT DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: `Duyệt đơn nghỉ #${requestId} với trạng thái ${status}`,
+      resourceId: String(requestId),
+    });
+
+    return data;
+  };
 
   // ==================== GENERATION & BATCH OPERATIONS ====================
-  generateWeekSlots = (weekStart: string, actorId: Identifier) =>
-    dutyGenerationService.generateWeekSlots(weekStart, actorId);
-  generateDaySlots = (date: string, actorId: Identifier) => dutyGenerationService.generateDaySlots(date, actorId);
-  generateRangeSlots = (
+  generateWeekSlots = async (weekStart: string, actorId: Identifier) => {
+    const data = await dutyGenerationService.generateWeekSlots(weekStart, actorId);
+
+    await auditLogsService.log({
+      userId: Number(actorId) || 0,
+      action: 'THÊM DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: `Sinh lịch trực theo tuần bắt đầu ${weekStart}`,
+    });
+
+    return data;
+  };
+  generateDaySlots = async (date: string, actorId: Identifier) => {
+    const data = await dutyGenerationService.generateDaySlots(date, actorId);
+
+    await auditLogsService.log({
+      userId: Number(actorId) || 0,
+      action: 'THÊM DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: `Sinh lịch trực theo ngày ${date}`,
+    });
+
+    return data;
+  };
+  generateRangeSlots = async (
     startDate: string,
     endDate: string,
     actorId: Identifier,
     templateId?: Identifier,
     mode?: string,
     jobId?: string,
-  ) => dutyGenerationService.generateRangeSlots(startDate, endDate, actorId, templateId, mode, jobId);
-  copyWeekSchedule = (sourceWeekStart: string, targetWeekStart: string, actorId: Identifier) =>
-    dutyGenerationService.copyWeekSchedule(sourceWeekStart, targetWeekStart, actorId);
+  ) => {
+    const data = await dutyGenerationService.generateRangeSlots(startDate, endDate, actorId, templateId, mode, jobId);
+
+    await auditLogsService.log({
+      userId: Number(actorId) || 0,
+      action: 'THÊM DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: `Sinh lịch trực theo khoảng ngày ${startDate} - ${endDate}`,
+    });
+
+    return data;
+  };
+  copyWeekSchedule = async (sourceWeekStart: string, targetWeekStart: string, actorId: Identifier) => {
+    const data = await dutyGenerationService.copyWeekSchedule(sourceWeekStart, targetWeekStart, actorId);
+
+    await auditLogsService.log({
+      userId: Number(actorId) || 0,
+      action: 'THÊM DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: `Sao chép lịch trực từ tuần ${sourceWeekStart} sang tuần ${targetWeekStart}`,
+    });
+
+    return data;
+  };
   deleteWeeklySlots = (weekStart: string) => dutyGenerationService.deleteWeeklySlots(weekStart);
-  deleteRangeSlots = (startDate: string, endDate: string, performerId: Identifier) =>
-    dutyGenerationService.deleteRangeSlots(startDate, endDate, performerId);
-  deleteShiftSlots = (date: string, shiftId: number, performerId: Identifier) =>
-    dutyGenerationService.deleteShiftSlots(date, shiftId, performerId);
-  addShiftToDay = (date: string, shiftTemplateId: number, actorId: Identifier, overrides?: any, mode?: string) =>
-    dutyGenerationService.addShiftToDay(date, shiftTemplateId, actorId, overrides, mode);
+  deleteRangeSlots = async (startDate: string, endDate: string, performerId: Identifier) => {
+    const data = await dutyGenerationService.deleteRangeSlots(startDate, endDate, performerId);
+
+    await auditLogsService.log({
+      userId: Number(performerId) || 0,
+      action: 'XÓA DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: `Xóa lịch trực theo khoảng ngày ${startDate} - ${endDate}`,
+    });
+
+    return data;
+  };
+  deleteShiftSlots = async (date: string, shiftId: number, performerId: Identifier) => {
+    const data = await dutyGenerationService.deleteShiftSlots(date, shiftId, performerId);
+
+    await auditLogsService.log({
+      userId: Number(performerId) || 0,
+      action: 'XÓA DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: `Xóa các slot của ca #${shiftId} ngày ${date}`,
+      resourceId: String(shiftId),
+    });
+
+    return data;
+  };
+  addShiftToDay = async (
+    date: string,
+    shiftTemplateId: number,
+    actorId: Identifier,
+    overrides?: any,
+    mode?: string,
+  ) => {
+    const data = await dutyGenerationService.addShiftToDay(date, shiftTemplateId, actorId, overrides, mode);
+
+    await auditLogsService.log({
+      userId: Number(actorId) || 0,
+      action: 'THÊM DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: `Thêm ca mẫu #${shiftTemplateId} vào ngày ${date}`,
+      resourceId: String(shiftTemplateId),
+    });
+
+    return data;
+  };
   removeShiftFromDay = (date: string, shiftInstanceId: number) =>
     dutyGenerationService.removeShiftFromDay(date, shiftInstanceId);
 
   // ==================== TEMPLATE ASSIGNMENTS ====================
   getTemplateAssignments = () => dutyTemplateAssignmentsService.getTemplateAssignments();
-  createTemplateAssignment = (data: any, actorId: any) => dutyGenerationService.createTemplateAssignment(data, actorId);
+  createTemplateAssignment = async (data: any, actorId: any) => {
+    const created = await dutyGenerationService.createTemplateAssignment(data, actorId);
+
+    await auditLogsService.log({
+      userId: Number(actorId) || 0,
+      action: 'THÊM DỮ LIỆU TRỰC',
+      module: 'DUTY',
+      description: 'Thêm phân công bản mẫu lịch trực',
+    });
+
+    return created;
+  };
   updateTemplateAssignment = (id: any, data: any) => dutyTemplateAssignmentsService.updateTemplateAssignment(id, data);
   deleteTemplateAssignment = (id: any) => dutyTemplateAssignmentsService.deleteTemplateAssignment(id);
 }

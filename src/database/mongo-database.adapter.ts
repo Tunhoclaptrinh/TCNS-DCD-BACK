@@ -88,6 +88,9 @@ class MongoConnect implements DatabaseAdapter {
       duty_template_assignments: {
         template: { ref: 'duty_templates', localField: 'templateId', foreignField: 'id', justOne: true },
       },
+      audit_logs: {
+        user: { ref: 'users', localField: 'userId', foreignField: 'id', justOne: true },
+      },
     };
   }
 
