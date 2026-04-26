@@ -13,7 +13,8 @@ router.get('/:id', requirePermission('system:manage_roles'), roleController.getB
 
 router.post('/', requirePermission('system:manage_roles'), validateSchema('roles'), roleController.create);
 
-router.put('/:id', requirePermission('system:manage_roles'), validateSchema('roles'), roleController.update);
+router.put('/:id', requirePermission('system:manage_roles'), roleController.update);
+router.patch('/:id', requirePermission('system:manage_roles'), roleController.patch);
 
 router.delete('/:id', requirePermission('system:manage_roles'), roleController.delete);
 

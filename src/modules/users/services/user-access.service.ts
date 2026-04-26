@@ -1,15 +1,17 @@
 import ApiError from '@utils/api-error';
 import type { Identifier } from '@app-types/common';
+import db from '@database';
 
 const CAN_READ_OTHERS_ROLES = new Set(['admin', 'staff', 'researcher']);
 
 const POSITION_LEVELS: Record<string, number> = {
-  ctc: 0, // Cộng tác viên
-  tv: 1, // Thành viên
+  ctv: 0, // Cộng tác viên
+  tv: 1, // Thành viên thường
   tvb: 2, // Thành viên ban
   pb: 3, // Phó ban
   tb: 4, // Trưởng ban
-  dt: 5, // Đội trưởng
+  ctc: 5, // Chủ tịch
+  dt: 6, // Đội trưởng
 };
 
 class UserAccessService {
@@ -17,11 +19,45 @@ class UserAccessService {
     return parseInt(String(targetId), 10);
   }
 
+  /**
+   * Aggregates permissions from multiple roles and applies individual overrides.
+   * Logic: (RolePermissions + ExtraPermissions) - DeniedPermissions
+   */
+  async computePermissions(user: any) {
+    if (!user) return [];
+
+    // 1. Get permissions from all roles
+    const roleIds = Array.isArray(user.roleIds) ? user.roleIds : [];
+    const roles = await db.findMany('roles', { id_in: roleIds });
+
+    const permissionSet = new Set<string>();
+    roles.forEach((role: any) => {
+      if (Array.isArray(role.permissions)) {
+        role.permissions.forEach((p: string) => permissionSet.add(p));
+      }
+    });
+
+    // 2. Add extra permissions
+    const extra = user.customPermissions?.extra || [];
+    extra.forEach((p: string) => permissionSet.add(p));
+
+    // 3. Remove denied permissions
+    const denied = user.customPermissions?.denied || [];
+    denied.forEach((p: string) => permissionSet.delete(p));
+
+    // Special case for legacy 'admin' role if needed
+    if (user.role === 'admin') {
+      // In a real system, you might want to auto-grant all permissions to admins
+      // But for now, we rely on the seeded 'admin' role in roleIds.
+    }
+
+    return Array.from(permissionSet);
+  }
+
   canReadOtherProfiles(user) {
     return CAN_READ_OTHERS_ROLES.has(String(user?.role || ''));
   }
 
-  // Gom rule truy cập vào một chỗ để controller không lặp lại business rule.
   assertCanReadProfile(actor, targetId: Identifier) {
     const normalizedTargetId = this.normalizeTargetId(targetId);
 
@@ -36,10 +72,6 @@ class UserAccessService {
     }
   }
 
-  /**
-   * Check if actor has authority to manage target based on role and position hierarchy.
-   * Only DT or Admin can promote/update others to high ranks.
-   */
   assertAuthority(actor: any, target: any, newPosition?: string) {
     if (actor.role === 'admin') return;
 
@@ -47,12 +79,10 @@ class UserAccessService {
     const targetLevel = POSITION_LEVELS[target.position] || 0;
     const newLevel = newPosition ? POSITION_LEVELS[newPosition] || 0 : -1;
 
-    // 1. Staff cannot manage someone with equal or higher rank
     if (actorLevel <= targetLevel && actor.id !== target.id) {
       throw ApiError.forbidden('Không có quyền quản lý thành viên cùng cấp hoặc cấp cao hơn');
     }
 
-    // 2. Staff cannot promote someone to a rank higher than or equal to their own
     if (newLevel >= 0 && newLevel >= actorLevel) {
       throw ApiError.forbidden('Không thể nâng hạng thành viên lên bằng hoặc cao hơn cấp bậc của chính mình');
     }

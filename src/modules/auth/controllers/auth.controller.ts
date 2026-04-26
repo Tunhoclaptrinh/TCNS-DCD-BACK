@@ -24,7 +24,7 @@ class AuthController extends BaseController {
   });
 
   getMe = this.handle(async (req, res) => {
-    this.ok(res, authService.getMe(req.user));
+    this.ok(res, await authService.getMe(req.user));
   });
 
   logout = this.handle(async (_req, res) => {
