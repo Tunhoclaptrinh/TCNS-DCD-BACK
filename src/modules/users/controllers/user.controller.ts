@@ -63,8 +63,8 @@ class UserController extends BaseController {
   });
 
   create = this.handle(async (req, res) => {
-    const data = await this.service.create(req.body);
-    this.created(res, sanitizeUser(data));
+    const data = await this.service.create(req.body, req.user);
+    this.ok(res, sanitizeUser(data));
   });
 
   update = this.handle(async (req, res) => {
@@ -79,7 +79,7 @@ class UserController extends BaseController {
       // Hierarchy check for others
       const targetUserResult = await this.service.findById(req.params.id);
       if (!targetUserResult.success) {
-        throw ApiError.notFound('Target user not found');
+        throw ApiError.notFound('Không tìm thấy người dùng mục tiêu');
       }
       userAccessService.assertAuthority(req.user, targetUserResult.data, req.body.position);
     }
@@ -94,9 +94,9 @@ class UserController extends BaseController {
   });
 
   delete = this.handle(async (req, res) => {
-    userAccessService.assertNotSelfAction(req.user, req.params.id, 'Cannot delete your own account');
+    userAccessService.assertNotSelfAction(req.user, req.params.id, 'Không thể tự xóa tài khoản của chính mình');
 
-    const result = await this.service.delete(req.params.id);
+    const result = await this.service.permanentDeleteUser(req.params.id, req.user.id, req.user.role);
     this.ok(res, result);
   });
 
@@ -114,7 +114,7 @@ class UserController extends BaseController {
   toggleUserStatus = this.handle(async (req, res) => {
     userAccessService.assertNotSelfAction(req.user, req.params.id, 'Không thể vô hiệu hóa tài khoản của chính mình');
 
-    const data = await this.service.toggleUserStatus(req.params.id);
+    const data = await this.service.toggleUserStatus(req.params.id, req.user);
     this.ok(res, data);
   });
 
@@ -127,7 +127,7 @@ class UserController extends BaseController {
 
     const { role, reason } = req.body;
     if (!role) {
-      throw ApiError.badRequest('role is required');
+      throw ApiError.badRequest('Vai trò là bắt buộc');
     }
 
     const targetUser = await this.service.findById(req.params.id);
@@ -138,14 +138,14 @@ class UserController extends BaseController {
   });
 
   expelUser = this.handle(async (req, res) => {
-    userAccessService.assertNotSelfAction(req.user, req.params.id, 'Cannot expel your own account');
+    userAccessService.assertNotSelfAction(req.user, req.params.id, 'Không thể tự khai trừ tài khoản của chính mình');
 
     const data = await this.service.expelUser(req.params.id, req.body.reason, req.user.id, req.user.role);
     this.ok(res, data);
   });
 
   permanentDeleteUser = this.handle(async (req, res) => {
-    userAccessService.assertNotSelfAction(req.user, req.params.id, 'Cannot delete your own account');
+    userAccessService.assertNotSelfAction(req.user, req.params.id, 'Không thể tự xóa tài khoản của chính mình');
 
     const data = await this.service.permanentDeleteUser(req.params.id, req.user.id, req.user.role);
     this.ok(res, data);
@@ -156,7 +156,7 @@ class UserController extends BaseController {
     const uploadedFile = this.getUploadedFile(req);
 
     if (Object.keys(updateData).length === 0 && !uploadedFile) {
-      throw ApiError.badRequest('No fields to update');
+      throw ApiError.badRequest('Không có trường dữ liệu nào để cập nhật');
     }
 
     const data = await userAvatarService.updateUserWithAvatar(

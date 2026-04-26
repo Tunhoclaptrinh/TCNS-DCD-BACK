@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import type { AnyRecord } from '@app-types/common';
 import { logger } from '../utils/logger';
+import { transformError } from './error-transform.middleware';
 
 type ResponseEnvelope = AnyRecord & {
   success: boolean;
@@ -83,8 +84,9 @@ export const wrapJson = (_req: Request, res: Response, next: NextFunction) => {
 
 // Chuẩn hóa response lỗi và chỉ log stack với lỗi không chủ đích.
 export const handleError = (error: ErrorLike, req: Request, res: Response, _next: NextFunction) => {
-  const statusCode = error.statusCode || 500;
-  const isOperationalError = error.isOperational || false;
+  const normalizedError = transformError(error);
+  const statusCode = normalizedError.statusCode;
+  const isOperationalError = normalizedError.isOperational;
 
   if (!isOperationalError) {
     logUnexpectedError(error, req);
@@ -93,12 +95,12 @@ export const handleError = (error: ErrorLike, req: Request, res: Response, _next
   const response: AnyRecord = {
     success: false,
     statusCode,
-    message: isOperationalError ? error.message : 'Internal Server Error',
+    message: isOperationalError ? normalizedError.message : 'Internal Server Error',
   };
 
-  if (error.errors) response.errors = error.errors;
+  if (normalizedError.errors) response.errors = normalizedError.errors;
   if (process.env.NODE_ENV === 'development' && !isOperationalError) {
-    response.error = { type: error.name, stack: error.stack };
+    response.error = { type: normalizedError.type, stack: error.stack };
   }
 
   res.status(statusCode).json(addTimestamp(response));
