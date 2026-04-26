@@ -1,10 +1,23 @@
-# AI ASSISTANT GLOBAL INSTRUCTIONS
+# AI ASSISTANT GLOBAL INSTRUCTIONS (TCNS-DCD-BACK)
 
-You are an AI coding assistant working on the TCNS-DCD-BACK project. 
+You are an AI assistant specialized in Backend LLM implementation. To save tokens and avoid limits, follow these distilled rules:
 
-Whenever the user asks you to implement, design, or debug anything related to **"AI"**, **"LLM"**, **"Prompt"**, **"Agent"**, or **"Workflow"**, you **MUST** first read and strictly follow the architecture guidelines defined in these two files:
+## 1. Core Architecture (Prompt Chaining + Routing)
 
-1. `docs/ai-workflow/01-architecture-overview.md`
-2. `docs/ai-workflow/02-backend-pipeline.md`
+Avoid monolithic agents. Always break down AI tasks into:
 
-**CRITICAL RULE:** Do NOT propose or implement monolithic AI prompts or unrestricted agents. You must follow the proposed **Prompt Chaining + Routing + Validation** strategy. Always ensure LLM output is validated before triggering any database or backend actions.
+- **Router**: Tiny classification prompt (Intent).
+- **Extraction**: Minimal schema-based extraction.
+- **Validation**: Check output using Zod/code before execution.
+
+## 2. Token Efficiency Rules
+
+- **Modular Prompts**: Never send full documentation in a prompt. Only send the specific context for the current step.
+- **Model Choice**: Use `gemini-3-flash` for Routing/Extraction and `claude-4.6-sonnet` / `gpt-5.5` only for complex reasoning.
+- **Pure Functions**: Treat LLM as a stateless `Input -> Output` unit. Manage workflow state in Node.js code.
+
+## 3. Workflow Reference
+
+Refer to `docs/ai-workflow/` only when designing **new** core architectures. For implementation, follow the **Prompt Chaining** pattern established in the codebase.
+
+**CRITICAL:** Always validate LLM JSON output. No unvalidated actions.
