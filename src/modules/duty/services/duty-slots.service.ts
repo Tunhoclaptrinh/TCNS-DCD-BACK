@@ -619,6 +619,7 @@ class DutySlotsService {
         leaves.filter((r: any) => r.status === 'pending').length +
         swaps.filter((r: any) => r.status === 'pending').length,
       upcomingCount: slots.filter((s: any) => dayjs(s.shiftDate).isAfter(dayjs())).length,
+      recentLogs: await dutyLogsService.getUserLogs(id, 5),
     };
   }
 }
