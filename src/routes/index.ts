@@ -10,6 +10,7 @@ import reportRoutes from '@modules/reports/routes/report.routes';
 import generationRoutes from '@modules/generations/routes/generation.routes';
 import roleRoutes from '@modules/roles/routes/role.routes';
 import permissionRoutes from '@modules/permissions/routes/permission.routes';
+import auditLogRoutes from '@modules/audit-logs/routes/audit-logs.routes';
 
 const router = express.Router();
 
@@ -24,5 +25,6 @@ router.use('/reports', reportRoutes);
 router.use('/generations', generationRoutes);
 router.use('/roles', roleRoutes);
 router.use('/permissions', permissionRoutes);
+router.use('/audit-logs', auditLogRoutes);
 
 export default router;
