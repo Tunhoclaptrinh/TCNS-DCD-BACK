@@ -39,6 +39,7 @@ export interface DatabaseAdapter {
   findMany(collection: string, query?: AnyRecord): MaybePromise<AnyRecord[]>;
   create(collection: string, data: AnyRecord): MaybePromise<AnyRecord>;
   update(collection: string, id: Identifier, data: AnyRecord): MaybePromise<AnyRecord | null>;
+  updateMany(collection: string, query: AnyRecord, data: AnyRecord): MaybePromise<number>;
   delete(collection: string, id: Identifier): MaybePromise<boolean>;
   exists(collection: string, query: AnyRecord): MaybePromise<boolean>;
   distinct(collection: string, field: string, query?: AnyRecord): MaybePromise<any[]>;
