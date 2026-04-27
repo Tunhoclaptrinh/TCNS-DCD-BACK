@@ -4,6 +4,7 @@ import generationSchema from '@modules/generations/schemas/generation.schema';
 import db from '@database/mongo-database.adapter';
 import ApiError from '@utils/api-error';
 import type { AnyRecord, Identifier } from '@app-types/common';
+import { logger } from '@utils/logger';
 
 class GenerationService extends BaseService {
   constructor() {
@@ -34,6 +35,24 @@ class GenerationService extends BaseService {
     if (item.isCurrent) {
       await this.ensureOnlyOneCurrent(id);
     }
+
+    // Auto-sync alumni if isActive changed to false
+    if (item.isActive === false) {
+      await this.syncUsersToAlumni(id);
+    }
+  }
+
+  async syncUsersToAlumni(id: Identifier) {
+    await db.updateMany(
+      'users',
+      { generationId: id, status: 'active' },
+      {
+        status: 'inactive',
+        isActive: false, // Also deactivate account when moving to alumni
+        updatedAt: new Date().toISOString(),
+      },
+    );
+    logger.info(`Automatically moved members of generation ${id} to alumni status and deactivated their accounts`);
   }
 
   async ensureOnlyOneCurrent(currentId: Identifier) {
