@@ -10,6 +10,10 @@ class DutySettingsService {
         allowUnregisterWhenFull: true,
         currentGeneration: '',
         generations: [],
+        defaultQuota: 2.5,
+        kipPrice: 0,
+        violationPenaltyRate: 0,
+        quotaRules: [],
         updatedAt: new Date().toISOString(),
       };
     }
@@ -23,6 +27,10 @@ class DutySettingsService {
       allowUnregisterWhenFull: data.allowUnregisterWhenFull !== false,
       currentGeneration: data.currentGeneration || '',
       generations: Array.isArray(data.generations) ? data.generations : [],
+      defaultQuota: Number(data.defaultQuota) || 2.5,
+      kipPrice: Number(data.kipPrice) || 0,
+      violationPenaltyRate: Number(data.violationPenaltyRate) || 0,
+      quotaRules: Array.isArray(data.quotaRules) ? data.quotaRules : [],
       updatedAt: new Date().toISOString(),
     };
 
