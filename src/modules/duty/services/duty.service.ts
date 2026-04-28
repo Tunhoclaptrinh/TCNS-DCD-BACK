@@ -240,11 +240,11 @@ class DutyService extends BaseService {
       warningUsers.map(async (u) => {
         try {
           const notificationsService = (await import('@modules/notifications/services/notification.service')).default;
-          await notificationsService.create({
-            userId: u.userId,
+          await notificationsService.notifyUser(u.userId, {
             title: 'Cảnh báo: Thiếu định mức kíp trực',
-            content: `Chào ${u.name}, hệ thống ghi nhận bạn đang thiếu ${u.deficiency} kíp so với định mức. Vui lòng đăng ký thêm để đảm bảo chỉ tiêu.`,
+            message: `Chào ${u.name}, hệ thống ghi nhận bạn đang thiếu ${u.deficiency} kíp so với định mức. Vui lòng đăng ký thêm để đảm bảo chỉ tiêu.`,
             type: 'warning',
+            category: 'system',
             metadata: { deficiency: u.deficiency },
           });
           return { userId: u.userId, success: true };
