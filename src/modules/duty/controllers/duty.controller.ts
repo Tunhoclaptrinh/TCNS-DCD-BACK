@@ -271,6 +271,22 @@ class DutyController extends BaseController {
     const data = await dutyService.getStats();
     this.ok(res, data);
   });
+
+  getComprehensiveStats = this.handle(async (req, res) => {
+    const data = await dutyService.getComprehensiveStats(req.parsedQuery);
+    this.ok(res, data);
+  });
+
+  exportStats = this.handle(async (req, res) => {
+    const data = await dutyService.exportStats(req.parsedQuery);
+    this.ok(res, data);
+  });
+
+  notifyAbsentees = this.handle(async (req, res) => {
+    const { stats } = req.body;
+    const data = await dutyService.notifyAbsentees(stats, req.user.id);
+    this.ok(res, data);
+  });
 }
 
 export default new DutyController();

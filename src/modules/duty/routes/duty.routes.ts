@@ -9,6 +9,9 @@ router.use(requireAuth);
 
 router.get('/week', requirePermission('duty:view'), dutyController.getWeeklySchedule);
 router.get('/stats/summary', requirePermission('duty:view'), dutyController.getStats);
+router.get('/stats/comprehensive', requirePermission('duty:manage'), dutyController.getComprehensiveStats);
+router.get('/stats/export', requirePermission('duty:manage'), dutyController.exportStats);
+router.post('/stats/notify-absentees', requirePermission('duty:manage'), dutyController.notifyAbsentees);
 
 // Slots
 router.post('/slots', requirePermission('duty:manage'), dutyController.createSlot);

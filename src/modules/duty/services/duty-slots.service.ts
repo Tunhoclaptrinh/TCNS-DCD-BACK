@@ -795,11 +795,25 @@ class DutySlotsService {
 
   async getUserStats(userId: Identifier) {
     const id = normalizeId(userId);
-    const [slots, leaves, swaps] = await Promise.all([
+    const settings = await dutySettingsService.getSettings();
+    const defaultQuota = Number(settings.defaultQuota) || 2.5;
+    const quotaRules = settings.quotaRules || [];
+
+    const [slots, leaves, swaps, violations, user] = await Promise.all([
       dutySlotsRepository.findMany({ assignedUserIds_contains: id }),
       dutyLeaveRequestsRepository.findMany({ userId: id }),
       dutySwapRequestsRepository.findMany({ requesterId: id }),
+      dutyViolationsRepository.findMany({ userId: id }),
+      usersRepository.findById(id) as Promise<any>,
     ]);
+
+    // Get user's quota
+    const rule = quotaRules.find(
+      (r: any) =>
+        (r.type === 'position' && user && r.target === user.position) ||
+        (r.type === 'user' && String(r.target) === String(id)),
+    );
+    const userQuota = rule ? Number(rule.quota) : defaultQuota;
 
     // Calculate total hours from attended slots
     // We need to fetch kips for duration info
@@ -831,10 +845,22 @@ class DutySlotsService {
       }
     });
 
+    const totalKips = slots.reduce((acc, slot) => {
+      const isAttended = normalizeIdList(slot.attendedUserIds || []).includes(id);
+      return acc + (isAttended ? Number(slot.coefficient) || 1 : 0);
+    }, 0);
+
+    const deficiency = Math.max(0, userQuota - totalKips);
+
     return {
       totalHours: Math.round((totalMinutes / 60) * 10) / 10,
+      totalKips,
       attendedCount,
       points,
+      violationCount: violations.length,
+      deficiency,
+      isWarning: deficiency > 0,
+      userQuota,
       pendingRequests:
         leaves.filter((r: any) => r.status === 'pending').length +
         swaps.filter((r: any) => r.status === 'pending').length,

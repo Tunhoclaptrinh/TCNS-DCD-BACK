@@ -9,6 +9,7 @@ import dutySwapRequestsService from './duty-swap-requests.service';
 import dutyLeaveRequestsService from './duty-leave-requests.service';
 import dutyTemplateAssignmentsService from './duty-template-assignments.service';
 import dutyGenerationService from './duty-generation.service';
+import dutyStatsService from './duty-stats.service';
 import auditLogsService from '@modules/audit-logs/services/audit-logs.service';
 
 import { Identifier, GenericRecord } from './duty-utils';
@@ -229,7 +230,39 @@ class DutyService extends BaseService {
     return data;
   };
   getStats = () => dutySlotsService.getStats();
+  getComprehensiveStats = (options: any) => dutyStatsService.getComprehensiveStats(options);
+  exportStats = (options: any) => dutyStatsService.exportStats(options);
   getUserStats = (userId: Identifier) => dutySlotsService.getUserStats(userId);
+
+  notifyAbsentees = async (stats: any[], performerId: Identifier) => {
+    const warningUsers = stats.filter((s) => s.isWarning);
+    const results = await Promise.all(
+      warningUsers.map(async (u) => {
+        try {
+          const notificationsService = (await import('@modules/notifications/services/notification.service')).default;
+          await notificationsService.create({
+            userId: u.userId,
+            title: 'Cảnh báo: Thiếu định mức kíp trực',
+            content: `Chào ${u.name}, hệ thống ghi nhận bạn đang thiếu ${u.deficiency} kíp so với định mức. Vui lòng đăng ký thêm để đảm bảo chỉ tiêu.`,
+            type: 'warning',
+            metadata: { deficiency: u.deficiency },
+          });
+          return { userId: u.userId, success: true };
+        } catch (err) {
+          return { userId: u.userId, success: false, error: err.message };
+        }
+      }),
+    );
+
+    await auditLogsService.log({
+      userId: Number(performerId) || 0,
+      action: 'GỬI THÔNG BÁO',
+      module: 'DUTY',
+      description: `Gửi cảnh báo thiếu kíp cho ${warningUsers.length} thành viên`,
+    });
+
+    return results;
+  };
 
   // ==================== SWAP REQUESTS ====================
   requestSwap = async (payload: GenericRecord, requesterUser: GenericRecord) => {
