@@ -393,11 +393,25 @@ class DutySlotsService {
     const weeklyLimit = settings.weeklyKipLimit;
     if (weeklyLimit && Number(weeklyLimit) > 0) {
       const allSlotsInWeek = await dutySlotsRepository.findMany({ weekStart: new Date(slot.weekStart).toISOString() });
-      const userTotalInWeek = allSlotsInWeek.filter((s: any) =>
+      const userSlotsInWeek = allSlotsInWeek.filter((s: any) =>
         normalizeIdList(s.assignedUserIds || []).includes(userId),
-      ).length;
-      if (userTotalInWeek >= settings.weeklyKipLimit) {
-        throw ApiError.badRequest(`Bạn đã đạt giới hạn đăng ký trong tuần (${settings.weeklyKipLimit} kíp).`);
+      );
+
+      // Fetch kips for these slots to get coefficients
+      const userKipIds = userSlotsInWeek.map((s: any) => s.kipId).filter(Boolean);
+      const userKips = await dutyKipsRepository.findMany({ id_in: userKipIds });
+
+      // Add the current kip to the calculation
+      const currentKip = await dutyKipsRepository.findById(slot.kipId);
+
+      const totalCoefficient =
+        userKips.reduce((acc: number, k: any) => acc + (Number(k.coefficient) || 1), 0) +
+        (Number(currentKip?.coefficient) || 1);
+
+      if (totalCoefficient > Number(settings.weeklyKipLimit)) {
+        throw ApiError.badRequest(
+          `Bạn đã đạt giới hạn đăng ký trong tuần (${settings.weeklyKipLimit} kíp). Hiện tại: ${totalCoefficient - (Number(currentKip?.coefficient) || 1)} kíp. kíp này tính ${currentKip?.coefficient} kíp.`,
+        );
       }
     }
 
