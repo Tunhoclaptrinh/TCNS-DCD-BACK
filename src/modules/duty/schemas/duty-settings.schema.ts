@@ -13,6 +13,12 @@ export default defineSchema({
     default: 0,
     description: 'Số kíp tối đa một thành viên có thể đăng ký trong tuần',
   },
+  allowedIpRanges: {
+    type: 'string',
+    required: false,
+    default: '',
+    description: 'Dải IP cho phép điểm danh (ngăn cách bởi dấu phẩy)',
+  },
   allowUnregisterWhenFull: {
     type: 'boolean',
     required: false,
