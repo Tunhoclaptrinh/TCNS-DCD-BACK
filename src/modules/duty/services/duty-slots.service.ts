@@ -21,9 +21,11 @@ import {
   getWeekStartISO,
   getWeekEndISO,
   isTimeInShiftRange,
+  isIpAllowed,
 } from './duty-utils';
 import dutySettingsService from './duty-settings.service';
 import dutyLogsService from './duty-logs.service';
+import dutyViolationsRepository from '@modules/duty/repositories/duty-violations.repository';
 
 class DutySlotsService {
   async findSlotOrThrow(slotId: Identifier) {
@@ -96,6 +98,14 @@ class DutySlotsService {
       }),
     ]);
 
+    const slotIds = slotsResult.data.map((s: any) => normalizeId(s.id));
+
+    const [violations, leaveRequests, swapRequests] = await Promise.all([
+      dutyViolationsRepository.findMany({ slotId_in: slotIds }),
+      dutyLeaveRequestsRepository.findMany({ slotId_in: slotIds }),
+      dutySwapRequestsRepository.findMany({ fromSlotId_in: slotIds }),
+    ]);
+
     const userMap = new Map(users.map((user) => [normalizeId(user.id), user]));
 
     const slots = slotsResult.data.map((slot: any) => {
@@ -116,7 +126,11 @@ class DutySlotsService {
             name: user.name,
             role: user.role,
             avatar: user.avatar,
+            position: user.position,
           })),
+        violations: violations.filter((v: any) => normalizeId(v.slotId) === normalizeId(slot.id)),
+        leaveRequests: leaveRequests.filter((r: any) => normalizeId(r.slotId) === normalizeId(slot.id)),
+        swapRequests: swapRequests.filter((r: any) => normalizeId(r.fromSlotId) === normalizeId(slot.id)),
       };
     });
 
@@ -536,6 +550,198 @@ class DutySlotsService {
     );
 
     return updated;
+  }
+
+  async selfCheckIn(slotId: Identifier, user: any, ip: string) {
+    const slot = await dutySlotsRepository.findById(slotId);
+    if (!slot) throw ApiError.notFound('Kíp trực không tồn tại');
+
+    const userId = getActorId(user);
+    const now = dayjs();
+    const slotDateStr = dayjs(slot.shiftDate).format('YYYY-MM-DD');
+    const startTime = slot.startTime || '00:00';
+    const slotStart = dayjs(`${slotDateStr} ${startTime}`);
+
+    // 1. Check IP
+    const settings = await dutySettingsService.getSettings();
+    if (settings.allowedIpRanges && !isIpAllowed(ip, settings.allowedIpRanges)) {
+      throw ApiError.badRequest(`Địa chỉ mạng (${ip}) không hợp lệ để điểm danh tại văn phòng.`);
+    }
+
+    // 2. Check Timing (+/- 1 minute)
+    const windowStart = slotStart.subtract(1, 'minute');
+    const windowEnd = slotStart.add(1, 'minute');
+
+    if (now.isBefore(windowStart)) {
+      throw ApiError.badRequest(`Chưa đến giờ điểm danh. Vui lòng quay lại vào lúc ${windowStart.format('HH:mm')}`);
+    }
+    if (now.isAfter(windowEnd)) {
+      throw ApiError.badRequest('Đã quá thời gian tự điểm danh (+/- 1 phút). Vui lòng báo cáo Quản lý kíp.');
+    }
+
+    // 3. Mark Attendance
+    const attended = normalizeIdList(slot.attendedUserIds || []);
+    if (!attended.includes(userId)) {
+      attended.push(userId);
+    }
+
+    const attendanceData = slot.attendanceData || {};
+    attendanceData[userId] = {
+      time: now.toISOString(),
+      ip,
+      method: 'self',
+    };
+
+    const update: any = {
+      attendedUserIds: attended,
+      attendanceData,
+      updatedAt: now.toISOString(),
+    };
+
+    // 4. Leadership Management (Manager = Quản lý kíp)
+    const assignedIds = normalizeIdList(slot.assignedUserIds || []);
+    const originalManagerId = assignedIds[0];
+
+    // If the original manager checks in now (within the 2-min window), they are the manager
+    if (normalizeId(userId) === normalizeId(originalManagerId)) {
+      update.tempLeaderId = null; // Original manager is present, clear any temp leader
+    } else if (!slot.tempLeaderId) {
+      // Someone else checked in first, and original manager is not here yet
+      const originalManagerAttended = attended.includes(normalizeId(originalManagerId));
+      if (!originalManagerAttended) {
+        update.tempLeaderId = userId;
+
+        await dutyLogsService.log(
+          'leadership_change',
+          'system',
+          `Thành viên ${user.name || userId} tạm giữ quyền Quản lý kíp do Quản lý kíp gốc chưa điểm danh.`,
+          userId,
+          undefined,
+          slotId,
+        );
+      }
+    }
+
+    const updated = await dutySlotsRepository.update(slotId, update);
+
+    await dutyLogsService.log(
+      'attendance',
+      'self',
+      `Thành viên tự điểm danh thành công tại IP: ${ip}`,
+      userId,
+      userId,
+      slotId,
+    );
+
+    return updated;
+  }
+
+  async leaderMarkAttendance(slotId: Identifier, targetUserId: Identifier, performer: any) {
+    const slot = await dutySlotsRepository.findById(slotId);
+    if (!slot) throw ApiError.notFound('Kíp không tồn tại');
+
+    const performerId = getActorId(performer);
+    const assignedIds = normalizeIdList(slot.assignedUserIds || []);
+    const originalLeaderId = assignedIds[0];
+    const attendedIds = normalizeIdList(slot.attendedUserIds || []);
+
+    // Authorization check
+    const isOriginalLeader =
+      normalizeId(performerId) === normalizeId(originalLeaderId) && attendedIds.includes(performerId);
+    const isTempLeader = normalizeId(performerId) === normalizeId(slot.tempLeaderId);
+    const isAdmin = performer.role === 'admin' || performer.role === 'staff';
+
+    if (!isOriginalLeader && !isTempLeader && !isAdmin) {
+      throw ApiError.forbidden('Bạn không có quyền điểm danh cho người khác trong kíp này.');
+    }
+
+    // Update attendance
+    const targetId = normalizeId(targetUserId);
+    if (!attendedIds.includes(targetId)) {
+      attendedIds.push(targetId);
+    }
+
+    const attendanceData = slot.attendanceData || {};
+    attendanceData[targetId] = {
+      time: new Date().toISOString(),
+      method: 'leader',
+      markedBy: performerId,
+    };
+
+    const updated = await dutySlotsRepository.update(slotId, {
+      attendedUserIds: attendedIds,
+      attendanceData,
+      updatedAt: new Date().toISOString(),
+    });
+
+    await dutyLogsService.log(
+      'attendance',
+      'leader',
+      `Quản lý kíp điểm danh cho thành viên: ${targetId}`,
+      performerId,
+      targetId,
+      slotId,
+    );
+
+    return updated;
+  }
+
+  async reportViolation(payload: any, performer: any) {
+    const { slotId, userId, type, coefficient, note } = payload;
+    const performerId = getActorId(performer);
+
+    const slot = await dutySlotsRepository.findById(slotId);
+    if (!slot) throw ApiError.notFound('Kíp không tồn tại');
+
+    // Reuse same authorization as attendance
+    const assignedIds = normalizeIdList(slot.assignedUserIds || []);
+    const originalLeaderId = assignedIds[0];
+    const attendedIds = normalizeIdList(slot.attendedUserIds || []);
+
+    const isOriginalLeader =
+      normalizeId(performerId) === normalizeId(originalLeaderId) && attendedIds.includes(performerId);
+    const isTempLeader = normalizeId(performerId) === normalizeId(slot.tempLeaderId);
+    const isAdmin = performer.role === 'admin' || performer.role === 'staff';
+
+    if (!isOriginalLeader && !isTempLeader && !isAdmin) {
+      throw ApiError.forbidden('Bạn không có quyền ghi nhận vi phạm cho kíp này.');
+    }
+
+    const existingViolation = await dutyViolationsRepository.findOne({
+      slotId: normalizeId(slotId),
+      userId: normalizeId(userId),
+    });
+
+    let violation;
+    if (existingViolation) {
+      violation = await dutyViolationsRepository.update(existingViolation.id, {
+        type,
+        coefficient: Number(coefficient) || 1,
+        note: note || '',
+        updatedAt: new Date().toISOString(),
+      });
+    } else {
+      violation = await dutyViolationsRepository.create({
+        slotId: normalizeId(slotId),
+        userId: normalizeId(userId),
+        type,
+        coefficient: Number(coefficient) || 1,
+        note: note || '',
+        createdBy: performerId,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    await dutyLogsService.log(
+      'violation',
+      'report',
+      `Ghi nhận vi phạm [${type}] cho thành viên: ${userId}. Hệ số: ${coefficient}`,
+      performerId,
+      userId,
+      slotId,
+    );
+
+    return violation;
   }
 
   async updateActualShift(shiftId: number, data: GenericRecord) {

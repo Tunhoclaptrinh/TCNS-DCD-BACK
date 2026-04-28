@@ -62,7 +62,18 @@ export default defineSchema({
     type: 'array',
     required: false,
     default: [],
-    description: 'Danh sách user id đã điểm danh',
+    description: 'Danh sách ID người dùng có mặt',
+  },
+  tempLeaderId: {
+    type: 'number',
+    required: false,
+    description: 'ID người giữ quyền quản lý kíp tạm thời',
+  },
+  attendanceData: {
+    type: 'object',
+    required: false,
+    default: {},
+    description: 'Dữ liệu điểm danh chi tiết (userId -> {time, ip, method})',
   },
   status: {
     type: 'enum',
