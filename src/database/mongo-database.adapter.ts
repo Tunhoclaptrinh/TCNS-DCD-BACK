@@ -5,26 +5,6 @@ import type { DatabaseAdapter, QueryOptions } from '@app-types/database';
 import type { SchemaDefinition, SchemaRule } from '@app-types/schema';
 import { camelizeObjectKeys, splitKeyBySuffix, toCamelCase } from '@utils/case';
 
-const SCHEMA_MODEL_MAP = {
-  'user.schema': 'users',
-  'notification.schema': 'notifications',
-  'notification-setting.schema': 'notification_settings',
-  'file.schema': 'files',
-  'duty-slot.schema': 'duty_slots',
-  'duty-shift.schema': 'duty_shifts',
-  'duty-kip.schema': 'duty_kips',
-  'duty-swap-request.schema': 'duty_swap_requests',
-  'duty-leave-request.schema': 'duty_leave_requests',
-  'reward-penalty.schema': 'reward_penalties',
-  'duty-day.schema': 'duty_days',
-  'duty-template.schema': 'duty_templates',
-  'duty-template-assignment.schema': 'duty_template_assignments',
-  'duty-log.schema': 'duty_logs',
-  'generation.schema': 'generations',
-  'role.schema': 'roles',
-  'permission.schema': 'permissions',
-  'duty-settings.schema': 'duty_settings',
-};
 const FILTER_SUFFIXES = ['_not_like', '_ilike', '_like', '_gte', '_lte', '_gt', '_lt', '_ne', '_in', '_nin'];
 
 type RelationConfig = {
@@ -60,6 +40,14 @@ class MongoConnect implements DatabaseAdapter {
       reward_penalties: {
         user: { ref: 'users', localField: 'userId', foreignField: 'id', justOne: true },
         creator: { ref: 'users', localField: 'createdBy', foreignField: 'id', justOne: true },
+      },
+      meetings: {
+        creator: { ref: 'users', localField: 'createdBy', foreignField: 'id', justOne: true },
+        updater: { ref: 'users', localField: 'updatedBy', foreignField: 'id', justOne: true },
+      },
+      bonus_campaigns: {
+        creator: { ref: 'users', localField: 'createdBy', foreignField: 'id', justOne: true },
+        updater: { ref: 'users', localField: 'updatedBy', foreignField: 'id', justOne: true },
       },
       duty_swap_requests: {
         requester: { ref: 'users', localField: 'requesterId', foreignField: 'id', justOne: true },

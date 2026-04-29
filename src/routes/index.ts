@@ -11,6 +11,9 @@ import generationRoutes from '@modules/generations/routes/generation.routes';
 import roleRoutes from '@modules/roles/routes/role.routes';
 import permissionRoutes from '@modules/permissions/routes/permission.routes';
 import auditLogRoutes from '@modules/audit-logs/routes/audit-logs.routes';
+import meetingRoutes from '@modules/meetings/routes/meeting.routes';
+import bonusCampaignRoutes from '@modules/bonus-campaigns/routes/bonus-campaign.routes';
+import bonusRegistrationRoutes from '@modules/bonus-registrations/routes/bonus-registration.routes';
 
 const router = express.Router();
 
@@ -26,5 +29,8 @@ router.use('/generations', generationRoutes);
 router.use('/roles', roleRoutes);
 router.use('/permissions', permissionRoutes);
 router.use('/audit-logs', auditLogRoutes);
+router.use('/meetings', meetingRoutes);
+router.use('/bonus-campaigns', bonusCampaignRoutes);
+router.use('/bonus-registrations', bonusRegistrationRoutes);
 
 export default router;
