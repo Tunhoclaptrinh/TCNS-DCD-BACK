@@ -7,9 +7,24 @@ class GenerationController extends BaseController {
     super(generationService);
   }
 
+  create = this.handle(async (req: Request, res: Response) => {
+    const data = await generationService.create(req.body, (req as any).user?.id);
+    this.created(res, data);
+  });
+
+  update = this.handle(async (req: Request, res: Response) => {
+    const data = await generationService.update(req.params.id, req.body, (req as any).user?.id);
+    this.ok(res, data);
+  });
+
+  delete = this.handle(async (req: Request, res: Response) => {
+    const data = await generationService.delete(req.params.id, (req as any).user?.id);
+    this.ok(res, data);
+  });
+
   setCurrent = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const data = await generationService.setCurrent(req.params.id);
+      const data = await generationService.setCurrent(req.params.id, (req as any).user?.id);
       this.ok(res, {
         ...data,
         message: 'Đã đặt làm Khóa hiện tại',

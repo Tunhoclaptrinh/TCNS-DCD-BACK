@@ -102,6 +102,13 @@ const PERMISSIONS = [
   { key: 'file:upload', name: 'Upload tài liệu minh chứng', module: 'file' },
   { key: 'file:manage:all', name: 'Quản lý kho tài liệu chung', module: 'file' },
   { key: 'file:manage:dept', name: 'Quản lý tài liệu nội bộ Ban', module: 'file' },
+
+  // Đợt cộng điểm & Học kỳ (Bổ sung)
+  { key: 'duty:view', name: 'Xem & Đăng ký đợt cộng điểm', module: 'duty' },
+  { key: 'duty:manage', name: 'Quản lý toàn bộ đợt cộng điểm', module: 'duty' },
+  { key: 'system:manage', name: 'Quản lý cấu hình hệ thống & Học kỳ', module: 'system' },
+  { key: 'bonus-campaigns:review', name: 'Xét duyệt chi tiết đăng ký', module: 'bonus-campaigns' },
+  { key: 'bonus-campaigns:delete', name: 'Xóa bản đăng ký cộng điểm', module: 'bonus-campaigns' },
 ];
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -158,6 +165,11 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'file:upload',
     'file:manage:all',
     'file:manage:dept',
+    'duty:view',
+    'duty:manage',
+    'system:manage',
+    'bonus-campaigns:review',
+    'bonus-campaigns:delete',
   ],
   ns_sub_leader: [
     'users:list:all',
@@ -211,6 +223,11 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'file:upload',
     'file:manage:all',
     'file:manage:dept',
+    'duty:view',
+    'duty:manage',
+    'system:manage',
+    'bonus-campaigns:review',
+    'bonus-campaigns:delete',
   ],
   ns_specialist: [
     'users:list:all',
@@ -264,6 +281,11 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'file:upload',
     'file:manage:all',
     'file:manage:dept',
+    'duty:view',
+    'duty:manage',
+    'system:manage',
+    'bonus-campaigns:review',
+    'bonus-campaigns:delete',
   ],
   other_leader: [
     'users:list:dept',
