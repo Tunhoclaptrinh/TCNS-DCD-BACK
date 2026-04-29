@@ -217,8 +217,8 @@ class MongoConnect implements DatabaseAdapter {
       Object.assign(query, this.buildMongoQuery(options.filter));
     }
 
-    const page = parseInt(String(options.page || 1), 10) || 1;
-    const limit = parseInt(String(options.limit || 10), 10) || 10;
+    const page = parseInt(String(options.page || options._page || 1), 10) || 1;
+    const limit = parseInt(String(options.limit || options._limit || 10), 10) || 10;
     const skip = (page - 1) * limit;
 
     let queryBuilder = Model.find(query);
@@ -296,11 +296,20 @@ class MongoConnect implements DatabaseAdapter {
   }
 
   private buildMongoQuery(query: AnyRecord) {
+    if (process.env.NODE_ENV === 'development' || true) {
+      console.log(`[MongoAdapter] Building query for:`, JSON.stringify(query));
+    }
     const mongoQuery: AnyRecord = {};
     // DO NOT camelizeObjectKeys here, as it breaks suffix detection (_gte, _lte, etc)
     const normalized = query;
 
     for (const [key, val] of Object.entries(normalized)) {
+      // Support for $or, $and, $nor
+      if (['$or', '$and', '$nor'].includes(key) && Array.isArray(val)) {
+        mongoQuery[key] = val.map((item) => (typeof item === 'object' ? this.buildMongoQuery(item) : item));
+        continue;
+      }
+
       // If it's already a Mongo operator object, pass it through
       if (val && typeof val === 'object' && !Array.isArray(val) && Object.keys(val).some((k) => k.startsWith('$'))) {
         mongoQuery[key] = val;
@@ -334,6 +343,9 @@ class MongoConnect implements DatabaseAdapter {
           mongoQuery[field] = this.castQueryValue(val);
         }
       }
+    }
+    if (process.env.NODE_ENV === 'development' || true) {
+      console.log(`[MongoAdapter] Final Mongo Query:`, JSON.stringify(mongoQuery));
     }
     return mongoQuery;
   }
@@ -395,6 +407,19 @@ class MongoConnect implements DatabaseAdapter {
       runValidators: true,
     });
     return updated;
+  }
+
+  async updateMany(collection: string, query: AnyRecord, data: AnyRecord) {
+    const Model = this.getModel(collection);
+    if (!Model) return 0;
+
+    const mongooseQuery = this.buildMongoQuery(query);
+    const updateData = camelizeObjectKeys(data);
+    delete updateData.id;
+    delete updateData._id;
+
+    const result = await Model.updateMany(mongooseQuery, updateData);
+    return result.modifiedCount;
   }
 
   async delete(collection: string, id: Identifier) {

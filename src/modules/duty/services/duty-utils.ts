@@ -75,3 +75,22 @@ export function isTimeInShiftRange(target: string, shiftStart: string, shiftEnd:
   }
   return target >= shiftStart || target <= shiftEnd;
 }
+
+/**
+ * Check if the provided IP is within the allowed ranges.
+ * Ranges are comma-separated. Supports exact IP or simple wildcard (e.g., 192.168.1.*)
+ */
+export function isIpAllowed(ip: string, allowedRanges: string): boolean {
+  if (!allowedRanges) return true; // No restrictions if empty
+  const ranges = allowedRanges.split(',').map((r) => r.trim());
+  const clientIp = ip.replace('::ffff:', ''); // Handle IPv4-mapped IPv6
+
+  return ranges.some((range) => {
+    if (range === clientIp) return true;
+    if (range.endsWith('*')) {
+      const prefix = range.slice(0, -1);
+      return clientIp.startsWith(prefix);
+    }
+    return false;
+  });
+}

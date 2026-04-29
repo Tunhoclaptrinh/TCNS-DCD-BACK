@@ -10,6 +10,10 @@ class DutySettingsService {
         allowUnregisterWhenFull: true,
         currentGeneration: '',
         generations: [],
+        defaultQuota: 2.5,
+        kipPrice: 0,
+        violationPenaltyRate: 0,
+        quotaRules: [],
         updatedAt: new Date().toISOString(),
       };
     }
@@ -23,13 +27,23 @@ class DutySettingsService {
       allowUnregisterWhenFull: data.allowUnregisterWhenFull !== false,
       currentGeneration: data.currentGeneration || '',
       generations: Array.isArray(data.generations) ? data.generations : [],
+      defaultQuota: Number(data.defaultQuota) || 2.5,
+      kipPrice: Number(data.kipPrice) || 0,
+      violationPenaltyRate: Number(data.violationPenaltyRate) || 0,
+      quotaRules: Array.isArray(data.quotaRules) ? data.quotaRules : [],
       updatedAt: new Date().toISOString(),
     };
 
+    console.log('[DutySettings] Saving settings with payload:', JSON.stringify(payload, null, 2));
+
     if (!settings) {
-      return await dutySettingsRepository.create(payload);
+      const created = await dutySettingsRepository.create(payload);
+      console.log('[DutySettings] Created new settings document');
+      return created;
     }
-    return await dutySettingsRepository.update(settings.id, payload);
+    const updated = await dutySettingsRepository.update(settings.id, payload);
+    console.log('[DutySettings] Updated existing settings document');
+    return updated;
   }
 }
 

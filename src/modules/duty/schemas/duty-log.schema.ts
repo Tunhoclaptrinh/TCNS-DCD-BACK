@@ -10,7 +10,7 @@ export default defineSchema({
   action: {
     type: 'string',
     required: true,
-    enum: ['approved', 'rejected', 'transfer', 'removed', 'system'],
+    enum: ['approved', 'rejected', 'transfer', 'removed', 'system', 'assign', 'cancel', 'request'],
     description: 'Hành động cụ thể',
   },
   requestId: {

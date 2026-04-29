@@ -30,6 +30,7 @@ export default defineSchema({
     type: 'number',
     required: true,
     default: 1,
+    min: 0.5,
     description: 'Số kíp được tính',
   },
   capacity: {
