@@ -88,6 +88,7 @@ class DutySlotsService {
       }),
       dutySlotsRepository.findAllAdvanced({
         limit: 1000,
+        expand: 'assignedUsers,attendedUsers,kip,shift',
         filter: {
           shiftDate_gte: ws.toDate(),
           shiftDate_lte: we.toDate(),
