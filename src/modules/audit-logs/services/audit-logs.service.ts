@@ -88,8 +88,8 @@ class AuditLogsService extends BaseService {
       ...options,
       page,
       limit,
-      sort: options.sort || 'createdAt',
-      order: options.sort ? options.order : 'desc',
+      sort: 'createdAt',
+      order: 'desc',
     });
   }
 }
