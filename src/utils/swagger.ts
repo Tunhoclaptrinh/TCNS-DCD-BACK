@@ -109,7 +109,6 @@ const rewardPenaltySchema = schemas.reward_penalties as SchemaDefinition;
 const meetingSchema = schemas.meetings as SchemaDefinition;
 const bonusCampaignSchema = schemas.bonus_campaigns as SchemaDefinition;
 const bonusRegistrationSchema = schemas.bonus_registrations as SchemaDefinition;
-const academicPeriodSchema = schemas.academic_periods as SchemaDefinition;
 const auditLogSchema = schemas.audit_logs as SchemaDefinition;
 
 const userProfileFieldNames = [
@@ -173,10 +172,6 @@ const TAG_METADATA: Record<string, { name: string; description: string }> = {
   reports: {
     name: 'Báo cáo',
     description: 'Tổng hợp và xuất báo cáo quản trị.',
-  },
-  'academic-periods': {
-    name: 'Đợt học kỳ',
-    description: 'Quản lý các đợt học kỳ, năm học của hệ thống.',
   },
   'audit-logs': {
     name: 'Audit Logs',
@@ -437,7 +432,7 @@ const EXTRA_SCHEMAS: AnyRecord = {
     buildPropertiesFromSchemaFields(
       omitFields(bonusCampaignSchema, ['createdBy', 'updatedBy', 'maDot', 'createdAt', 'updatedAt']),
     ),
-    ['maHocKy', 'thoiGianBatDau', 'thoiGianKetThuc'],
+    ['maKhoa', 'thoiGianBatDau', 'thoiGianKetThuc'],
     'Tạo đợt cộng điểm DRL/HB.',
   ),
   BonusCampaignUpdateRequest: buildObjectSchema(
@@ -446,11 +441,6 @@ const EXTRA_SCHEMAS: AnyRecord = {
     ),
     [],
     'Cập nhật thông tin đợt cộng điểm.',
-  ),
-  AcademicPeriodRequest: buildObjectSchema(
-    buildPropertiesFromSchemaFields(omitFields(academicPeriodSchema, ['maHocKy', 'createdAt', 'updatedAt'])),
-    ['tenHocKy', 'tenNamHoc'],
-    'Dữ liệu đợt học kỳ.',
   ),
   BonusRegistrationUpdateRequest: buildObjectSchema(
     buildPropertiesFromSchemaFields(
@@ -1245,36 +1235,6 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
     summary: 'Xuất Excel danh sách đã duyệt',
     protected: true,
     permission: 'duty:manage',
-  },
-
-  'GET /academic-periods': {
-    summary: 'Danh sách đợt học kỳ',
-    protected: true,
-  },
-  'GET /academic-periods/current': {
-    summary: 'Đợt học kỳ hiện tại',
-    protected: true,
-  },
-  'POST /academic-periods': {
-    summary: 'Tạo đợt học kỳ mới',
-    protected: true,
-    permission: 'system:manage',
-    requestBody: buildSchemaRefBody('AcademicPeriodRequest'),
-  },
-  'GET /academic-periods/{id}': {
-    summary: 'Chi tiết đợt học kỳ',
-    protected: true,
-  },
-  'PUT /academic-periods/{id}': {
-    summary: 'Cập nhật đợt học kỳ',
-    protected: true,
-    permission: 'system:manage',
-    requestBody: buildSchemaRefBody('AcademicPeriodRequest'),
-  },
-  'DELETE /academic-periods/{id}': {
-    summary: 'Xóa đợt học kỳ',
-    protected: true,
-    permission: 'system:manage',
   },
 
   'GET /audit-logs': {

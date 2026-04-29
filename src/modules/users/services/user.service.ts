@@ -572,7 +572,7 @@ class UserService extends BaseService {
     return users;
   }
 
-  async syncAlumniStatus(userIds?: Identifier[]) {
+  async syncAlumniStatus(userIds?: Identifier[], actorId?: Identifier) {
     let count = 0;
 
     if (userIds && Array.isArray(userIds)) {
@@ -605,6 +605,16 @@ class UserService extends BaseService {
         }
       }
     }
+
+    if (count > 0) {
+      await auditLogsService.log({
+        userId: this.toAuditUserId(actorId),
+        action: 'ĐỒNG BỘ CỰU THÀNH VIÊN',
+        module: 'USERS',
+        description: `Cập nhật ${count} thành viên sang trạng thái cựu thành viên`,
+      });
+    }
+
     return count;
   }
 }

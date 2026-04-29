@@ -22,7 +22,6 @@ import auditLogs from '@modules/audit-logs/schemas/audit-log.schema';
 import meetings from '@modules/meetings/schemas/meeting.schema';
 import bonusCampaigns from '@modules/bonus-campaigns/schemas/bonus-campaign.schema';
 import bonusRegistrations from '@modules/bonus-registrations/schemas/bonus-registration.schema';
-import academicPeriods from '@modules/academic-periods/schemas/academic-period.schema';
 
 const schemas: SchemaMap = {
   // Auth & User
@@ -34,7 +33,6 @@ const schemas: SchemaMap = {
   meetings,
   bonus_campaigns: bonusCampaigns,
   bonus_registrations: bonusRegistrations,
-  academic_periods: academicPeriods,
 
   // User Content
   notifications,

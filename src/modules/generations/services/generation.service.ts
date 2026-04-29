@@ -1,6 +1,7 @@
 import BaseService from '@shared/common/base-service';
 import generationsRepository from '@modules/generations/repositories/generations.repository';
 import generationSchema from '@modules/generations/schemas/generation.schema';
+import auditLogsService from '@modules/audit-logs/services/audit-logs.service';
 import db from '@database/mongo-database.adapter';
 import ApiError from '@utils/api-error';
 import type { AnyRecord, Identifier } from '@app-types/common';
@@ -31,15 +32,71 @@ class GenerationService extends BaseService {
     }
   }
 
-  async afterUpdate(id: Identifier, item: AnyRecord) {
+  async afterUpdate(item: AnyRecord) {
     if (item.isCurrent) {
-      await this.ensureOnlyOneCurrent(id);
+      await this.ensureOnlyOneCurrent(item.id);
     }
 
     // Auto-sync alumni if isActive changed to false
     if (item.isActive === false) {
-      await this.syncUsersToAlumni(id);
+      await this.syncUsersToAlumni(item.id);
     }
+  }
+
+  getAuditUserId(performer?: AnyRecord | Identifier) {
+    const candidate = performer && typeof performer === 'object' ? performer.id : performer;
+    return Number(candidate) || 0;
+  }
+
+  async create(data: AnyRecord, performer?: AnyRecord | Identifier) {
+    const result = await super.create(data);
+
+    if (result.success && result.data) {
+      const created = result.data as AnyRecord;
+      await auditLogsService.log({
+        userId: this.getAuditUserId(performer),
+        action: 'TẠO KHÓA',
+        module: 'GENERATIONS',
+        description: `Tạo khóa ${created.name || created.id}`,
+        resourceId: String(created.id),
+      });
+    }
+
+    return result;
+  }
+
+  async update(id: Identifier, data: AnyRecord, performer?: AnyRecord | Identifier) {
+    const result = await super.update(id, data);
+
+    if (result.success && result.data) {
+      const updated = result.data as AnyRecord;
+      await auditLogsService.log({
+        userId: this.getAuditUserId(performer),
+        action: 'CẬP NHẬT KHÓA',
+        module: 'GENERATIONS',
+        description: `Cập nhật khóa ${updated.name || updated.id}`,
+        resourceId: String(updated.id),
+      });
+    }
+
+    return result;
+  }
+
+  async delete(id: Identifier, performer?: AnyRecord | Identifier) {
+    const generation = await this.repository.findById(id);
+    const result = await super.delete(id);
+
+    if (result.success) {
+      await auditLogsService.log({
+        userId: this.getAuditUserId(performer),
+        action: 'XÓA KHÓA',
+        module: 'GENERATIONS',
+        description: `Xóa khóa ${generation?.name || id}`,
+        resourceId: String(id),
+      });
+    }
+
+    return result;
   }
 
   async syncUsersToAlumni(id: Identifier) {
@@ -80,7 +137,7 @@ class GenerationService extends BaseService {
     }
   }
 
-  async setCurrent(id: Identifier) {
+  async setCurrent(id: Identifier, performer?: AnyRecord | Identifier) {
     const item = await this.repository.findById(id);
     if (!item) throw ApiError.notFound('Generation not found');
 
@@ -90,6 +147,14 @@ class GenerationService extends BaseService {
     });
 
     await this.ensureOnlyOneCurrent(id);
+    await auditLogsService.log({
+      userId: this.getAuditUserId(performer),
+      action: 'ĐẶT KHÓA HIỆN TẠI',
+      module: 'GENERATIONS',
+      description: `Đặt khóa ${updated.name || updated.id} làm khóa hiện tại`,
+      resourceId: String(updated.id),
+    });
+
     return updated;
   }
 }

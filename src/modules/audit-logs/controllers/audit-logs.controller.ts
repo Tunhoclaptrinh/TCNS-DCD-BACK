@@ -13,7 +13,7 @@ class AuditLogsController extends BaseController {
       embed: (req.query.embed || 'user') as string,
     };
 
-    const result = await auditLogsService.findAll(query);
+    const result = await auditLogsService.getPage(query);
     this.ok(res, result);
   });
 }

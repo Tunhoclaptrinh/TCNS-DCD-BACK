@@ -1,11 +1,12 @@
 import XLSX from 'xlsx';
 import BaseService from '@shared/common/base-service';
 import bonusCampaignsRepository from '@modules/bonus-campaigns/repositories/bonus-campaigns.repository';
-import academicPeriodsRepository from '@modules/academic-periods/repositories/academic-periods.repository';
+import generationsRepository from '@modules/generations/repositories/generations.repository';
 import bonusRegistrationService from '@modules/bonus-registrations/services/bonus-registration.service';
 import dutySlotsRepository from '@modules/duty/repositories/duty-slots.repository';
 import usersRepository from '@modules/users/repositories/users.repository';
 import notificationService from '@modules/notifications/services/notification.service';
+import auditLogsService from '@modules/audit-logs/services/audit-logs.service';
 import ApiError from '@utils/api-error';
 import type { AnyRecord, Identifier } from '@app-types/common';
 
@@ -57,15 +58,18 @@ class BonusCampaignService extends BaseService {
   }
 
   async createCampaign(payload: AnyRecord = {}, actorId: Identifier) {
-    const maHocKy = toText(payload.maHocKy);
-    if (!maHocKy) throw ApiError.badRequest('maHocKy là bắt buộc');
+    const maKhoa = toText(payload.maKhoa);
+    if (!maKhoa) throw ApiError.badRequest('maKhoa là bắt buộc');
 
-    const count = await this.repository.count({ maHocKy });
-    const maDot = `${maHocKy}${count + 1}`;
+    const generation = await generationsRepository.findOne({ maKhoa });
+    if (!generation) throw ApiError.badRequest('maKhoa không tồn tại');
+
+    const count = await this.repository.count({ maKhoa });
+    const maDot = `${maKhoa}${count + 1}`;
 
     const campaign = await this.repository.create({
       ...payload,
-      maHocKy,
+      maKhoa,
       maDot,
       thoiGianBatDau: toIsoDate(payload.thoiGianBatDau),
       thoiGianKetThuc: toIsoDate(payload.thoiGianKetThuc),
@@ -77,20 +81,52 @@ class BonusCampaignService extends BaseService {
     });
 
     await this.notifyNewCampaign(campaign, toNumber(actorId));
+    await auditLogsService.log({
+      userId: toNumber(actorId) || 0,
+      action: 'TẠO ĐỢT ĐIỂM THƯỞNG',
+      module: 'BONUS_CAMPAIGNS',
+      description: `Tạo đợt điểm thưởng ${campaign.maDot || campaign.id}`,
+      resourceId: String(campaign.id),
+    });
+
     return campaign;
   }
 
   async updateCampaign(id: Identifier, payload: AnyRecord = {}, actorId: Identifier) {
-    return await this.repository.update(toNumber(id), {
+    const updated = await this.repository.update(toNumber(id), {
       ...payload,
       updatedAt: new Date().toISOString(),
       updatedBy: toNumber(actorId),
     });
+
+    if (updated) {
+      await auditLogsService.log({
+        userId: toNumber(actorId) || 0,
+        action: 'CẬP NHẬT ĐỢT ĐIỂM THƯỞNG',
+        module: 'BONUS_CAMPAIGNS',
+        description: `Cập nhật đợt điểm thưởng ${updated.maDot || updated.id}`,
+        resourceId: String(updated.id),
+      });
+    }
+
+    return updated;
   }
 
   async deleteCampaign(id: Identifier, actorId: Identifier) {
     const campaignId = toNumber(id);
-    await this.repository.delete(campaignId);
+    const campaign = await this.repository.findById(campaignId);
+    const deleted = await this.repository.delete(campaignId);
+
+    if (deleted) {
+      await auditLogsService.log({
+        userId: toNumber(actorId) || 0,
+        action: 'XÓA ĐỢT ĐIỂM THƯỞNG',
+        module: 'BONUS_CAMPAIGNS',
+        description: `Xóa đợt điểm thưởng ${campaign?.maDot || campaignId}`,
+        resourceId: String(campaignId),
+      });
+    }
+
     return { success: true, id: campaignId };
   }
 
@@ -153,15 +189,18 @@ class BonusCampaignService extends BaseService {
 
     const progress = await this.calculateUserProgress(userId, campaign);
 
-    return await bonusRegistrationService.createRegistration({
-      campaignId,
+    return await bonusRegistrationService.createRegistration(
+      {
+        campaignId,
+        userId,
+        status: 'registered',
+        dutyHours: progress?.dutyHours || 0,
+        absenceRate: progress?.absenceRate || 0,
+        eligible: progress?.eligible || false,
+        registeredAt: new Date().toISOString(),
+      },
       userId,
-      status: 'registered',
-      dutyHours: progress?.dutyHours || 0,
-      absenceRate: progress?.absenceRate || 0,
-      eligible: progress?.eligible || false,
-      registeredAt: new Date().toISOString(),
-    });
+    );
   }
 
   async reviewCampaign(id: Identifier, payload: AnyRecord = {}, actorId: Identifier) {
@@ -190,21 +229,33 @@ class BonusCampaignService extends BaseService {
       if (isApproved) results.approved++;
       else results.rejected++;
 
-      await bonusRegistrationService.updateRegistration(reg.id, {
-        status,
-        dutyHours: progress?.dutyHours,
-        absenceRate: progress?.absenceRate,
-        eligible: autoEligible,
-        reviewedAt: new Date().toISOString(),
-        reviewedBy: toNumber(actorId),
-        note: toText(payload.note || reg.note),
-      });
+      await bonusRegistrationService.updateRegistration(
+        reg.id,
+        {
+          status,
+          dutyHours: progress?.dutyHours,
+          absenceRate: progress?.absenceRate,
+          eligible: autoEligible,
+          reviewedAt: new Date().toISOString(),
+          reviewedBy: toNumber(actorId),
+          note: toText(payload.note || reg.note),
+        },
+        actorId,
+      );
     }
 
     // Cập nhật trạng thái đợt
     await this.repository.update(campaignId, {
       status: 'approved',
       updatedAt: new Date().toISOString(),
+    });
+
+    await auditLogsService.log({
+      userId: toNumber(actorId) || 0,
+      action: 'DUYỆT ĐỢT ĐIỂM THƯỞNG',
+      module: 'BONUS_CAMPAIGNS',
+      description: `Duyệt đợt điểm thưởng ${campaign.maDot || campaignId}: ${results.approved} đạt, ${results.rejected} không đạt`,
+      resourceId: String(campaignId),
     });
 
     return { success: true, ...results };

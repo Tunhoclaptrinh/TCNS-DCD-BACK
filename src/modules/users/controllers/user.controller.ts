@@ -193,7 +193,7 @@ class UserController extends BaseController {
 
   syncAlumniStatus = this.handle(async (req, res) => {
     const { userIds } = req.body;
-    const count = await this.service.syncAlumniStatus(userIds);
+    const count = await this.service.syncAlumniStatus(userIds, req.user.id);
     this.ok(res, { count, message: `Đã cập nhật ${count} thành viên sang trạng thái cựu thành viên` });
   });
 
