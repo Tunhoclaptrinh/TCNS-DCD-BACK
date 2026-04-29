@@ -48,17 +48,4 @@ export default defineSchema({
     required: false,
     default: false,
   },
-  custom: {
-    options: {
-      toJSON: {
-        virtuals: true,
-        transform: (_doc: any, ret: any) => {
-          ret.user_id = ret.userId;
-          ret.is_read = ret.isRead;
-          // Keep camelCase for compatibility but provide snake_case for Frontend
-          return ret;
-        },
-      },
-    },
-  },
 });
