@@ -22,6 +22,15 @@ class DutyLogsService {
       createdAt: new Date(),
     });
   }
+
+  async getUserLogs(userId: Identifier, limit = 10) {
+    const id = normalizeId(userId);
+    return await dutyLogsRepository.findMany({
+      userId: id,
+      _limit: limit,
+      _sort: 'createdAt:DESC',
+    });
+  }
 }
 
 export default new DutyLogsService();

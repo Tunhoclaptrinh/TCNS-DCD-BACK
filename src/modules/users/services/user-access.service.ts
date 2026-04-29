@@ -27,13 +27,30 @@ class UserAccessService {
     if (!user) return [];
 
     // 1. Get permissions from all roles
-    const roleIds = Array.isArray(user.roleIds) ? user.roleIds : [];
+    let roleIds = Array.isArray(user.roleIds) ? user.roleIds : [];
+
+    // Backward compatibility: If no roleIds but has legacy role string
+    if (roleIds.length === 0 && user.role) {
+      const legacyRole = await db.findOne('roles', { key: user.role });
+      if (legacyRole) {
+        roleIds = [legacyRole.id];
+      }
+    }
+
     const roles = await db.findMany('roles', { id_in: roleIds });
 
     const permissionSet = new Set<string>();
     roles.forEach((role: any) => {
       if (Array.isArray(role.permissions)) {
-        role.permissions.forEach((p: string) => permissionSet.add(p));
+        role.permissions.forEach((p: string) => {
+          if (p === '*') {
+            // If it's a super-admin role, we might want to expand all permissions
+            // or just keep it as '*' and handle it in rbac middleware.
+            permissionSet.add('*');
+          } else {
+            permissionSet.add(p);
+          }
+        });
       }
     });
 
@@ -45,25 +62,35 @@ class UserAccessService {
     const denied = user.customPermissions?.denied || [];
     denied.forEach((p: string) => permissionSet.delete(p));
 
-    // Special case for legacy 'admin' role if needed
-    if (user.role === 'admin') {
-      // In a real system, you might want to auto-grant all permissions to admins
-      // But for now, we rely on the seeded 'admin' role in roleIds.
+    // Super-admin logic: if has '*', add all available permissions
+    if (permissionSet.has('*')) {
+      const allPermissions = await db.findAll('permissions');
+      allPermissions.forEach((p: any) => permissionSet.add(p.key));
     }
 
     return Array.from(permissionSet);
   }
 
-  canReadOtherProfiles(user) {
-    return CAN_READ_OTHERS_ROLES.has(String(user?.role || ''));
+  canReadOtherProfiles(user: any) {
+    const perms = user.permissions || [];
+    return perms.includes('*') || perms.includes('users:list:all') || perms.includes('users:read:all');
   }
 
-  assertCanReadProfile(actor, targetId: Identifier) {
-    const normalizedTargetId = this.normalizeTargetId(targetId);
+  canReadDeptProfiles(user: any) {
+    const perms = user.permissions || [];
+    return perms.includes('users:list:dept');
+  }
 
-    if (actor.id !== normalizedTargetId && !this.canReadOtherProfiles(actor)) {
-      throw ApiError.forbidden('Bạn không có quyền xem hồ sơ này');
-    }
+  assertCanReadProfile(actor: any, target: any) {
+    if (actor.id === this.normalizeTargetId(target.id)) return;
+
+    const canReadAll = this.canReadOtherProfiles(actor);
+    if (canReadAll) return;
+
+    const canReadDept = this.canReadDeptProfiles(actor);
+    if (canReadDept && actor.department === target.department) return;
+
+    throw ApiError.forbidden('Bạn không có quyền xem hồ sơ này');
   }
 
   assertNotSelfAction(
@@ -77,11 +104,19 @@ class UserAccessService {
   }
 
   assertAuthority(actor: any, target: any, newPosition?: string) {
-    if (actor.role === 'admin') return;
+    const actorPermissions = actor.permissions || [];
+    const isAdmin = actorPermissions.includes('*');
+    if (isAdmin) return;
 
     const actorLevel = POSITION_LEVELS[actor.position] || 0;
     const targetLevel = POSITION_LEVELS[target.position] || 0;
     const newLevel = newPosition ? POSITION_LEVELS[newPosition] || 0 : -1;
+
+    // Enforce departmental boundary for TB/PB
+    const isDeptLeader = ['pb', 'tb'].includes(actor.position);
+    if (isDeptLeader && actor.department !== target.department) {
+      throw ApiError.forbidden(`Bạn chỉ có quyền quản lý thành viên thuộc ban ${actor.department}`);
+    }
 
     if (actorLevel <= targetLevel && actor.id !== target.id) {
       throw ApiError.forbidden('Không có quyền quản lý thành viên cùng cấp hoặc cấp cao hơn');

@@ -9,6 +9,9 @@ router.use(requireAuth);
 
 router.get('/week', requirePermission('duty:view'), dutyController.getWeeklySchedule);
 router.get('/stats/summary', requirePermission('duty:view'), dutyController.getStats);
+router.get('/stats/comprehensive', requirePermission('duty:manage'), dutyController.getComprehensiveStats);
+router.get('/stats/export', requirePermission('duty:manage'), dutyController.exportStats);
+router.post('/stats/notify-absentees', requirePermission('duty:manage'), dutyController.notifyAbsentees);
 
 // Slots
 router.post('/slots', requirePermission('duty:manage'), dutyController.createSlot);
@@ -18,7 +21,7 @@ router.delete('/kips/:id', requirePermission('duty:manage'), dutyController.dele
 
 router.put('/slots/:id', requirePermission('duty:manage'), dutyController.updateSlot);
 router.delete('/slots/:id', requirePermission('duty:manage'), dutyController.deleteSlot);
-router.patch('/slots/:id/register', requirePermission('duty:register'), dutyController.registerToSlot);
+router.patch('/slots/:id/register', requirePermission('duty:register:self'), dutyController.registerToSlot);
 router.patch('/slots/:id/cancel', requirePermission('duty:update'), dutyController.cancelRegistration);
 router.post('/slots/:id/attendance', requirePermission('duty:manage'), dutyController.markAttendance);
 
@@ -43,7 +46,7 @@ router.put('/swaps/:id', requirePermission('duty:manage'), dutyController.update
 router.delete('/swaps/:id', requirePermission('duty:manage'), dutyController.deleteSwapRequest);
 
 // Templates & Generation
-router.get('/templates/groups', requirePermission('duty:manage'), dutyController.getTemplateGroups);
+router.get('/templates/groups', requirePermission('duty:view'), dutyController.getTemplateGroups);
 router.post('/templates/groups', requirePermission('duty:manage'), dutyController.createTemplateGroup);
 router.put('/templates/groups/:id', requirePermission('duty:manage'), dutyController.updateTemplateGroup);
 router.delete('/templates/groups/:id', requirePermission('duty:manage'), dutyController.deleteTemplateGroup);

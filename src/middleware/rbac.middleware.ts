@@ -17,11 +17,11 @@ export const requirePermission = (permission: string) => {
     }
 
     const userPermissions: string[] = user.permissions || [];
-    const userRole = user.role; // Legacy role
+    const isAdmin = userPermissions.includes('*');
     const userGenerationId = user.generationId;
 
     // 1. Logic Thế hệ cũ (Archive): Tự động giới hạn quyền nếu không phải Admin
-    if (userRole !== 'admin') {
+    if (!isAdmin) {
       const settings = await db.findAll('duty_settings');
       const currentGenId = settings?.[0]?.currentGenerationId || settings?.[0]?.currentGeneration;
 
@@ -49,7 +49,10 @@ export const requirePermission = (permission: string) => {
     }
 
     // 2. Kiểm tra quyền trực tiếp (Tính cả Đa vai trò và Ghi đè cá nhân)
-    if (!userPermissions.includes(permission) && userRole !== 'admin') {
+    const hasDirectPermission =
+      userPermissions.includes(permission) || (permission === 'duty:view' && userPermissions.includes('duty:view:all'));
+
+    if (!hasDirectPermission && !isAdmin) {
       return res.status(403).json({
         success: false,
         message: `Bạn không có quyền thực hiện hành động này: ${permission}`,

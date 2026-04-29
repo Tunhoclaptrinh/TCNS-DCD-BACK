@@ -1,4 +1,5 @@
 import BaseService from '@shared/common/base-service';
+import db from '@database';
 import usersRepository from '@modules/users/repositories/users.repository';
 import notificationsRepository from '@modules/notifications/repositories/notifications.repository';
 import rewardPenaltiesRepository from '@modules/reward-penalties/repositories/reward-penalties.repository';
@@ -39,9 +40,11 @@ type UserStatItem = {
   ctv: number;
   official: number;
   management: number;
+  alumni: number;
   recentSignups: number;
   byRole: Record<string, number>;
   byPosition: Record<string, number>;
+  byGeneration: Record<string, number>;
 };
 type UserStats = {
   global: UserStatItem;
@@ -57,23 +60,40 @@ function createUserStatItem(): UserStatItem {
     ctv: 0,
     official: 0,
     management: 0,
+    alumni: 0,
     recentSignups: 0,
     byRole: {},
     byPosition: {},
+    byGeneration: {},
   };
 }
 
-function processUserStats(item: UserStatItem, user: UserRecord, weekAgo: Date) {
+function processUserStats(item: UserStatItem, user: any, weekAgo: Date) {
   item.total++;
-  if (user.status === 'active') item.active++;
-  else if (user.status === 'inactive') item.inactive++;
-  else if (user.status === 'dismissed') item.dismissed++;
 
-  if (user.position === 'tvb') item.ctv++;
-  else if (user.position === 'tv') item.official++;
-  else if (user.position === 'ctc') item.management++;
+  // Status-based stats
+  if (user.status === 'active') {
+    item.active++;
+    // Only 'ctv' is considered collaborator, others are official members
+    if (user.position === 'ctv') {
+      item.ctv++;
+    } else {
+      item.official++;
+    }
+  } else if (user.status === 'inactive') {
+    item.inactive++;
+    item.alumni++;
+  } else if (user.status === 'dismissed') {
+    item.dismissed++;
+  }
 
-  if (new Date(user.createdAt) >= weekAgo) item.recentSignups++;
+  // Management stats: dt, ctc, tb, pb
+  const isManagement = ['ctc', 'dt', 'tb', 'pb'].includes(user.position);
+  if (isManagement) {
+    item.management++;
+  }
+
+  if (user.createdAt && new Date(user.createdAt) >= weekAgo) item.recentSignups++;
 
   if (user.role) {
     item.byRole[user.role] = (item.byRole[user.role] || 0) + 1;
@@ -81,6 +101,11 @@ function processUserStats(item: UserStatItem, user: UserRecord, weekAgo: Date) {
 
   if (user.position) {
     item.byPosition[user.position] = (item.byPosition[user.position] || 0) + 1;
+  }
+
+  if (user.generationId) {
+    const genId = String(user.generationId);
+    item.byGeneration[genId] = (item.byGeneration[genId] || 0) + 1;
   }
 }
 
@@ -379,10 +404,20 @@ class UserService extends BaseService {
   async toggleUserStatus(userId: Identifier, performer?: AnyRecord | Identifier) {
     const user = await this.findUserOrThrow(userId);
 
-    const updated = await this.repository.update(userId, {
-      isActive: !user.isActive,
+    const newIsActive = !user.isActive;
+    const updateData: AnyRecord = {
+      isActive: newIsActive,
       updatedAt: new Date().toISOString(),
-    });
+    };
+
+    // Unify status: Alumni <=> Inactive
+    if (newIsActive && user.status === 'inactive') {
+      updateData.status = 'active';
+    } else if (!newIsActive && user.status === 'active') {
+      updateData.status = 'inactive';
+    }
+
+    const updated = await this.repository.update(userId, updateData);
 
     await auditLogsService.log({
       userId: this.toAuditUserId(performer, user.id),
@@ -470,6 +505,7 @@ class UserService extends BaseService {
       expelledAt: now,
       expelReason: reason || '',
       expelledBy: actorId,
+      status: 'dismissed',
       isActive: false,
       updatedAt: now,
     });
@@ -520,6 +556,56 @@ class UserService extends BaseService {
     });
 
     return { user: 1, notifications: notificationCount };
+  }
+
+  async getPotentialAlumni() {
+    const generations = await db.findMany('generations', { isActive: false });
+    const inactiveGenIds = generations.map((g: any) => g.id);
+
+    if (inactiveGenIds.length === 0) return [];
+
+    const users = await db.findMany('users', {
+      generationId: { $in: inactiveGenIds },
+      status: 'active',
+    });
+
+    return users;
+  }
+
+  async syncAlumniStatus(userIds?: Identifier[]) {
+    let count = 0;
+
+    if (userIds && Array.isArray(userIds)) {
+      // Sync only specific users
+      for (const id of userIds) {
+        await this.repository.update(id, {
+          status: 'inactive',
+          isActive: false,
+          updatedAt: new Date().toISOString(),
+        });
+        count++;
+      }
+    } else {
+      // Original logic: sync everyone in inactive generations
+      const generations = await db.findMany('generations', {});
+      const activeGenIds = new Set(generations.filter((g: any) => g.isActive).map((g: any) => g.id));
+
+      const users = await this.repository.findAll();
+      for (const user of users) {
+        const isCurrentlyActive = user.status === 'active';
+        const shouldBeActive = user.generationId && activeGenIds.has(user.generationId);
+
+        if (isCurrentlyActive && !shouldBeActive) {
+          await this.repository.update(user.id, {
+            status: 'inactive',
+            isActive: false,
+            updatedAt: new Date().toISOString(),
+          });
+          count++;
+        }
+      }
+    }
+    return count;
   }
 }
 
