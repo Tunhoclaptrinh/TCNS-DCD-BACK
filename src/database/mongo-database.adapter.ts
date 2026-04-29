@@ -62,6 +62,8 @@ class MongoConnect implements DatabaseAdapter {
         kip: { ref: 'duty_kips', localField: 'kipId', foreignField: 'id', justOne: true },
         shift: { ref: 'duty_shifts', localField: 'shiftId', foreignField: 'id', justOne: true },
         creator: { ref: 'users', localField: 'createdBy', foreignField: 'id', justOne: true },
+        assignedUsers: { ref: 'users', localField: 'assignedUserIds', foreignField: 'id', justOne: false },
+        attendedUsers: { ref: 'users', localField: 'attendedUserIds', foreignField: 'id', justOne: false },
       },
       duty_leave_requests: {
         user: { ref: 'users', localField: 'userId', foreignField: 'id', justOne: true },

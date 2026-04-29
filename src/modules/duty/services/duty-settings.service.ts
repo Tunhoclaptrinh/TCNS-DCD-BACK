@@ -14,6 +14,9 @@ class DutySettingsService {
         kipPrice: 0,
         violationPenaltyRate: 0,
         quotaRules: [],
+        penaltyAbsentNoPermission: 50000,
+        penaltyAbsentWithPermissionLate: 20000,
+        penaltyLate: 10000,
         updatedAt: new Date().toISOString(),
       };
     }
@@ -31,6 +34,9 @@ class DutySettingsService {
       kipPrice: Number(data.kipPrice) || 0,
       violationPenaltyRate: Number(data.violationPenaltyRate) || 0,
       quotaRules: Array.isArray(data.quotaRules) ? data.quotaRules : [],
+      penaltyAbsentNoPermission: Number(data.penaltyAbsentNoPermission) || 50000,
+      penaltyAbsentWithPermissionLate: Number(data.penaltyAbsentWithPermissionLate) || 20000,
+      penaltyLate: Number(data.penaltyLate) || 10000,
       updatedAt: new Date().toISOString(),
     };
 
