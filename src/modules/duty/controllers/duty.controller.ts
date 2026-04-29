@@ -15,6 +15,11 @@ class DutyController extends BaseController {
     this.ok(res, data);
   });
 
+  getSlot = this.handle(async (req, res) => {
+    const data = await dutyService.findById(req.params.id);
+    this.ok(res, data);
+  });
+
   createSlot = this.handle(async (req, res) => {
     const data = await dutyService.createSlot(req.body, req.user.id);
     this.created(res, data);
@@ -270,9 +275,23 @@ class DutyController extends BaseController {
     this.ok(res, data);
   });
 
+  selfCheckIn = this.handle(async (req, res) => {
+    const data = await dutyService.selfCheckIn(req.params.id, req.user, req.ip || '');
+    this.ok(res, data);
+  });
+
   markAttendance = this.handle(async (req, res) => {
-    const { ids } = req.body;
-    const data = await dutyService.markAttendance(req.params.id, ids, req.user.id);
+    const { ids, userId, isIncremental } = req.body;
+    if (userId) {
+      const data = await dutyService.leaderMarkAttendance(req.params.id, userId, req.user);
+      return this.ok(res, data);
+    }
+    const data = await dutyService.markAttendance(req.params.id, ids, req.user, isIncremental);
+    this.ok(res, data);
+  });
+
+  reportViolation = this.handle(async (req, res) => {
+    const data = await dutyService.reportViolation({ ...req.body, slotId: req.params.id }, req.user);
     this.ok(res, data);
   });
 

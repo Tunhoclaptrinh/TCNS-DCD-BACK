@@ -14,6 +14,7 @@ import dutyTemplates from '@modules/duty/schemas/duty-template.schema';
 import dutyTemplateAssignments from '@modules/duty/schemas/duty-template-assignment.schema';
 import dutyLogs from '@modules/duty/schemas/duty-log.schema';
 import dutySettings from '@modules/duty/schemas/duty-settings.schema';
+import dutyViolations from '@modules/duty/schemas/duty-violation.schema';
 
 import generations from '@modules/generations/schemas/generation.schema';
 import roles from '@modules/roles/schemas/role.schema';
@@ -50,6 +51,7 @@ const schemas: SchemaMap = {
   duty_template_assignments: dutyTemplateAssignments,
   duty_logs: dutyLogs,
   duty_settings: dutySettings,
+  duty_violations: dutyViolations,
 };
 
 export default schemas;
