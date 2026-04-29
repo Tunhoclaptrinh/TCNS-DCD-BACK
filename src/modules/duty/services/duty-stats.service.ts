@@ -54,6 +54,15 @@ class DutyStatsService {
     const kipMap = new Map(allKips.map((k: any) => [normalizeId(k.id), k]));
 
     // 2. Filter users based on criteria
+    // Helper to determine role group
+    const getRoleGroup = (position: string) => {
+      const pos = String(position || '').toLowerCase();
+      // Grouping: tb=Trưởng ban, pb=Phó ban, tv=Thành viên, tvb=Thành viên ban, dt=Đội trưởng
+      if (['tb', 'pb', 'tv', 'tvb', 'dt'].includes(pos)) return 'member_all';
+      if (pos === 'ctv') return 'ctv';
+      return 'other';
+    };
+
     const activeGenerationIds =
       generationId === 'active'
         ? (await generationsRepository.findMany({ isActive: true })).map((g) => String(g._id || g.id))
@@ -99,41 +108,78 @@ class DutyStatsService {
     // 4. Process stats for each user
     const stats = users.map((user) => {
       const userId = normalizeId(user.id);
+      const start = dayjs(startDate);
+      const end = dayjs(endDate);
+      const roleGroup = getRoleGroup(user.position);
+      const deptValue = user.department?.name || user.department;
+      const uDept = String(deptValue || '').trim();
 
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const numWeeks = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (7 * 24 * 60 * 60 * 1000)));
-      const numMonths = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (30 * 24 * 60 * 60 * 1000)));
+      // Priority: 1. Specific User -> 2. Dept + Role Group -> 3. Role Group (All Depts) -> 4. Default
+      const findMatchingRule = () => {
+        const pos = String(user.position || '').toLowerCase();
 
-      // Find specific rule for user
-      const rule = quotaRules.find((r: any) => {
-        const matchTarget =
-          (r.type === 'position' && r.target === user.position) ||
-          (r.type === 'user' && String(r.target) === String(userId));
-        if (!matchTarget) return false;
+        // 1. Specific User Rule (Highest Priority)
+        const userRule = quotaRules.find(
+          (r: any) =>
+            r.type === 'user' &&
+            String(r.target) === String(user.studentId || userId) &&
+            (!r.startDate || !r.endDate || (dayjs(r.startDate).isBefore(end) && dayjs(r.endDate).isAfter(start))),
+        );
+        if (userRule) return userRule;
 
-        if (r.startDate && r.endDate) {
-          const ruleStart = new Date(r.startDate).getTime();
-          const ruleEnd = new Date(r.endDate).getTime();
-          const viewStart = start.getTime();
-          const viewEnd = end.getTime();
-          // The rule applies if there is an overlap
-          if (viewEnd < ruleStart || viewStart > ruleEnd) return false;
-        }
-        return true;
-      });
+        // 2. Specific Position + Dept Rule
+        const posDeptRule = quotaRules.find(
+          (r: any) =>
+            r.type === pos &&
+            r.target === uDept &&
+            (!r.startDate || !r.endDate || (dayjs(r.startDate).isBefore(end) && dayjs(r.endDate).isAfter(start))),
+        );
+        if (posDeptRule) return posDeptRule;
 
-      let userQuota = 0;
-      if (rule) {
-        const ruleQuota = Number(rule.quota);
-        if (rule.cycle === 'month') {
-          userQuota = Number((ruleQuota * numMonths).toFixed(2));
-        } else {
-          userQuota = Number((ruleQuota * numWeeks).toFixed(2));
-        }
-      } else {
-        userQuota = Number((defaultQuota * numWeeks).toFixed(2));
+        // 3. Specific Position (All Depts) Rule
+        const posAllRule = quotaRules.find(
+          (r: any) =>
+            r.type === pos &&
+            r.target === 'all' &&
+            (!r.startDate || !r.endDate || (dayjs(r.startDate).isBefore(end) && dayjs(r.endDate).isAfter(start))),
+        );
+        if (posAllRule) return posAllRule;
+
+        // 4. Role Group + Dept Rule
+        const deptRule = quotaRules.find(
+          (r: any) =>
+            r.type === roleGroup &&
+            r.target === uDept &&
+            (!r.startDate || !r.endDate || (dayjs(r.startDate).isBefore(end) && dayjs(r.endDate).isAfter(start))),
+        );
+        if (deptRule) return deptRule;
+
+        // 5. Role Group (All Depts) Rule
+        const roleRule = quotaRules.find(
+          (r: any) =>
+            r.type === roleGroup &&
+            r.target === 'all' &&
+            (!r.startDate || !r.endDate || (dayjs(r.startDate).isBefore(end) && dayjs(r.endDate).isAfter(start))),
+        );
+        if (roleRule) return roleRule;
+
+        return null;
+      };
+
+      const matchedRule = findMatchingRule();
+      const baseQuota = matchedRule ? Number(matchedRule.quota) : defaultQuota;
+      const cycle = matchedRule?.cycle || 'week';
+
+      let userQuota = baseQuota;
+      const diffDays = end.diff(start, 'day') + 1;
+
+      if (cycle === 'week') {
+        userQuota = (baseQuota * diffDays) / 7;
+      } else if (cycle === 'month') {
+        userQuota = (baseQuota * diffDays) / 30;
       }
+
+      userQuota = Math.round(userQuota * 10) / 10;
 
       // Slots where user was assigned
       const userSlots = slots.filter((s: any) => normalizeIdList(s.assignedUserIds || []).includes(userId));
@@ -190,6 +236,7 @@ class DutyStatsService {
         department: user.department?.name || user.department || 'N/A',
         position: user.position,
         totalKips,
+        userQuota,
         violationCount,
         penaltyCoefficient: totalPenaltyCoeff,
         deficiency,

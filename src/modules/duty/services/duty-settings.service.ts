@@ -34,10 +34,16 @@ class DutySettingsService {
       updatedAt: new Date().toISOString(),
     };
 
+    console.log('[DutySettings] Saving settings with payload:', JSON.stringify(payload, null, 2));
+
     if (!settings) {
-      return await dutySettingsRepository.create(payload);
+      const created = await dutySettingsRepository.create(payload);
+      console.log('[DutySettings] Created new settings document');
+      return created;
     }
-    return await dutySettingsRepository.update(settings.id, payload);
+    const updated = await dutySettingsRepository.update(settings.id, payload);
+    console.log('[DutySettings] Updated existing settings document');
+    return updated;
   }
 }
 
