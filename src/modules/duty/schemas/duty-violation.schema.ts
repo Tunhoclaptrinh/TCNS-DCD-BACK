@@ -47,4 +47,10 @@ export default defineSchema({
     required: false,
     description: 'Thời điểm ghi lỗi',
   },
+  penaltyId: {
+    type: 'number',
+    required: false,
+    foreignKey: 'reward_penalties',
+    description: 'ID phiếu phạt liên quan',
+  },
 });

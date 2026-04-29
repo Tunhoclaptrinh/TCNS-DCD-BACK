@@ -36,4 +36,9 @@ export default defineSchema({
     required: false,
     maxLength: 500,
   },
+  violationId: {
+    type: 'number',
+    required: false,
+    foreignKey: 'duty_violations',
+  },
 });

@@ -40,6 +40,7 @@ class MongoConnect implements DatabaseAdapter {
       reward_penalties: {
         user: { ref: 'users', localField: 'userId', foreignField: 'id', justOne: true },
         creator: { ref: 'users', localField: 'createdBy', foreignField: 'id', justOne: true },
+        violation: { ref: 'duty_violations', localField: 'violationId', foreignField: 'id', justOne: true },
       },
       meetings: {
         creator: { ref: 'users', localField: 'createdBy', foreignField: 'id', justOne: true },
@@ -53,7 +54,8 @@ class MongoConnect implements DatabaseAdapter {
         requester: { ref: 'users', localField: 'requesterId', foreignField: 'id', justOne: true },
         targetUser: { ref: 'users', localField: 'targetUserId', foreignField: 'id', justOne: true },
         approver: { ref: 'users', localField: 'approvedBy', foreignField: 'id', justOne: true },
-        dutySlot: { ref: 'duty_slots', localField: 'dutySlotId', foreignField: 'id', justOne: true },
+        fromSlot: { ref: 'duty_slots', localField: 'fromSlotId', foreignField: 'id', justOne: true },
+        toSlot: { ref: 'duty_slots', localField: 'toSlotId', foreignField: 'id', justOne: true },
       },
       duty_kips: {
         shift: { ref: 'duty_shifts', localField: 'shiftId', foreignField: 'id', justOne: true },
@@ -74,6 +76,12 @@ class MongoConnect implements DatabaseAdapter {
         slot: { ref: 'duty_slots', localField: 'slotId', foreignField: 'id', justOne: true },
         user: { ref: 'users', localField: 'userId', foreignField: 'id', justOne: true },
         performer: { ref: 'users', localField: 'performerId', foreignField: 'id', justOne: true },
+      },
+      duty_violations: {
+        user: { ref: 'users', localField: 'userId', foreignField: 'id', justOne: true },
+        slot: { ref: 'duty_slots', localField: 'slotId', foreignField: 'id', justOne: true },
+        creator: { ref: 'users', localField: 'createdBy', foreignField: 'id', justOne: true },
+        penalty: { ref: 'reward_penalties', localField: 'penaltyId', foreignField: 'id', justOne: true },
       },
       duty_template_assignments: {
         template: { ref: 'duty_templates', localField: 'templateId', foreignField: 'id', justOne: true },

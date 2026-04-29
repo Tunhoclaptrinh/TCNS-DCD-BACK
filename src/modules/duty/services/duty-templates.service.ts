@@ -83,6 +83,8 @@ class DutyTemplatesService {
       description: data.description || '',
       isSpecialEvent: !!data.isSpecialEvent,
       daysOfWeek: Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : [0, 1, 2, 3, 4, 5, 6],
+      slotStructure: data.slotStructure || [],
+      config: data.config || {},
     });
   }
 
@@ -115,6 +117,8 @@ class DutyTemplatesService {
       description: data.description || '',
       isSpecialEvent: data.isSpecialEvent !== undefined ? !!data.isSpecialEvent : undefined,
       daysOfWeek: newDays,
+      slotStructure: data.slotStructure,
+      config: data.config,
     });
   }
 
@@ -147,6 +151,8 @@ class DutyTemplatesService {
       endTime: data.endTime || null,
       daysOfWeek: kipDays,
       description: data.description || '',
+      slotStructure: data.slotStructure || [],
+      config: data.config || {},
     });
   }
 
@@ -176,6 +182,8 @@ class DutyTemplatesService {
       endTime: data.endTime || null,
       daysOfWeek: kipDays || kip.daysOfWeek,
       description: data.description || '',
+      slotStructure: data.slotStructure,
+      config: data.config,
     });
   }
 

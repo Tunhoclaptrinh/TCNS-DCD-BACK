@@ -840,24 +840,81 @@ class DutySlotsService {
       userId: normalizeId(userId),
     });
 
+    const coeff = Number(coefficient) || 1;
+    const penaltyAmount = coeff * 5000;
+    const reason = `Vi phạm kíp trực: ${type} (Hệ số x${coeff})`;
+
     let violation;
     if (existingViolation) {
+      // Update existing violation
       violation = await dutyViolationsRepository.update(existingViolation.id, {
         type,
-        coefficient: Number(coefficient) || 1,
+        coefficient: coeff,
         note: note || '',
         updatedAt: new Date().toISOString(),
       });
+
+      // Sync with rewardPenaltyService if penaltyId exists
+      if (existingViolation.penaltyId) {
+        try {
+          await rewardPenaltyService.updateEntry(
+            existingViolation.penaltyId,
+            {
+              amount: penaltyAmount,
+              reason,
+              note: note || '',
+            },
+            performerId,
+          );
+        } catch (err) {
+          console.error('Failed to update linked penalty:', err);
+        }
+      } else {
+        // Create new penalty if missing
+        const penalty = await rewardPenaltyService.createEntry(
+          {
+            userId: normalizeId(userId),
+            type: 'penalty',
+            amount: penaltyAmount,
+            reason,
+            note: note || '',
+            violationId: existingViolation.id,
+          },
+          performerId,
+        );
+        await dutyViolationsRepository.update(existingViolation.id, { penaltyId: penalty.id });
+      }
     } else {
+      // Create new violation
       violation = await dutyViolationsRepository.create({
         slotId: normalizeId(slotId),
         userId: normalizeId(userId),
         type,
-        coefficient: Number(coefficient) || 1,
+        coefficient: coeff,
         note: note || '',
         createdBy: performerId,
         createdAt: new Date().toISOString(),
       });
+
+      // Create linked penalty
+      try {
+        const penalty = await rewardPenaltyService.createEntry(
+          {
+            userId: normalizeId(userId),
+            type: 'penalty',
+            amount: penaltyAmount,
+            reason,
+            note: note || '',
+            violationId: violation.id,
+          },
+          performerId,
+        );
+
+        // Update violation with penaltyId
+        await dutyViolationsRepository.update(violation.id, { penaltyId: penalty.id });
+      } catch (err) {
+        console.error('Failed to create linked penalty:', err);
+      }
     }
 
     await dutyLogsService.log(
