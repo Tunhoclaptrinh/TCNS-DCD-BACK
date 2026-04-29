@@ -12,7 +12,8 @@ router.put('/profile', requireAuth, userController.getAvatarUploadMiddleware(), 
 router.get('/me/stats', requireAuth, userController.getMeStats);
 
 // === BASE & SEARCH ROUTES ===
-router.get('/search', requireAuth, userController.search);
+router.get('/public-search', requireAuth, userController.search);
+router.get('/search', requireAuth, requirePermission('users:list'), userController.search);
 router.get('/count', requireAuth, requirePermission('users:list'), userController.count);
 router.post('/bulk', requireAuth, requirePermission('users:update'), userController.bulk);
 router.post('/validate', requireAuth, userController.validate);
