@@ -14,6 +14,7 @@ import auditLogRoutes from '@modules/audit-logs/routes/audit-logs.routes';
 import meetingRoutes from '@modules/meetings/routes/meeting.routes';
 import bonusCampaignRoutes from '@modules/bonus-campaigns/routes/bonus-campaign.routes';
 import bonusRegistrationRoutes from '@modules/bonus-registrations/routes/bonus-registration.routes';
+import semesterRoutes from '@modules/semesters/routes/semesters.routes';
 
 const router = express.Router();
 
@@ -32,5 +33,6 @@ router.use('/audit-logs', auditLogRoutes);
 router.use('/meetings', meetingRoutes);
 router.use('/bonus-campaigns', bonusCampaignRoutes);
 router.use('/bonus-registrations', bonusRegistrationRoutes);
+router.use('/semesters', semesterRoutes);
 
 export default router;
