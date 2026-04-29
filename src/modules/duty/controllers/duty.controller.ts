@@ -295,11 +295,6 @@ class DutyController extends BaseController {
     this.ok(res, data);
   });
 
-  reportViolation = this.handle(async (req, res) => {
-    const data = await dutyService.reportViolation({ ...req.body, slotId: req.params.id }, req.user);
-    this.ok(res, data);
-  });
-
   // Settings
   getSettings = this.handle(async (_req, res) => {
     const data = await dutyService.getSettings();
