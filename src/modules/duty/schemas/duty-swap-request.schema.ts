@@ -1,10 +1,15 @@
 import { defineSchema } from '@app-types/schema';
 
 export default defineSchema({
-  dutySlotId: {
+  fromSlotId: {
     type: 'number',
     required: true,
-    description: 'ID kíp trực cần đổi',
+    description: 'ID kíp trực hiện tại cần đổi đi',
+  },
+  toSlotId: {
+    type: 'number',
+    required: true,
+    description: 'ID kíp trực muốn chuyển sang',
   },
   requesterId: {
     type: 'number',
@@ -13,8 +18,9 @@ export default defineSchema({
   },
   targetUserId: {
     type: 'number',
-    required: true,
+    required: false,
     foreignKey: 'users',
+    description: 'Người nhận đổi (nếu có)',
   },
   reason: {
     type: 'string',

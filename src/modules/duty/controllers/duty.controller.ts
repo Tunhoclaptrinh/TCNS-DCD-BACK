@@ -30,6 +30,16 @@ class DutyController extends BaseController {
     this.created(res, data);
   });
 
+  updateActualShift = this.handle(async (req, res) => {
+    const data = await dutyService.updateActualShift(parseInt(req.params.id, 10), req.body);
+    this.ok(res, data);
+  });
+
+  updateActualKip = this.handle(async (req, res) => {
+    const data = await dutyService.updateActualKip(parseInt(req.params.id, 10), req.body);
+    this.ok(res, data);
+  });
+
   updateSlot = this.handle(async (req, res) => {
     const data = await dutyService.updateSlot(req.params.id, req.body, req.user.id);
     this.ok(res, data);
@@ -186,6 +196,16 @@ class DutyController extends BaseController {
     this.ok(res, data);
   });
 
+  getSlotLogs = this.handle(async (req, res) => {
+    const data = await dutyService.getSlotLogs(req.params.id);
+    this.ok(res, data);
+  });
+
+  getSlotRequests = this.handle(async (req, res) => {
+    const data = await dutyService.getSlotRequests(req.params.id);
+    this.ok(res, data);
+  });
+
   // Assignments
   getTemplateAssignments = this.handle(async (_req, res) => {
     const data = await dutyService.getTemplateAssignments();
@@ -283,8 +303,13 @@ class DutyController extends BaseController {
   });
 
   notifyAbsentees = this.handle(async (req, res) => {
-    const { stats } = req.body;
-    const data = await dutyService.notifyAbsentees(stats, req.user.id);
+    const { stats, message } = req.body;
+    const data = await dutyService.notifyAbsentees(stats, req.user.id, message);
+    this.ok(res, data);
+  });
+
+  getUserRemarks = this.handle(async (req, res) => {
+    const data = await dutyService.getUserRemarks(req.params.id);
     this.ok(res, data);
   });
 }
