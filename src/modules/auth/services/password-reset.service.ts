@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import otpCodesRepository from '@modules/auth/repositories/otp-codes.repository';
 import otpDeliveryService from '@modules/auth/services/otp-delivery.service';
 import usersRepository from '@modules/users/repositories/users.repository';
 import ApiError from '@utils/api-error';
@@ -9,21 +10,14 @@ const OTP_EXPIRE_MINUTES = Math.max(1, Number(process.env.OTP_EXPIRE_MINUTES || 
 const OTP_MAX_VERIFY_ATTEMPTS = Math.max(1, Number(process.env.OTP_MAX_VERIFY_ATTEMPTS || 5));
 const OTP_RESEND_COOLDOWN_SECONDS = Math.max(0, Number(process.env.OTP_RESEND_COOLDOWN_SECONDS || 60));
 const OTP_LENGTH = 6;
-
-type OtpState = {
-  otpHash: string;
-  attempts: number;
-  target: string;
-  sentAtTs: number;
-  expiresAtTs: number;
-};
+const OTP_PURPOSE = 'reset_password';
 
 class PasswordResetService {
-  otpStateStore: Map<string, OtpState>;
-
-  constructor() {
-    // Tạm giữ OTP trong memory để tách riêng vòng đời quên mật khẩu khỏi auth chính.
-    this.otpStateStore = new Map();
+  async cleanupExpiredOtps() {
+    await otpCodesRepository.deleteMany({
+      purpose: OTP_PURPOSE,
+      expiresAt_lt: new Date().toISOString(),
+    });
   }
 
   normalizeEmail(email: unknown) {
@@ -58,25 +52,8 @@ class PasswordResetService {
     return `${'*'.repeat(text.length - 4)}${text.slice(-4)}`;
   }
 
-  getOtpState(userId: string | number) {
-    const key = String(userId);
-    const state = this.otpStateStore.get(key);
-    if (!state) return null;
-
-    if (Date.now() > state.expiresAtTs) {
-      this.otpStateStore.delete(key);
-      return null;
-    }
-
-    return state;
-  }
-
-  setOtpState(userId: string | number, state: OtpState) {
-    this.otpStateStore.set(String(userId), state);
-  }
-
-  clearOtpState(userId: string | number) {
-    this.otpStateStore.delete(String(userId));
+  async getActiveOtp(userId: number, email: string) {
+    return await otpCodesRepository.findActiveResetOtp(userId, email, new Date().toISOString());
   }
 
   async findUserByEmail(email?: string) {
@@ -95,6 +72,8 @@ class PasswordResetService {
   }
 
   async forgotPassword(payload: AnyRecord) {
+    await this.cleanupExpiredOtps();
+
     const normalizedEmail = this.normalizeEmail(payload.email);
 
     if (!normalizedEmail) {
@@ -112,23 +91,36 @@ class PasswordResetService {
       return { message: genericMessage };
     }
 
-    const currentOtpState = this.getOtpState(user.id);
-    const sentAtTs = currentOtpState?.sentAtTs || 0;
+    const activeOtp = await this.getActiveOtp(user.id, target);
+    const nowTs = Date.now();
     const cooldownMs = OTP_RESEND_COOLDOWN_SECONDS * 1000;
-    if (cooldownMs > 0 && sentAtTs && Date.now() - sentAtTs < cooldownMs) {
-      const retryAfterSeconds = Math.ceil((cooldownMs - (Date.now() - sentAtTs)) / 1000);
+    const nextResendAtTs = activeOtp?.nextResendAt ? new Date(activeOtp.nextResendAt).getTime() : 0;
+
+    if (cooldownMs > 0 && nextResendAtTs > nowTs) {
+      const retryAfterSeconds = Math.ceil((nextResendAtTs - nowTs) / 1000);
       throw new ApiError(429, `Vui lòng chờ ${retryAfterSeconds} giây trước khi yêu cầu OTP mới`);
     }
 
     const otp = this.generateOtpCode();
-    const expiresAt = new Date(Date.now() + OTP_EXPIRE_MINUTES * 60 * 1000).toISOString();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + OTP_EXPIRE_MINUTES * 60 * 1000).toISOString();
+    const nextResendAt = new Date(now.getTime() + cooldownMs).toISOString();
 
-    this.setOtpState(user.id, {
+    if (activeOtp) {
+      await otpCodesRepository.delete(activeOtp.id);
+    }
+
+    await otpCodesRepository.create({
+      userId: user.id,
+      email: target,
+      purpose: OTP_PURPOSE,
       otpHash: this.hashOtp(otp),
-      attempts: 0,
-      target,
-      sentAtTs: Date.now(),
-      expiresAtTs: new Date(expiresAt).getTime(),
+      attemptCount: 0,
+      maxAttempts: OTP_MAX_VERIFY_ATTEMPTS,
+      sentAt: now.toISOString(),
+      nextResendAt,
+      expiresAt,
+      usedAt: null,
     });
 
     await otpDeliveryService.sendEmailOtp({
@@ -150,9 +142,11 @@ class PasswordResetService {
   }
 
   async resetPassword(payload: AnyRecord) {
+    await this.cleanupExpiredOtps();
+
     const normalizedEmail = this.normalizeEmail(payload.email);
     const otp = String(payload.otp || payload.token || '').trim();
-    const newPassword = payload.newPassword;
+    const newPassword = payload.newPassword || payload.password;
 
     if (!normalizedEmail) {
       throw ApiError.badRequest('Email là bắt buộc');
@@ -163,32 +157,35 @@ class PasswordResetService {
     }
 
     const user = await this.findUserByEmail(normalizedEmail);
-    const otpState = user ? this.getOtpState(user.id) : null;
-    const attempts = Number(otpState?.attempts || 0);
+    const activeOtp = user ? await this.getActiveOtp(user.id, normalizedEmail) : null;
 
-    if (!user || !otpState) {
+    if (!user || !activeOtp) {
       throw ApiError.badRequest('OTP không hợp lệ hoặc đã hết hạn');
     }
 
-    if (attempts >= OTP_MAX_VERIFY_ATTEMPTS) {
-      this.clearOtpState(user.id);
+    const now = new Date().toISOString();
+    const attempts = Number(activeOtp.attemptCount || 0);
+    const maxAttempts = Number(activeOtp.maxAttempts || OTP_MAX_VERIFY_ATTEMPTS);
+
+    if (attempts >= maxAttempts) {
+      await otpCodesRepository.delete(activeOtp.id);
       throw ApiError.badRequest('Bạn đã nhập sai OTP quá số lần cho phép, hãy yêu cầu mã mới');
     }
 
-    if (otpState.expiresAtTs < Date.now()) {
-      this.clearOtpState(user.id);
+    if (new Date(activeOtp.expiresAt).getTime() < Date.now()) {
+      await otpCodesRepository.delete(activeOtp.id);
       throw ApiError.badRequest('OTP không hợp lệ hoặc đã hết hạn');
     }
 
-    if (this.hashOtp(otp) !== otpState.otpHash) {
+    if (this.hashOtp(otp) !== activeOtp.otpHash) {
       const nextAttempts = attempts + 1;
 
-      if (nextAttempts >= OTP_MAX_VERIFY_ATTEMPTS) {
-        this.clearOtpState(user.id);
+      if (nextAttempts >= maxAttempts) {
+        await otpCodesRepository.delete(activeOtp.id);
       } else {
-        this.setOtpState(user.id, {
-          ...otpState,
-          attempts: nextAttempts,
+        await otpCodesRepository.update(activeOtp.id, {
+          attemptCount: nextAttempts,
+          updatedAt: now,
         });
       }
 
@@ -196,13 +193,16 @@ class PasswordResetService {
     }
 
     const hashedPassword = await hashPassword(newPassword);
-    const now = new Date().toISOString();
-    this.clearOtpState(user.id);
 
     await usersRepository.update(user.id, {
       password: hashedPassword,
       updatedAt: now,
       lastLogin: now,
+    });
+
+    await otpCodesRepository.update(activeOtp.id, {
+      usedAt: now,
+      updatedAt: now,
     });
 
     return { message: 'Đặt lại mật khẩu thành công' };
