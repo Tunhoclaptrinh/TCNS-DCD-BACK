@@ -53,24 +53,21 @@ class DutyLeaveRequestsService {
   async getLeaveRequests(options: GenericRecord = {}) {
     const result = await dutyLeaveRequestsRepository.findAllAdvanced({
       ...options,
+      expand: options.expand || 'user,slot,approver',
       sort: options.sort || 'createdAt',
       order: options.order || 'desc',
     });
 
-    const [users, slots] = await Promise.all([usersRepository.findAll(), dutySlotsRepository.findAll()]);
-    const userMap = new Map(
-      (users as any[]).map((u) => [normalizeId(u.id), { id: u.id, name: u.name, avatar: u.avatar }]),
+    // Enrich slots with labels
+    await Promise.all(
+      result.data.map(async (req: any) => {
+        if (req.slot) {
+          req.slot.shiftLabel = await dutySlotsService.getSlotLabel(req.slot);
+        }
+      }),
     );
-    const slotMap = new Map((slots as any[]).map((s) => [normalizeId(s.id), s]));
 
-    const data = result.data.map((req: any) => ({
-      ...req,
-      user: userMap.get(normalizeId(req.userId)),
-      slot: slotMap.get(normalizeId(req.slotId)),
-      approver: userMap.get(normalizeId(req.approvedBy)),
-    }));
-
-    return { ...result, data };
+    return result;
   }
 
   async resolveLeaveRequest(
