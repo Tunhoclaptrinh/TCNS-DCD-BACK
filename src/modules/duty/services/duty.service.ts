@@ -17,7 +17,7 @@ import auditLogsService from '@modules/audit-logs/services/audit-logs.service';
 import ApiError from '@utils/api-error';
 import db from '@database/mongo-database.adapter';
 
-import { Identifier, GenericRecord, normalizeId, normalizeIdList } from './duty-utils';
+import { Identifier, GenericRecord, normalizeId, normalizeIdList, getActorId } from './duty-utils';
 
 class DutyService extends BaseService {
   constructor() {
@@ -222,11 +222,11 @@ class DutyService extends BaseService {
 
     return data;
   };
-  markAttendance = async (slotId: Identifier, userIds: Identifier[], performerId: Identifier) => {
-    const data = await dutySlotsService.markAttendance(slotId, userIds, performerId);
+  markAttendance = async (slotId: Identifier, userIds: Identifier[], performer: any, isIncremental?: boolean) => {
+    const data = await dutySlotsService.markAttendance(slotId, userIds, performer, isIncremental);
 
     await auditLogsService.log({
-      userId: Number(performerId) || 0,
+      userId: Number(getActorId(performer)) || 0,
       action: 'CẬP NHẬT DỮ LIỆU TRỰC',
       module: 'DUTY',
       description: `Điểm danh cho slot trực #${slotId}`,
@@ -235,6 +235,26 @@ class DutyService extends BaseService {
 
     return data;
   };
+
+  reportViolation = async (payload: any, performer: any) => {
+    const data = await dutySlotsService.reportViolation(payload, performer);
+
+    await auditLogsService.log({
+      userId: Number(performer?.id) || 0,
+      action: 'GHI NHẬN VI PHẠM',
+      module: 'DUTY',
+      description: `Ghi nhận vi phạm cho thành viên #${payload.userId} tại slot #${payload.slotId}`,
+      resourceId: String(payload.slotId),
+    });
+
+    return data;
+  };
+
+  selfCheckIn = (slotId: Identifier, user: any, ip: string) => dutySlotsService.selfCheckIn(slotId, user, ip);
+
+  leaderMarkAttendance = (slotId: Identifier, targetUserId: Identifier, performer: any) =>
+    dutySlotsService.leaderMarkAttendance(slotId, targetUserId, performer);
+
   getStats = () => dutySlotsService.getStats();
   getComprehensiveStats = (options: any) => dutyStatsService.getComprehensiveStats(options);
   exportStats = (options: any) => dutyStatsService.exportStats(options);

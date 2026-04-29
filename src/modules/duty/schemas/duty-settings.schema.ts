@@ -55,7 +55,24 @@ export default defineSchema({
     default: [],
     description: 'Danh sách quy tắc định mức chuyên sâu (Ban, Vai trò, Thời gian)',
   },
-
+  penaltyAbsentNoPermission: {
+    type: 'number',
+    required: false,
+    default: 50000,
+    description: 'Tiền phạt vắng trực không phép (VNĐ)',
+  },
+  penaltyAbsentWithPermissionLate: {
+    type: 'number',
+    required: false,
+    default: 20000,
+    description: 'Tiền phạt vắng trực báo muộn (VNĐ)',
+  },
+  penaltyLate: {
+    type: 'number',
+    required: false,
+    default: 10000,
+    description: 'Tiền phạt đi trực muộn (VNĐ)',
+  },
   updatedAt: {
     type: 'date',
     required: false,
