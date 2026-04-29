@@ -15,6 +15,7 @@ import { setupSwagger } from './utils/swagger';
 import routes from './routes';
 import { initDatabase } from '@database';
 import { logger } from './utils/logger';
+import { startOtpCleanupScheduler } from '@modules/auth/services/otp-cleanup.scheduler';
 
 dotenv.config();
 // ép Node dùng DNS ngoài
@@ -135,6 +136,7 @@ import { socketService } from './shared/socket/socket.service';
 
 async function bootstrap() {
   await initDatabase();
+  startOtpCleanupScheduler();
 
   const httpServer = createServer(app);
 
