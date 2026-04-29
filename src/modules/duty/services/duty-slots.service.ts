@@ -183,6 +183,8 @@ class DutySlotsService {
       status: 'open',
       createdBy: normalizeId(actorId),
       note: payload.note || '',
+      slotStructure: payload.slotStructure || [],
+      config: payload.config || {},
     });
 
     await dutyLogsService.log(
@@ -229,6 +231,8 @@ class DutySlotsService {
       kipId: createdKip.id,
       shiftDate: shift.date,
       capacity: createdKip.capacity,
+      slotStructure: createdKip.slotStructure || [],
+      config: createdKip.config || {},
       status: 'open',
       createdBy: normalizeId(actorId),
     });
@@ -256,7 +260,8 @@ class DutySlotsService {
       status: 'open',
       createdBy: normalizeId(actorId),
       note: payload.note || '',
-      config: payload.config || {},
+      slotStructure: payload.slotStructure || kip.slotStructure || [],
+      config: payload.config || kip.config || {},
     });
 
     await dutyLogsService.log(
