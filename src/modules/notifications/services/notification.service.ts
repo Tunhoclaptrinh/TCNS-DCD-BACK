@@ -161,8 +161,8 @@ class NotificationService extends BaseService {
       ...options,
     };
 
-    const result = await this.repository.findAdvancedByUserId(normalizedUserId, queryOptions);
-    const unreadResult = await this.repository.findUnreadByUserId(normalizedUserId);
+    const result = await notificationsRepository.findAdvancedByUserId(normalizedUserId, queryOptions);
+    const unreadResult = await notificationsRepository.findUnreadByUserId(normalizedUserId);
 
     // Manually map fields because .lean() ignores schema transforms
     const mappedItems = result.data.map((item: any) => ({
