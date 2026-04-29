@@ -1,15 +1,15 @@
 import { defineSchema } from '@app-types/schema';
 
 export default defineSchema({
-  maHocKy: {
+  maKhoa: {
     type: 'string',
-    description: 'Mã học kỳ (liên kết với academic_periods).',
+    description: 'Mã khóa liên kết với generations.',
     required: true,
-    foreignKey: 'academic_periods',
+    maxLength: 20,
   },
   maDot: {
     type: 'string',
-    description: 'Mã đợt cộng điểm (maHocKy + STT), ví dụ: 202611.',
+    description: 'Mã đợt cộng điểm (maKhoa + STT), ví dụ: 202611.',
     required: true,
     unique: true,
     maxLength: 30,
