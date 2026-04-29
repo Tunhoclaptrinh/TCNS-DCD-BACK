@@ -1,6 +1,7 @@
 import BaseService from '@shared/common/base-service';
 import notificationsRepository from '@modules/notifications/repositories/notifications.repository';
 import ApiError from '@utils/api-error';
+import { socketService } from '@shared/socket/socket.service';
 
 const DEFAULT_SETTINGS = {
   shiftNotifications: true,
@@ -116,7 +117,7 @@ class NotificationService extends BaseService {
       }
     }
 
-    return await this.repository.create({
+    const created = await this.repository.create({
       userId: normalizedUserId,
       title: payload.title || 'Thông báo',
       message: payload.message || '',
@@ -129,6 +130,11 @@ class NotificationService extends BaseService {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
+
+    // Real-time notification via Socket
+    socketService.emitToUser(normalizedUserId, 'notification', created);
+
+    return created;
   }
 
   async notifyUsers(userIds: Identifier[] = [], payload: NotificationPayload = {}, options: NotificationOptions = {}) {
@@ -147,18 +153,28 @@ class NotificationService extends BaseService {
 
   async getNotifications(userId: Identifier, options: Record<string, any> = {}) {
     const normalizedUserId = normalizeId(userId);
-    const result = await notificationsRepository.findAdvancedByUserId(normalizedUserId, {
-      ...options,
+
+    // Ensure default sort if not provided
+    const queryOptions = {
       sort: 'createdAt',
       order: 'desc',
-    });
+      ...options,
+    };
 
-    const unreadCount = await notificationsRepository.countUnreadByUserId(normalizedUserId);
+    const result = await this.repository.findAdvancedByUserId(normalizedUserId, queryOptions);
+    const unreadResult = await this.repository.findUnreadByUserId(normalizedUserId);
+
+    // Manually map fields because .lean() ignores schema transforms
+    const mappedItems = result.data.map((item: any) => ({
+      ...item,
+      user_id: item.userId,
+      is_read: item.isRead,
+    }));
 
     return {
-      data: result.data,
-      unreadCount,
-      pagination: result.pagination,
+      items: mappedItems,
+      total: result.pagination.total,
+      unreadCount: unreadResult.length,
     };
   }
 

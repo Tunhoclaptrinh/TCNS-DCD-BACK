@@ -67,6 +67,7 @@ class DutyLeaveRequestsService {
       ...req,
       user: userMap.get(normalizeId(req.userId)),
       slot: slotMap.get(normalizeId(req.slotId)),
+      approver: userMap.get(normalizeId(req.approvedBy)),
     }));
 
     return { ...result, data };

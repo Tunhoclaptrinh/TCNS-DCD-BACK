@@ -1,5 +1,7 @@
 import BaseService from '@shared/common/base-service';
 import dutySlotsRepository from '@modules/duty/repositories/duty-slots.repository';
+import dutyLogsRepository from '@modules/duty/repositories/duty-logs.repository';
+import usersRepository from '@modules/users/repositories/users.repository';
 
 // Sub-services
 import dutySettingsService from './duty-settings.service';
@@ -10,9 +12,12 @@ import dutyLeaveRequestsService from './duty-leave-requests.service';
 import dutyTemplateAssignmentsService from './duty-template-assignments.service';
 import dutyGenerationService from './duty-generation.service';
 import dutyStatsService from './duty-stats.service';
+import dutyLogsService from './duty-logs.service';
 import auditLogsService from '@modules/audit-logs/services/audit-logs.service';
+import ApiError from '@utils/api-error';
+import db from '@database/mongo-database.adapter';
 
-import { Identifier, GenericRecord } from './duty-utils';
+import { Identifier, GenericRecord, normalizeId, normalizeIdList } from './duty-utils';
 
 class DutyService extends BaseService {
   constructor() {
@@ -134,7 +139,6 @@ class DutyService extends BaseService {
 
     return data;
   };
-  updateActualShift = (shiftId: number, data: GenericRecord) => dutySlotsService.updateActualShift(shiftId, data);
   createActualKip = async (payload: GenericRecord, actorId: Identifier) => {
     const data = await dutySlotsService.createActualKip(payload, actorId);
 
@@ -148,6 +152,8 @@ class DutyService extends BaseService {
 
     return data;
   };
+  updateActualShift = (shiftId: number, data: GenericRecord) => dutySlotsService.updateActualShift(shiftId, data);
+  updateActualKip = (kipId: number, data: GenericRecord) => dutySlotsService.updateActualKip(kipId, data);
   deleteActualKip = (kipId: number) => dutySlotsService.deleteActualKip(kipId);
   createSlot = async (payload: GenericRecord, actorId: Identifier) => {
     const data = await dutySlotsService.createSlot(payload, actorId);
@@ -234,32 +240,49 @@ class DutyService extends BaseService {
   exportStats = (options: any) => dutyStatsService.exportStats(options);
   getUserStats = (userId: Identifier) => dutySlotsService.getUserStats(userId);
 
-  notifyAbsentees = async (stats: any[], performerId: Identifier) => {
-    const warningUsers = stats.filter((s) => s.isWarning);
+  notifyAbsentees = async (stats: any[], performerId: Identifier, customMessage?: string) => {
+    const warningUsers = stats.filter((s) => s.isWarning || stats.length === 1);
+    console.log(
+      `[DutyService] Notifying absentees. Total stats: ${stats.length}, Warning users: ${warningUsers.length}, Custom Message: ${!!customMessage}`,
+    );
+
     const results = await Promise.all(
       warningUsers.map(async (u) => {
         try {
           const notificationsService = (await import('@modules/notifications/services/notification.service')).default;
+
+          const title = customMessage ? 'Thông báo từ Ban Quản trị' : 'Cảnh báo: Thiếu định mức kíp trực';
+          const message =
+            customMessage ||
+            `Chào ${u.name}, hệ thống ghi nhận bạn đang thiếu ${u.deficiency} kíp so với định mức. Vui lòng đăng ký thêm để đảm bảo chỉ tiêu.`;
+
           await notificationsService.notifyUser(u.userId, {
-            title: 'Cảnh báo: Thiếu định mức kíp trực',
-            message: `Chào ${u.name}, hệ thống ghi nhận bạn đang thiếu ${u.deficiency} kíp so với định mức. Vui lòng đăng ký thêm để đảm bảo chỉ tiêu.`,
-            type: 'warning',
+            title,
+            message,
+            type: customMessage ? 'info' : 'warning',
             category: 'system',
-            metadata: { deficiency: u.deficiency },
+            metadata: { deficiency: u.deficiency, senderId: performerId },
           });
+
           return { userId: u.userId, success: true };
         } catch (err) {
+          console.error(`[DutyService] Failed to notify user ${u.userId}:`, err);
           return { userId: u.userId, success: false, error: err.message };
         }
       }),
     );
 
-    await auditLogsService.log({
-      userId: Number(performerId) || 0,
-      action: 'GỬI THÔNG BÁO',
-      module: 'DUTY',
-      description: `Gửi cảnh báo thiếu kíp cho ${warningUsers.length} thành viên`,
-    });
+    try {
+      const auditLogsService = (await import('@modules/audit-logs/services/audit-logs.service')).default;
+      await auditLogsService.log({
+        userId: Number(performerId) || 0,
+        action: 'GỬI THÔNG BÁO',
+        module: 'DUTY',
+        description: `Gửi thông báo ${customMessage ? 'tùy chỉnh' : 'cảnh báo thiếu kíp'} cho ${warningUsers.length} thành viên`,
+      });
+    } catch (err) {
+      console.error('[DutyService] Audit log failed:', err);
+    }
 
     return results;
   };
@@ -333,6 +356,9 @@ class DutyService extends BaseService {
       description: `Tạo đơn xin nghỉ cho slot #${slotId}`,
       ...(data?.id !== undefined ? { resourceId: String(data.id) } : {}),
     });
+
+    // Add to duty logs for the slot
+    await dutyLogsService.log('info', 'leave', `Gửi đơn xin nghỉ: ${reason}`, userId, userId, slotId, data?.id);
 
     return data;
   };
@@ -503,6 +529,138 @@ class DutyService extends BaseService {
   };
   updateTemplateAssignment = (id: any, data: any) => dutyTemplateAssignmentsService.updateTemplateAssignment(id, data);
   deleteTemplateAssignment = (id: any) => dutyTemplateAssignmentsService.deleteTemplateAssignment(id);
+
+  async getUserRemarks(userId: Identifier) {
+    const uid = normalizeId(userId);
+    const notificationsRepo = new (await import('@shared/repositories/base.repository')).default('notifications');
+
+    // 1. Fetch relevant notifications
+    const notificationsResult = await notificationsRepo.findAllAdvanced({
+      filter: {
+        userId: Number(uid),
+        $or: [
+          { title: { $regex: 'Ban Quản trị', $options: 'i' } },
+          { title: { $regex: 'Cảnh báo', $options: 'i' } },
+          { title: { $regex: 'đơn nghỉ', $options: 'i' } },
+          { title: { $regex: 'đổi kíp', $options: 'i' } },
+        ],
+      },
+      sort: 'createdAt',
+      order: 'desc',
+      limit: 50,
+    });
+
+    // 2. Fetch duty logs where this user is the target
+    const logsResult = await dutyLogsRepository.findAllAdvanced({
+      filter: { targetUserId: uid },
+      limit: 50,
+      sort: 'createdAt',
+      order: 'desc',
+    });
+
+    const actorIds = normalizeIdList(logsResult.data.map((l) => l.performerId));
+    const actorsResult = await usersRepository.findAllAdvanced({ filter: { id: { $in: actorIds } } });
+    const actors = actorsResult.data || [];
+    const actorMap = new Map((actors as any[]).map((u) => [normalizeId(u.id), u]));
+
+    // 3. Map logs to match UI
+    const mappedLogs = logsResult.data.map((log) => ({
+      ...log,
+      title:
+        log.action === 'transfer'
+          ? 'Điều chuyển kíp'
+          : log.action === 'leave'
+            ? 'Nghỉ trực'
+            : log.action === 'register'
+              ? 'Đăng ký ca'
+              : log.action === 'cancel'
+                ? 'Hủy đăng ký'
+                : log.action === 'attendance'
+                  ? 'Điểm danh'
+                  : 'Nhật ký hệ thống',
+      content: log.description,
+      type: log.type || 'info',
+      category: log.module,
+      performer: actorMap.get(normalizeId(log.performerId)),
+      isLog: true,
+    }));
+
+    // 4. Map notifications to match UI
+    const mappedNotifications = (notificationsResult.data || []).map((n: any) => ({
+      ...n,
+      content: n.message,
+      type: n.type || 'info',
+    }));
+
+    // 5. Merge and sort
+    const allItems = [...mappedNotifications, ...mappedLogs].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+
+    return allItems.slice(0, 50);
+  }
+
+  async getSlotLogs(slotId: Identifier) {
+    const sid = normalizeId(slotId);
+    const result = await dutyLogsRepository.findAllAdvanced({
+      filter: { slotId: sid },
+      sort: 'createdAt',
+      order: 'desc',
+      limit: 100,
+    });
+
+    const actorIds = normalizeIdList(result.data.map((l) => l.performerId));
+    const targetIds = normalizeIdList(result.data.map((l) => l.targetUserId).filter(Boolean));
+    const allUserIds = Array.from(new Set([...actorIds, ...targetIds]));
+
+    const usersResult = await usersRepository.findAllAdvanced({ filter: { id: { $in: allUserIds } } });
+    const userMap = new Map((usersResult.data || []).map((u) => [normalizeId(u.id), u]));
+
+    const data = result.data.map((log) => ({
+      ...log,
+      performer: userMap.get(normalizeId(log.performerId)),
+      targetUser: log.targetUserId ? userMap.get(normalizeId(log.targetUserId)) : null,
+    }));
+
+    return { success: true, data };
+  }
+
+  async getSlotRequests(slotId: Identifier) {
+    const sid = normalizeId(slotId);
+
+    const [leaveRequests, swapRequests] = await Promise.all([
+      db.findMany('duty_leave_requests', { slotId: sid }),
+      db.findMany('duty_swap_requests', {
+        $or: [{ fromSlotId: sid }, { toSlotId: sid }],
+      }),
+    ]);
+
+    // Expand users
+    const userIds = new Set<number>();
+    [...leaveRequests, ...swapRequests].forEach((r: any) => {
+      if (r.userId) userIds.add(normalizeId(r.userId) as number);
+      if (r.requesterId) userIds.add(normalizeId(r.requesterId) as number);
+      if (r.targetUserId) userIds.add(normalizeId(r.targetUserId) as number);
+      if (r.approvedBy) userIds.add(normalizeId(r.approvedBy) as number);
+    });
+
+    const users = await usersRepository.findAllAdvanced({
+      filter: { id_in: Array.from(userIds) },
+    });
+    const userMap = new Map(users.data.map((u: any) => [String(u.id), u]));
+
+    const enrich = (r: any) => ({
+      ...r,
+      user: userMap.get(String(r.userId || r.requesterId)),
+      targetUser: r.targetUserId ? userMap.get(String(r.targetUserId)) : null,
+      approver: r.approvedBy ? userMap.get(String(r.approvedBy)) : null,
+    });
+
+    return {
+      leaveRequests: leaveRequests.map(enrich),
+      swapRequests: swapRequests.map(enrich),
+    };
+  }
 }
 
 export default new DutyService();

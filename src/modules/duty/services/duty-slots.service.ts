@@ -476,9 +476,10 @@ class DutySlotsService {
       updatedAt: new Date().toISOString(),
     });
 
+    const slotLabel = await this.getSlotLabel(slot);
     await notificationService.notifyUser(userId, {
       title: 'Đăng ký kíp trực thành công',
-      message: `Bạn đã đăng ký: ${slot.shiftLabel} ngày ${new Date(slot.shiftDate).toLocaleDateString('vi-VN')}`,
+      message: `Bạn đã đăng ký: ${slotLabel} ngày ${new Date(slot.shiftDate).toLocaleDateString('vi-VN')}`,
       category: 'shift',
       type: 'shift',
       refId: slot.id,
@@ -748,6 +749,18 @@ class DutySlotsService {
     const shift = await dutyShiftsRepository.findById(shiftId);
     if (!shift) throw ApiError.notFound('Ca thực tế không tồn tại');
     return await dutyShiftsRepository.update(shiftId, { ...data, updatedAt: new Date().toISOString() });
+  }
+
+  async updateActualKip(kipId: number, data: GenericRecord) {
+    const kip = await dutyKipsRepository.findById(kipId);
+    if (!kip) throw ApiError.notFound('Kíp thực tế không tồn tại');
+
+    if (data.shiftId) {
+      const shift = await dutyShiftsRepository.findById(data.shiftId);
+      if (!shift) throw ApiError.notFound('Ca trực không tồn tại');
+    }
+
+    return await dutyKipsRepository.update(kipId, { ...data, updatedAt: new Date().toISOString() });
   }
 
   async deleteActualKip(kipId: number) {
