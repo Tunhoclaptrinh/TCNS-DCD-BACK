@@ -3,7 +3,26 @@ import auditLogsRepository from '@modules/audit-logs/repositories/audit-logs.rep
 import auditLogSchema from '@modules/audit-logs/schemas/audit-log.schema';
 import type { AnyRecord } from '@app-types/common';
 
+type AuditLogPayload = {
+  userId: number;
+  action: string;
+  module: string;
+  description?: string;
+  resourceId?: string;
+  dataBefore?: AnyRecord;
+  dataAfter?: AnyRecord;
+  ipAddress?: string;
+  userAgent?: string;
+  status?: 'success' | 'failure';
+  errorMessage?: string;
+};
+
+const MAX_QUEUE_SIZE = 5000;
+
 class AuditLogsService extends BaseService {
+  private queue: Array<AuditLogPayload & { createdAt: string }> = [];
+  private processing = false;
+
   constructor() {
     super('audit_logs', auditLogsRepository);
   }
@@ -12,32 +31,66 @@ class AuditLogsService extends BaseService {
     return auditLogSchema;
   }
 
-  async log(data: {
-    userId: number;
-    action: string;
-    module: string;
-    description?: string;
-    resourceId?: string;
-    dataBefore?: AnyRecord;
-    dataAfter?: AnyRecord;
-    ipAddress?: string;
-    userAgent?: string;
-    status?: 'success' | 'failure';
-    errorMessage?: string;
-  }) {
+  async log(data: AuditLogPayload) {
     try {
-      return await this.create({
+      if (this.queue.length >= MAX_QUEUE_SIZE) {
+        this.queue.shift();
+        console.error('Audit log queue is full. Dropped oldest log.');
+      }
+
+      this.queue.push({
         ...data,
         createdAt: new Date().toISOString(),
       });
+
+      this.processQueue();
+      return { success: true, queued: true };
     } catch (error) {
-      console.error('Failed to log activity:', error);
+      console.error('Failed to enqueue audit log:', error);
       // We don't want to throw error here as it might break the main business logic
     }
   }
 
-  async getLogs(options: AnyRecord = {}) {
-    return await this.findAll(options);
+  private processQueue() {
+    if (this.processing) return;
+
+    this.processing = true;
+    setImmediate(() => {
+      void this.drainQueue();
+    });
+  }
+
+  private async drainQueue() {
+    while (this.queue.length > 0) {
+      const item = this.queue.shift();
+      if (!item) continue;
+
+      try {
+        await super.create(item);
+      } catch (error) {
+        console.error('Failed to log activity:', error);
+      }
+    }
+
+    this.processing = false;
+    if (this.queue.length > 0) {
+      this.processQueue();
+    }
+  }
+
+  async getPage(options: AnyRecord = {}) {
+    const rawPage = Number(options.page || options._page || 1);
+    const rawLimit = Number(options.limit || options._limit || 10);
+    const page = Number.isFinite(rawPage) ? Math.max(Math.floor(rawPage), 1) : 1;
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.floor(rawLimit), 1), 100) : 10;
+
+    return await this.findAll({
+      ...options,
+      page,
+      limit,
+      sort: options.sort || 'createdAt',
+      order: options.sort ? options.order : 'desc',
+    });
   }
 }
 

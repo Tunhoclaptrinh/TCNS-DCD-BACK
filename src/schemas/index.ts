@@ -20,6 +20,9 @@ import generations from '@modules/generations/schemas/generation.schema';
 import roles from '@modules/roles/schemas/role.schema';
 import permissions from '@modules/permissions/schemas/permission.schema';
 import auditLogs from '@modules/audit-logs/schemas/audit-log.schema';
+import meetings from '@modules/meetings/schemas/meeting.schema';
+import bonusCampaigns from '@modules/bonus-campaigns/schemas/bonus-campaign.schema';
+import bonusRegistrations from '@modules/bonus-registrations/schemas/bonus-registration.schema';
 
 const schemas: SchemaMap = {
   // Auth & User
@@ -28,6 +31,9 @@ const schemas: SchemaMap = {
   roles,
   permissions,
   audit_logs: auditLogs,
+  meetings,
+  bonus_campaigns: bonusCampaigns,
+  bonus_registrations: bonusRegistrations,
 
   // User Content
   notifications,
