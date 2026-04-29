@@ -369,16 +369,20 @@ class DutyService extends BaseService {
   requestLeave = async (slotId: Identifier, userId: Identifier, reason: string) => {
     const data = await dutyLeaveRequestsService.requestLeave(slotId, userId, reason);
 
-    await auditLogsService.log({
-      userId: Number(userId) || 0,
-      action: 'THÊM DỮ LIỆU TRỰC',
-      module: 'DUTY',
-      description: `Tạo đơn xin nghỉ cho slot #${slotId}`,
-      ...(data?.id !== undefined ? { resourceId: String(data.id) } : {}),
-    });
+    try {
+      await auditLogsService.log({
+        userId: Number(userId) || 0,
+        action: 'THÊM DỮ LIỆU TRỰC',
+        module: 'DUTY',
+        description: `Tạo đơn xin nghỉ cho slot #${slotId}`,
+        ...(data?.id !== undefined ? { resourceId: String(data.id) } : {}),
+      });
 
-    // Add to duty logs for the slot
-    await dutyLogsService.log('info', 'leave', `Gửi đơn xin nghỉ: ${reason}`, userId, userId, slotId, data?.id);
+      // Add to duty logs for the slot
+      await dutyLogsService.log('info', 'leave', `Gửi đơn xin nghỉ: ${reason}`, userId, userId, slotId, data?.id);
+    } catch (logError) {
+      console.error('Failed to log leave request (but request was saved):', logError);
+    }
 
     return data;
   };

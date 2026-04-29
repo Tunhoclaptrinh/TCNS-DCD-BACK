@@ -252,6 +252,7 @@ class DutySwapRequestsService {
 
     const result = await dutySwapRequestsRepository.findAllAdvanced({
       ...options,
+      expand: options.expand || 'requester,targetUser,approver,fromSlot,toSlot',
       sort: options.sort || 'createdAt',
       order: options.order || 'desc',
       filter: isApprover
@@ -259,23 +260,19 @@ class DutySwapRequestsService {
         : { ...options.filter, $or: [{ requesterId: userId }, { targetUserId: userId }] },
     });
 
-    const [users, slots] = await Promise.all([usersRepository.findAll(), dutySlotsRepository.findAll()]);
-    const userMap = new Map(
-      (users as any[]).map((u) => [normalizeId(u.id), { id: u.id, name: u.name, avatar: u.avatar }]),
+    // Enrich slots with labels
+    await Promise.all(
+      result.data.map(async (req: any) => {
+        if (req.fromSlot) {
+          req.fromSlot.shiftLabel = await dutySlotsService.getSlotLabel(req.fromSlot);
+        }
+        if (req.toSlot) {
+          req.toSlot.shiftLabel = await dutySlotsService.getSlotLabel(req.toSlot);
+        }
+      }),
     );
-    const slotMap = new Map((slots as any[]).map((s) => [normalizeId(s.id), s]));
 
-    const data = result.data.map((req: any) => ({
-      ...req,
-      requester: userMap.get(normalizeId(req.requesterId)),
-      targetUser: userMap.get(normalizeId(req.targetUserId)),
-      approver: userMap.get(normalizeId(req.approvedBy)),
-      fromSlot: slotMap.get(normalizeId(req.fromSlotId)),
-      toSlot: slotMap.get(normalizeId(req.toSlotId)),
-      slot: slotMap.get(normalizeId(req.toSlotId)), // Keep 'slot' for backward compatibility in UI if needed
-    }));
-
-    return { ...result, data };
+    return result;
   }
 }
 
