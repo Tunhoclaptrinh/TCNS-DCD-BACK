@@ -5,6 +5,8 @@ import dutySwapRequestsRepository from '@modules/duty/repositories/duty-swap-req
 import usersRepository from '@modules/users/repositories/users.repository';
 import dutySettingsService from './duty-settings.service';
 import dutyKipsRepository from '@modules/duty/repositories/duty-kips.repository';
+import dutyShiftsRepository from '@modules/duty/repositories/duty-shifts.repository';
+import generationsRepository from '@modules/generations/repositories/generations.repository';
 import { normalizeId, normalizeIdList } from './duty-utils';
 import dayjs from 'dayjs';
 import * as xlsx from 'xlsx';
@@ -13,7 +15,10 @@ import fs from 'fs';
 
 class DutyStatsService {
   async getComprehensiveStats(options: any = {}) {
-    const { startDate, endDate, departmentId, generationId } = options;
+    // Extract filters from req.parsedQuery structure or directly
+    const filter = options.filter || options;
+    const { startDate, endDate, departmentId, generationId } = filter;
+
     const settings = await dutySettingsService.getSettings();
     const defaultQuota = Number(settings.defaultQuota) || 2.5;
     const kipPrice = Number(settings.kipPrice) || 0;
@@ -27,32 +32,60 @@ class DutyStatsService {
     }
 
     // 1. Fetch all necessary data
-    const [slots, violations, leaves, swaps, allUsers, allKips] = await Promise.all([
+    const [_slots, violations, leaves, swaps, _allUsers, _allKips, _allShifts] = await Promise.all([
       dutySlotsRepository.findMany(slotFilter),
       dutyViolationsRepository.findAll(),
       dutyLeaveRequestsRepository.findAll(),
       dutySwapRequestsRepository.findAll(),
       usersRepository.findAll() as Promise<any[]>,
       dutyKipsRepository.findAll(),
+      dutyShiftsRepository.findAll(),
     ]);
 
+    const slots = _slots as any[];
+    const allUsers = _allUsers as any[];
+    const allKips = _allKips as any[];
+    const allShifts = _allShifts as any[];
+
+    // Deduplicate users by studentId or id
+    const uniqueUsers = Array.from(new Map(allUsers.map((u) => [u.studentId || u.id || u._id, u])).values());
+
+    const shiftMap = new Map(allShifts.map((s: any) => [normalizeId(s.id), s]));
     const kipMap = new Map(allKips.map((k: any) => [normalizeId(k.id), k]));
 
     // 2. Filter users based on criteria
-    const users = allUsers.filter((u) => {
-      if (
-        departmentId &&
-        String(u.department?.id || u.department || '')
-          .trim()
-          .toLowerCase() !== String(departmentId).trim().toLowerCase()
-      )
-        return false;
-      const genIdStr = String(
-        typeof u.generationId === 'object' ? u.generationId?.id || u.generationId?._id : u.generationId,
-      );
-      if (generationId && genIdStr !== String(generationId)) return false;
+    const activeGenerationIds =
+      generationId === 'active'
+        ? (await generationsRepository.findMany({ isActive: true })).map((g) => String(g._id || g.id))
+        : [];
+
+    const users = uniqueUsers.filter((u) => {
+      // Robustly get department name
+      const deptValue = u.department?.name || u.department;
+      const uDept = String(deptValue || '').trim();
+
+      if (departmentId && departmentId !== 'undefined' && departmentId !== 'null') {
+        if (uDept.toLowerCase() !== String(departmentId).trim().toLowerCase()) {
+          return false;
+        }
+      }
+
+      // Robustly get generation ID
+      const genRaw = u.generationId;
+      const uGen = genRaw ? String(genRaw._id || genRaw.id || genRaw).trim() : null;
+
+      if (generationId === 'active') {
+        if (!uGen || !activeGenerationIds.includes(uGen)) return false;
+      } else if (generationId && generationId !== 'undefined' && generationId !== 'null') {
+        const targetGenId = String(generationId).trim();
+        if (uGen !== targetGenId) return false;
+      }
+
       return true;
     });
+
+    console.log(`[DutyStats] Filter params:`, { departmentId, generationId });
+    console.log(`[DutyStats] Total unique users: ${uniqueUsers.length}, Filtered: ${users.length}`);
 
     // 3. Calculate number of weeks for quota scaling
     let numWeeks = 1;
@@ -151,6 +184,8 @@ class DutyStatsService {
       return {
         userId,
         name: user.name || `${user.lastName || ''} ${user.firstName || ''}`.trim(),
+        firstName: user.firstName,
+        lastName: user.lastName,
         studentId: user.studentId,
         department: user.department?.name || user.department || 'N/A',
         position: user.position,
@@ -198,6 +233,34 @@ class DutyStatsService {
           startDate,
           endDate,
           numWeeks,
+        },
+        meta: {
+          slots: slots.map((s) => ({
+            id: s.id,
+            date: s.shiftDate,
+            kipId: s.kipId,
+            assignedUserIds: normalizeIdList(s.assignedUserIds || []),
+            attendedUserIds: normalizeIdList(s.attendedUserIds || []),
+          })),
+          kips: Array.from(new Map(allKips.map((k) => [normalizeId(k.id), k])).values()).map((k: any) => {
+            const shift = shiftMap.get(normalizeId(k.shiftId));
+            return {
+              id: normalizeId(k.id),
+              name: k.name,
+              shiftName: shift ? shift.name : '',
+              coefficient: k.coefficient,
+            };
+          }),
+          departments: Array.from(
+            new Set(uniqueUsers.map((u) => String(u.department?.name || u.department || '').trim()).filter(Boolean)),
+          ).sort(),
+          positions: Array.from(new Set(uniqueUsers.map((u) => u.position).filter(Boolean))).sort(),
+          generations: (await generationsRepository.findAll())
+            .map((g) => ({
+              id: g.id || g._id,
+              name: g.name,
+            }))
+            .sort((a, b) => String(b.name).localeCompare(String(a.name))),
         },
       },
     };
