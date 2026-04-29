@@ -1,5 +1,5 @@
 import dns from 'dns';
-import db, { initDatabase } from '../database';
+import { initDatabase } from '../database';
 import dotenv from 'dotenv';
 import path from 'path';
 
@@ -80,6 +80,7 @@ const PERMISSIONS = [
   // Họp hành
   { key: 'meeting:create:all', name: 'Tạo lịch họp (Toàn đội)', module: 'meeting' },
   { key: 'meeting:create:dept', name: 'Tạo lịch họp (Ban)', module: 'meeting' },
+  { key: 'meeting:view', name: 'Xem lịch họp & RSVP', module: 'meeting' },
   { key: 'meeting:attendance', name: 'Điểm danh họp', module: 'meeting' },
   { key: 'meeting:minutes', name: 'Ghi biên bản cuộc họp', module: 'meeting' },
 
@@ -98,6 +99,8 @@ const PERMISSIONS = [
   { key: 'system:manage:gen', name: 'Cấu hình Niên khóa / Thế hệ', module: 'system' },
   { key: 'system:notify:all', name: 'Gửi thông báo toàn hệ thống', module: 'system' },
   { key: 'system:notify:dept', name: 'Gửi thông báo theo Ban', module: 'system' },
+  { key: 'system:manage', name: 'Quản lý cấu hình hệ thống & Học kỳ', module: 'system' },
+  { key: 'settings:view', name: 'Xem cấu hình hệ thống', module: 'system' },
 
   // Tài liệu
   { key: 'file:upload', name: 'Upload tài liệu minh chứng', module: 'file' },
@@ -111,6 +114,8 @@ const PERMISSIONS = [
   { key: 'bonus-campaigns:review', name: 'Xét duyệt chi tiết đăng ký', module: 'bonus-campaigns' },
   { key: 'bonus-campaigns:delete', name: 'Xóa bản đăng ký cộng điểm', module: 'bonus-campaigns' },
 ];
+
+const LEADER_PERMISSIONS = ['meeting:view', 'meeting:create:dept', 'meeting:attendance', 'meeting:minutes'];
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
   admin: ['*'],
@@ -148,6 +153,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'reward:history:self',
     'reward:stats:all',
     'reward:stats:dept',
+    'meeting:view',
     'meeting:create:all',
     'meeting:create:dept',
     'meeting:attendance',
@@ -170,6 +176,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'duty:view',
     'duty:manage',
     'system:manage',
+    'settings:view',
     'bonus-campaigns:review',
     'bonus-campaigns:delete',
   ],
@@ -207,6 +214,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'reward:history:self',
     'reward:stats:all',
     'reward:stats:dept',
+    'meeting:view',
     'meeting:create:all',
     'meeting:create:dept',
     'meeting:attendance',
@@ -229,6 +237,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'duty:view',
     'duty:manage',
     'system:manage',
+    'settings:view',
     'bonus-campaigns:review',
     'bonus-campaigns:delete',
   ],
@@ -266,6 +275,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'reward:history:self',
     'reward:stats:all',
     'reward:stats:dept',
+    'meeting:view',
     'meeting:create:all',
     'meeting:create:dept',
     'meeting:attendance',
@@ -288,6 +298,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'duty:view',
     'duty:manage',
     'system:manage',
+    'settings:view',
     'bonus-campaigns:review',
     'bonus-campaigns:delete',
   ],
@@ -307,6 +318,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'reward:approve',
     'reward:history:self',
     'reward:stats:dept',
+    'meeting:view',
     'meeting:create:dept',
     'meeting:attendance',
     'meeting:minutes',
@@ -315,6 +327,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'system:notify:dept',
     'file:upload',
     'file:manage:dept',
+    'settings:view',
   ],
   tc_leader: [
     'users:list:dept',
@@ -332,6 +345,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'reward:approve',
     'reward:history:self',
     'reward:stats:dept',
+    'meeting:view',
     'meeting:create:dept',
     'meeting:attendance',
     'meeting:minutes',
@@ -340,6 +354,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'system:notify:dept',
     'file:upload',
     'file:manage:dept',
+    'settings:view',
   ],
   tc_sub_leader: [
     'users:list:dept',
@@ -357,6 +372,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'reward:approve',
     'reward:history:self',
     'reward:stats:dept',
+    'meeting:view',
     'meeting:create:dept',
     'meeting:attendance',
     'meeting:minutes',
@@ -365,6 +381,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'system:notify:dept',
     'file:upload',
     'file:manage:dept',
+    'settings:view',
   ],
   tt_leader: [
     'users:list:dept',
@@ -382,6 +399,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'reward:approve',
     'reward:history:self',
     'reward:stats:dept',
+    'meeting:view',
     'meeting:create:dept',
     'meeting:attendance',
     'meeting:minutes',
@@ -390,6 +408,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'system:notify:dept',
     'file:upload',
     'file:manage:dept',
+    'settings:view',
   ],
   tt_sub_leader: [
     'users:list:dept',
@@ -407,6 +426,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'reward:approve',
     'reward:history:self',
     'reward:stats:dept',
+    'meeting:view',
     'meeting:create:dept',
     'meeting:attendance',
     'meeting:minutes',
@@ -415,6 +435,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'system:notify:dept',
     'file:upload',
     'file:manage:dept',
+    'settings:view',
   ],
   other_sub_leader: [
     'users:list:dept',
@@ -432,6 +453,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'reward:approve',
     'reward:history:self',
     'reward:stats:dept',
+    'meeting:view',
     'meeting:create:dept',
     'meeting:attendance',
     'meeting:minutes',
@@ -440,6 +462,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'system:notify:dept',
     'file:upload',
     'file:manage:dept',
+    'settings:view',
   ],
   member: [
     'users:read:self',
@@ -453,6 +476,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'reward:history:self',
     'feedback:send',
     'file:upload',
+    'meeting:view',
   ],
   ctv: [
     'users:read:self',
@@ -466,6 +490,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'reward:history:self',
     'feedback:send',
     'file:upload',
+    'meeting:view',
   ],
   other_role: [],
 };
@@ -474,39 +499,59 @@ async function seed() {
   try {
     console.log('Connecting to MongoDB...');
     await initDatabase();
+    const mongoose = require('mongoose');
+    const PermissionModel = mongoose.models['permissions'];
+    const RoleModel = mongoose.models['roles'];
+    const UserModel = mongoose.models['users'];
 
-    // 1. Clear existing RBAC data
-    console.log('Cleaning up existing data...');
+    // 1. Sync Permissions (Upsert)
+    console.log(`Syncing ${PERMISSIONS.length} permissions...`);
+    let lastPerm = await PermissionModel.findOne().sort({ id: -1 }).lean();
+    let nextPermId = lastPerm ? Number(lastPerm.id) + 1 : 1000;
 
-    await db.deleteMany('roles', {});
-    await db.deleteMany('permissions', {});
-
-    // 2. Insert Permissions
-    console.log(`Inserting ${PERMISSIONS.length} permissions...`);
-    await db.insertMany('permissions', PERMISSIONS);
-
-    // 3. Clear user-specific overrides to prevent "weird" UI behavior
-    console.log('Resetting custom permissions for all users...');
-    try {
-      const mongoose = require('mongoose');
-      if (mongoose.models['users']) {
-        await mongoose.models['users'].updateMany({}, { $unset: { customPermissions: 1 } });
+    for (const perm of PERMISSIONS) {
+      const existing = await PermissionModel.findOne({ key: perm.key });
+      if (existing) {
+        await PermissionModel.updateOne({ key: perm.key }, { $set: perm });
+      } else {
+        await PermissionModel.create({ ...perm, id: nextPermId++ });
       }
-    } catch (e) {
-      console.warn('Could not reset custom permissions:', e.message);
     }
 
-    // 3. Insert Roles with mapped permissions
-    console.log(`Inserting ${ROLES.length} roles...`);
-    const rolesToInsert = ROLES.map((role) => ({
-      ...role,
-      permissions: ROLE_PERMISSIONS[role.key] || [],
-    }));
-    await db.insertMany('roles', rolesToInsert);
+    // 2. Sync Roles (Upsert default roles)
+    console.log(`Syncing ${ROLES.length} default roles...`);
+    let lastRole = await RoleModel.findOne().sort({ id: -1 }).lean();
+    let nextRoleId = lastRole ? Number(lastRole.id) + 1 : 1000;
 
-    console.log('RBAC Seed completed successfully!');
+    for (const role of ROLES) {
+      const roleData = {
+        ...role,
+        permissions: ROLE_PERMISSIONS[role.key] || [],
+      };
+      const existing = await RoleModel.findOne({ key: role.key });
+      if (existing) {
+        await RoleModel.updateOne({ key: role.key }, { $set: roleData });
+      } else {
+        await RoleModel.create({ ...roleData, id: roleData.id || nextRoleId++ });
+      }
+    }
+
+    // 3. Reset User-specific customPermissions
+    console.log('Resetting custom permissions for all users...');
+    if (UserModel) {
+      await UserModel.updateMany({}, { $unset: { customPermissions: 1 } });
+    }
+
+    // 4. Critical Admin Wildcard Sync
+    console.log('Ensuring Admin users have wildcard permissions...');
+    if (UserModel) {
+      await UserModel.updateMany({ $or: [{ role: 'admin' }, { roleIds: 1 }] }, { $addToSet: { permissions: '*' } });
+      console.log('Admin permissions synchronized.');
+    }
+
+    console.log('RBAC Smart Sync completed successfully!');
   } catch (error) {
-    console.error('Seed error:', error);
+    console.error('Sync error:', error);
   } finally {
     process.exit();
   }
