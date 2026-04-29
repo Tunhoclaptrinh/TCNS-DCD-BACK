@@ -9,6 +9,7 @@ const router = express.Router();
 
 // === USER PROFILE ROUTES (Must be before :id routes) ===
 router.put('/profile', requireAuth, userController.getAvatarUploadMiddleware(), userController.updateProfile);
+router.get('/me/stats', requireAuth, userController.getMeStats);
 
 // === BASE & SEARCH ROUTES ===
 router.get('/search', requireAuth, userController.search);
@@ -37,6 +38,8 @@ router.get('/stats/summary', requireAuth, requirePermission('users:view_stats'),
 router.patch('/:id/status', requireAuth, requirePermission('users:manage_status'), userController.toggleUserStatus);
 router.patch('/:id/promote', requireAuth, requirePermission('users:update'), userController.promoteUser);
 router.patch('/:id/expel', requireAuth, requirePermission('users:expel'), userController.expelUser);
+router.get('/potential-alumni', requireAuth, requirePermission('users:update'), userController.getPotentialAlumni);
+router.post('/sync-alumni', requireAuth, requirePermission('users:update'), userController.syncAlumniStatus);
 
 router.delete('/:id/permanent', requireAuth, requirePermission('users:delete'), userController.permanentDeleteUser);
 
