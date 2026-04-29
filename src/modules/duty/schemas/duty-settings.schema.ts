@@ -13,12 +13,6 @@ export default defineSchema({
     default: 0,
     description: 'Số kíp tối đa một thành viên có thể đăng ký trong tuần',
   },
-  allowedIpRanges: {
-    type: 'string',
-    required: false,
-    default: '',
-    description: 'Dải IP cho phép điểm danh (ngăn cách bởi dấu phẩy)',
-  },
   allowUnregisterWhenFull: {
     type: 'boolean',
     required: false,
@@ -35,6 +29,33 @@ export default defineSchema({
     required: false,
     description: 'Tên thế hệ hiện tại (Legacy)',
   },
+
+  // New Stats & Quota Fields
+  defaultQuota: {
+    type: 'number',
+    required: false,
+    default: 2.5,
+    description: 'Định mức mặc định (kíp/tuần)',
+  },
+  kipPrice: {
+    type: 'number',
+    required: false,
+    default: 0,
+    description: 'Đơn giá 1 kíp (VNĐ)',
+  },
+  violationPenaltyRate: {
+    type: 'number',
+    required: false,
+    default: 0,
+    description: 'Hệ số phạt vi phạm',
+  },
+  quotaRules: {
+    type: 'array',
+    required: false,
+    default: [],
+    description: 'Danh sách quy tắc định mức chuyên sâu (Ban, Vai trò, Thời gian)',
+  },
+
   updatedAt: {
     type: 'date',
     required: false,
