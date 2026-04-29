@@ -7,19 +7,6 @@ const generationSchema: SchemaDefinition = {
     unique: true,
     maxLength: 100,
   },
-  maNamHoc: {
-    type: 'string',
-    description: 'Mã năm học dùng chung, ví dụ: 2026.',
-    required: false,
-    maxLength: 10,
-  },
-  maKhoa: {
-    type: 'string',
-    description: 'Mã khóa dùng chung, ví dụ: 20261.',
-    required: false,
-    unique: true,
-    maxLength: 20,
-  },
   description: {
     type: 'string',
     required: false,

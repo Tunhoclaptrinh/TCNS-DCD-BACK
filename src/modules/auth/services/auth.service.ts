@@ -33,6 +33,7 @@ class AuthService {
     if (existingUser) {
       throw ApiError.badRequest('Email already registered');
     }
+    console.log(payload);
 
     const hashedPassword = await hashPassword(password);
     const now = new Date().toISOString();
