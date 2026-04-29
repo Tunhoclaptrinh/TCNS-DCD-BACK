@@ -8,6 +8,10 @@ export const ROLE_MAP = {
   NS_LEADER: 2,
   NS_SUB_LEADER: 3,
   NS_SPECIALIST: 4,
+  TC_LEADER: 10,
+  TC_SUB_LEADER: 11,
+  TT_LEADER: 12,
+  TT_SUB_LEADER: 13,
   OTHER_LEADER: 5,
   OTHER_SUB_LEADER: 6,
   MEMBER: 7,
@@ -20,19 +24,27 @@ export const ROLE_MAP = {
 export const getSuggestedRoles = (position: string, department?: string): number[] => {
   if (!position) return [];
 
+  const dept = department || '';
+
   switch (position) {
     case 'dt':
     case 'ctc':
       return [ROLE_MAP.ADMIN];
 
     case 'tb':
-      return department === 'Nhân sự' ? [ROLE_MAP.NS_LEADER] : [ROLE_MAP.OTHER_LEADER];
+      if (dept === 'Nhân sự') return [ROLE_MAP.NS_LEADER];
+      if (dept === 'Tài chính') return [ROLE_MAP.TC_LEADER];
+      if (dept === 'Truyền thông') return [ROLE_MAP.TT_LEADER];
+      return [ROLE_MAP.OTHER_LEADER];
 
     case 'pb':
-      return department === 'Nhân sự' ? [ROLE_MAP.NS_SUB_LEADER] : [ROLE_MAP.OTHER_SUB_LEADER];
+      if (dept === 'Nhân sự') return [ROLE_MAP.NS_SUB_LEADER];
+      if (dept === 'Tài chính') return [ROLE_MAP.TC_SUB_LEADER];
+      if (dept === 'Truyền thông') return [ROLE_MAP.TT_SUB_LEADER];
+      return [ROLE_MAP.OTHER_SUB_LEADER];
 
     case 'tvb':
-      return department === 'Nhân sự' ? [ROLE_MAP.NS_SPECIALIST] : [ROLE_MAP.MEMBER];
+      return dept === 'Nhân sự' ? [ROLE_MAP.NS_SPECIALIST] : [ROLE_MAP.MEMBER];
 
     case 'tv':
       return [ROLE_MAP.MEMBER];

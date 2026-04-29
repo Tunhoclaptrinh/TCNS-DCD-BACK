@@ -21,9 +21,11 @@ import {
   getWeekStartISO,
   getWeekEndISO,
   isTimeInShiftRange,
+  isIpAllowed,
 } from './duty-utils';
 import dutySettingsService from './duty-settings.service';
 import dutyLogsService from './duty-logs.service';
+import dutyViolationsRepository from '@modules/duty/repositories/duty-violations.repository';
 
 class DutySlotsService {
   async findSlotOrThrow(slotId: Identifier) {
@@ -96,6 +98,14 @@ class DutySlotsService {
       }),
     ]);
 
+    const slotIds = slotsResult.data.map((s: any) => normalizeId(s.id));
+
+    const [violations, leaveRequests, swapRequests] = await Promise.all([
+      dutyViolationsRepository.findMany({ slotId_in: slotIds }),
+      dutyLeaveRequestsRepository.findMany({ slotId_in: slotIds }),
+      dutySwapRequestsRepository.findMany({ fromSlotId_in: slotIds }),
+    ]);
+
     const userMap = new Map(users.map((user) => [normalizeId(user.id), user]));
 
     const slots = slotsResult.data.map((slot: any) => {
@@ -116,7 +126,11 @@ class DutySlotsService {
             name: user.name,
             role: user.role,
             avatar: user.avatar,
+            position: user.position,
           })),
+        violations: violations.filter((v: any) => normalizeId(v.slotId) === normalizeId(slot.id)),
+        leaveRequests: leaveRequests.filter((r: any) => normalizeId(r.slotId) === normalizeId(slot.id)),
+        swapRequests: swapRequests.filter((r: any) => normalizeId(r.fromSlotId) === normalizeId(slot.id)),
       };
     });
 
@@ -288,9 +302,56 @@ class DutySlotsService {
 
     const patch: GenericRecord = { ...payload, updatedAt: new Date().toISOString() };
     if (payload.shiftDate) patch.shiftDate = toUTCMidnight(payload.shiftDate);
-    if (payload.assignedUserIds) patch.assignedUserIds = normalizeIdList(payload.assignedUserIds);
+
+    const oldAssignedIds = normalizeIdList(slot.assignedUserIds || []).map(Number);
+    if (payload.assignedUserIds) {
+      const newIds = normalizeIdList(payload.assignedUserIds).map(Number);
+      patch.assignedUserIds = newIds;
+      // Mark these users as Admin-Assigned in config
+      patch.config = {
+        ...(slot.config || {}),
+        ...(payload.config || {}),
+        adminAssignedUserIds: newIds,
+      };
+    }
 
     const updated = await dutySlotsRepository.update(slotId, patch);
+    const newAssignedIds = normalizeIdList(updated.assignedUserIds || []).map(Number);
+
+    // Notification Logic
+    const addedUsers = newAssignedIds.filter((id) => !oldAssignedIds.includes(id));
+    const removedUsers = oldAssignedIds.filter((id) => !newAssignedIds.includes(id));
+    const slotLabel = await this.getSlotLabel(updated);
+    const dateStr = new Date(updated.shiftDate).toLocaleDateString('vi-VN');
+
+    if (addedUsers.length > 0) {
+      console.log(`[Duty] Notifying ${addedUsers.length} added users for slot ${slotId}`);
+      await Promise.all(
+        addedUsers.map((userId) =>
+          notificationService.notifyUser(userId, {
+            title: 'Thông báo phân công trực',
+            message: `Admin đã phân công bạn trực kíp: ${slotLabel} ngày ${dateStr}`,
+            category: 'shift',
+            type: 'shift',
+            refId: updated.id,
+          }),
+        ),
+      );
+    }
+
+    if (removedUsers.length > 0) {
+      await Promise.all(
+        removedUsers.map((userId) =>
+          notificationService.notifyUser(userId, {
+            title: 'Thay đổi lịch trực',
+            message: `Bạn đã được rút tên khỏi kíp: ${slotLabel} ngày ${dateStr}`,
+            category: 'shift',
+            type: 'shift',
+            refId: updated.id,
+          }),
+        ),
+      );
+    }
 
     if (slot.kipId) {
       const kipUpdate: GenericRecord = { updatedAt: new Date().toISOString() };
@@ -346,11 +407,25 @@ class DutySlotsService {
     const weeklyLimit = settings.weeklyKipLimit;
     if (weeklyLimit && Number(weeklyLimit) > 0) {
       const allSlotsInWeek = await dutySlotsRepository.findMany({ weekStart: new Date(slot.weekStart).toISOString() });
-      const userTotalInWeek = allSlotsInWeek.filter((s: any) =>
+      const userSlotsInWeek = allSlotsInWeek.filter((s: any) =>
         normalizeIdList(s.assignedUserIds || []).includes(userId),
-      ).length;
-      if (userTotalInWeek >= settings.weeklyKipLimit) {
-        throw ApiError.badRequest(`Bạn đã đạt giới hạn đăng ký trong tuần (${settings.weeklyKipLimit} kíp).`);
+      );
+
+      // Fetch kips for these slots to get coefficients
+      const userKipIds = userSlotsInWeek.map((s: any) => s.kipId).filter(Boolean);
+      const userKips = await dutyKipsRepository.findMany({ id_in: userKipIds });
+
+      // Add the current kip to the calculation
+      const currentKip = await dutyKipsRepository.findById(slot.kipId);
+
+      const totalCoefficient =
+        userKips.reduce((acc: number, k: any) => acc + (Number(k.coefficient) || 1), 0) +
+        (Number(currentKip?.coefficient) || 1);
+
+      if (totalCoefficient > Number(settings.weeklyKipLimit)) {
+        throw ApiError.badRequest(
+          `Bạn đã đạt giới hạn đăng ký trong tuần (${settings.weeklyKipLimit} kíp). Hiện tại: ${totalCoefficient - (Number(currentKip?.coefficient) || 1)} kíp. kíp này tính ${currentKip?.coefficient} kíp.`,
+        );
       }
     }
 
@@ -401,9 +476,10 @@ class DutySlotsService {
       updatedAt: new Date().toISOString(),
     });
 
+    const slotLabel = await this.getSlotLabel(slot);
     await notificationService.notifyUser(userId, {
       title: 'Đăng ký kíp trực thành công',
-      message: `Bạn đã đăng ký: ${slot.shiftLabel} ngày ${new Date(slot.shiftDate).toLocaleDateString('vi-VN')}`,
+      message: `Bạn đã đăng ký: ${slotLabel} ngày ${new Date(slot.shiftDate).toLocaleDateString('vi-VN')}`,
       category: 'shift',
       type: 'shift',
       refId: slot.id,
@@ -431,10 +507,15 @@ class DutySlotsService {
 
     const settings = await dutySettingsService.getSettings();
     const isAdmin = typeof user === 'object' && (user as any).role === 'admin';
+    const isStaff = typeof user === 'object' && (user as any).role === 'staff';
     const isFull = assigned.length >= (slot.capacity || 1);
 
-    if (!settings.allowUnregisterWhenFull && isFull && !isAdmin) {
-      throw ApiError.badRequest('Kíp đã đủ người, không thể tự ý hủy. Hãy liên hệ Admin.');
+    if (slot.status === 'locked' && !isAdmin && !isStaff) {
+      throw ApiError.badRequest('Kíp trực đã bị khóa, không thể tự ý hủy. Hãy liên hệ Admin.');
+    }
+
+    if (!settings.allowUnregisterWhenFull && isFull && !isAdmin && !isStaff) {
+      throw ApiError.badRequest('Kíp đã đủ người, không thể tự ý hủy theo quy định. Hãy liên hệ Admin.');
     }
 
     const updated = await dutySlotsRepository.update(slot.id, {
@@ -472,10 +553,214 @@ class DutySlotsService {
     return updated;
   }
 
+  async selfCheckIn(slotId: Identifier, user: any, ip: string) {
+    const slot = await dutySlotsRepository.findById(slotId);
+    if (!slot) throw ApiError.notFound('Kíp trực không tồn tại');
+
+    const userId = getActorId(user);
+    const now = dayjs();
+    const slotDateStr = dayjs(slot.shiftDate).format('YYYY-MM-DD');
+    const startTime = slot.startTime || '00:00';
+    const slotStart = dayjs(`${slotDateStr} ${startTime}`);
+
+    // 1. Check IP
+    const settings = await dutySettingsService.getSettings();
+    if (settings.allowedIpRanges && !isIpAllowed(ip, settings.allowedIpRanges)) {
+      throw ApiError.badRequest(`Địa chỉ mạng (${ip}) không hợp lệ để điểm danh tại văn phòng.`);
+    }
+
+    // 2. Check Timing (+/- 1 minute)
+    const windowStart = slotStart.subtract(1, 'minute');
+    const windowEnd = slotStart.add(1, 'minute');
+
+    if (now.isBefore(windowStart)) {
+      throw ApiError.badRequest(`Chưa đến giờ điểm danh. Vui lòng quay lại vào lúc ${windowStart.format('HH:mm')}`);
+    }
+    if (now.isAfter(windowEnd)) {
+      throw ApiError.badRequest('Đã quá thời gian tự điểm danh (+/- 1 phút). Vui lòng báo cáo Quản lý kíp.');
+    }
+
+    // 3. Mark Attendance
+    const attended = normalizeIdList(slot.attendedUserIds || []);
+    if (!attended.includes(userId)) {
+      attended.push(userId);
+    }
+
+    const attendanceData = slot.attendanceData || {};
+    attendanceData[userId] = {
+      time: now.toISOString(),
+      ip,
+      method: 'self',
+    };
+
+    const update: any = {
+      attendedUserIds: attended,
+      attendanceData,
+      updatedAt: now.toISOString(),
+    };
+
+    // 4. Leadership Management (Manager = Quản lý kíp)
+    const assignedIds = normalizeIdList(slot.assignedUserIds || []);
+    const originalManagerId = assignedIds[0];
+
+    // If the original manager checks in now (within the 2-min window), they are the manager
+    if (normalizeId(userId) === normalizeId(originalManagerId)) {
+      update.tempLeaderId = null; // Original manager is present, clear any temp leader
+    } else if (!slot.tempLeaderId) {
+      // Someone else checked in first, and original manager is not here yet
+      const originalManagerAttended = attended.includes(normalizeId(originalManagerId));
+      if (!originalManagerAttended) {
+        update.tempLeaderId = userId;
+
+        await dutyLogsService.log(
+          'leadership_change',
+          'system',
+          `Thành viên ${user.name || userId} tạm giữ quyền Quản lý kíp do Quản lý kíp gốc chưa điểm danh.`,
+          userId,
+          undefined,
+          slotId,
+        );
+      }
+    }
+
+    const updated = await dutySlotsRepository.update(slotId, update);
+
+    await dutyLogsService.log(
+      'attendance',
+      'self',
+      `Thành viên tự điểm danh thành công tại IP: ${ip}`,
+      userId,
+      userId,
+      slotId,
+    );
+
+    return updated;
+  }
+
+  async leaderMarkAttendance(slotId: Identifier, targetUserId: Identifier, performer: any) {
+    const slot = await dutySlotsRepository.findById(slotId);
+    if (!slot) throw ApiError.notFound('Kíp không tồn tại');
+
+    const performerId = getActorId(performer);
+    const assignedIds = normalizeIdList(slot.assignedUserIds || []);
+    const originalLeaderId = assignedIds[0];
+    const attendedIds = normalizeIdList(slot.attendedUserIds || []);
+
+    // Authorization check
+    const isOriginalLeader =
+      normalizeId(performerId) === normalizeId(originalLeaderId) && attendedIds.includes(performerId);
+    const isTempLeader = normalizeId(performerId) === normalizeId(slot.tempLeaderId);
+    const isAdmin = performer.role === 'admin' || performer.role === 'staff';
+
+    if (!isOriginalLeader && !isTempLeader && !isAdmin) {
+      throw ApiError.forbidden('Bạn không có quyền điểm danh cho người khác trong kíp này.');
+    }
+
+    // Update attendance
+    const targetId = normalizeId(targetUserId);
+    if (!attendedIds.includes(targetId)) {
+      attendedIds.push(targetId);
+    }
+
+    const attendanceData = slot.attendanceData || {};
+    attendanceData[targetId] = {
+      time: new Date().toISOString(),
+      method: 'leader',
+      markedBy: performerId,
+    };
+
+    const updated = await dutySlotsRepository.update(slotId, {
+      attendedUserIds: attendedIds,
+      attendanceData,
+      updatedAt: new Date().toISOString(),
+    });
+
+    await dutyLogsService.log(
+      'attendance',
+      'leader',
+      `Quản lý kíp điểm danh cho thành viên: ${targetId}`,
+      performerId,
+      targetId,
+      slotId,
+    );
+
+    return updated;
+  }
+
+  async reportViolation(payload: any, performer: any) {
+    const { slotId, userId, type, coefficient, note } = payload;
+    const performerId = getActorId(performer);
+
+    const slot = await dutySlotsRepository.findById(slotId);
+    if (!slot) throw ApiError.notFound('Kíp không tồn tại');
+
+    // Reuse same authorization as attendance
+    const assignedIds = normalizeIdList(slot.assignedUserIds || []);
+    const originalLeaderId = assignedIds[0];
+    const attendedIds = normalizeIdList(slot.attendedUserIds || []);
+
+    const isOriginalLeader =
+      normalizeId(performerId) === normalizeId(originalLeaderId) && attendedIds.includes(performerId);
+    const isTempLeader = normalizeId(performerId) === normalizeId(slot.tempLeaderId);
+    const isAdmin = performer.role === 'admin' || performer.role === 'staff';
+
+    if (!isOriginalLeader && !isTempLeader && !isAdmin) {
+      throw ApiError.forbidden('Bạn không có quyền ghi nhận vi phạm cho kíp này.');
+    }
+
+    const existingViolation = await dutyViolationsRepository.findOne({
+      slotId: normalizeId(slotId),
+      userId: normalizeId(userId),
+    });
+
+    let violation;
+    if (existingViolation) {
+      violation = await dutyViolationsRepository.update(existingViolation.id, {
+        type,
+        coefficient: Number(coefficient) || 1,
+        note: note || '',
+        updatedAt: new Date().toISOString(),
+      });
+    } else {
+      violation = await dutyViolationsRepository.create({
+        slotId: normalizeId(slotId),
+        userId: normalizeId(userId),
+        type,
+        coefficient: Number(coefficient) || 1,
+        note: note || '',
+        createdBy: performerId,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    await dutyLogsService.log(
+      'violation',
+      'report',
+      `Ghi nhận vi phạm [${type}] cho thành viên: ${userId}. Hệ số: ${coefficient}`,
+      performerId,
+      userId,
+      slotId,
+    );
+
+    return violation;
+  }
+
   async updateActualShift(shiftId: number, data: GenericRecord) {
     const shift = await dutyShiftsRepository.findById(shiftId);
     if (!shift) throw ApiError.notFound('Ca thực tế không tồn tại');
     return await dutyShiftsRepository.update(shiftId, { ...data, updatedAt: new Date().toISOString() });
+  }
+
+  async updateActualKip(kipId: number, data: GenericRecord) {
+    const kip = await dutyKipsRepository.findById(kipId);
+    if (!kip) throw ApiError.notFound('Kíp thực tế không tồn tại');
+
+    if (data.shiftId) {
+      const shift = await dutyShiftsRepository.findById(data.shiftId);
+      if (!shift) throw ApiError.notFound('Ca trực không tồn tại');
+    }
+
+    return await dutyKipsRepository.update(kipId, { ...data, updatedAt: new Date().toISOString() });
   }
 
   async deleteActualKip(kipId: number) {
@@ -518,6 +803,82 @@ class DutySlotsService {
         swapPending: swaps.filter((r: any) => r.status === 'pending').length,
         swapApproved: swaps.filter((r: any) => r.status === 'approved').length,
       },
+    };
+  }
+
+  async getUserStats(userId: Identifier) {
+    const id = normalizeId(userId);
+    const settings = await dutySettingsService.getSettings();
+    const defaultQuota = Number(settings.defaultQuota) || 2.5;
+    const quotaRules = settings.quotaRules || [];
+
+    const [slots, leaves, swaps, violations, user] = await Promise.all([
+      dutySlotsRepository.findMany({ assignedUserIds_contains: id }),
+      dutyLeaveRequestsRepository.findMany({ userId: id }),
+      dutySwapRequestsRepository.findMany({ requesterId: id }),
+      dutyViolationsRepository.findMany({ userId: id }),
+      usersRepository.findById(id) as Promise<any>,
+    ]);
+
+    // Get user's quota
+    const rule = quotaRules.find(
+      (r: any) =>
+        (r.type === 'position' && user && r.target === user.position) ||
+        (r.type === 'user' && String(r.target) === String(id)),
+    );
+    const userQuota = rule ? Number(rule.quota) : defaultQuota;
+
+    // Calculate total hours from attended slots
+    // We need to fetch kips for duration info
+    const kipIds = normalizeIdList(slots.map((s: any) => s.kipId).filter(Boolean));
+    const kips = await dutyKipsRepository.findMany({ id_in: kipIds });
+    const kipMap = new Map(kips.map((k: any) => [normalizeId(k.id), k]));
+
+    let totalMinutes = 0;
+    let attendedCount = 0;
+    let points = 0;
+
+    slots.forEach((slot: any) => {
+      const isAttended = normalizeIdList(slot.attendedUserIds || []).includes(id);
+      if (isAttended) {
+        attendedCount++;
+        const kip = kipMap.get(normalizeId(slot.kipId));
+        if (kip) {
+          const startTime = slot.startTime || kip.startTime;
+          const endTime = slot.endTime || kip.endTime;
+          if (startTime && endTime) {
+            const [sh, sm] = startTime.split(':').map(Number);
+            const [eh, em] = endTime.split(':').map(Number);
+            let diff = eh * 60 + em - (sh * 60 + sm);
+            if (diff < 0) diff += 24 * 60;
+            totalMinutes += diff;
+          }
+          points += (kip.coefficient || 1) * 10; // Basic point formula
+        }
+      }
+    });
+
+    const totalKips = slots.reduce((acc, slot) => {
+      const isAttended = normalizeIdList(slot.attendedUserIds || []).includes(id);
+      return acc + (isAttended ? Number(slot.coefficient) || 1 : 0);
+    }, 0);
+
+    const deficiency = Math.max(0, userQuota - totalKips);
+
+    return {
+      totalHours: Math.round((totalMinutes / 60) * 10) / 10,
+      totalKips,
+      attendedCount,
+      points,
+      violationCount: violations.length,
+      deficiency,
+      isWarning: deficiency > 0,
+      userQuota,
+      pendingRequests:
+        leaves.filter((r: any) => r.status === 'pending').length +
+        swaps.filter((r: any) => r.status === 'pending').length,
+      upcomingCount: slots.filter((s: any) => dayjs(s.shiftDate).isAfter(dayjs())).length,
+      recentLogs: await dutyLogsService.getUserLogs(id, 5),
     };
   }
 }

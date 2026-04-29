@@ -2,6 +2,7 @@ import { sanitizeUser } from '@utils/helpers';
 import userService from '@modules/users/services/user.service';
 import userAvatarService from '@modules/users/services/user-avatar.service';
 import userAccessService from '@modules/users/services/user-access.service';
+import dutyService from '@modules/duty/services/duty.service';
 import BaseController from '@shared/common/base-controller';
 import ApiError from '@utils/api-error';
 import type { AnyRecord } from '@app-types/common';
@@ -50,16 +51,33 @@ class UserController extends BaseController {
   }
 
   getAll = this.handle(async (req, res) => {
-    const result = await this.service.findAll(req.parsedQuery);
+    const actorPermissions = req.user.permissions || [];
+    const canReadAll = actorPermissions.includes('*') || actorPermissions.includes('users:list:all');
+    const canReadDept = actorPermissions.includes('users:list:dept');
+
+    const query = { ...req.parsedQuery };
+
+    if (!canReadAll && canReadDept) {
+      // Force filter by actor's department
+      query.where = {
+        ...(query.where || {}),
+        department: req.user.department,
+      };
+    }
+
+    const result = await this.service.findAll(query);
     result.data = result.data.map((user) => sanitizeUser(user));
     this.ok(res, result);
   });
 
   getById = this.handle(async (req, res) => {
-    userAccessService.assertCanReadProfile(req.user, req.params.id);
-    const data = await this.service.findById(req.params.id);
+    const targetUser = await this.service.findById(req.params.id);
+    if (!targetUser.success || !targetUser.data) {
+      throw ApiError.notFound('Không tìm thấy thành viên');
+    }
 
-    this.ok(res, sanitizeUser(data));
+    userAccessService.assertCanReadProfile(req.user, targetUser.data);
+    this.ok(res, sanitizeUser(targetUser.data));
   });
 
   create = this.handle(async (req, res) => {
@@ -102,6 +120,11 @@ class UserController extends BaseController {
 
   getUserStats = this.handle(async (_req, res) => {
     const data = await this.service.getUserStats();
+    this.ok(res, data);
+  });
+
+  getMeStats = this.handle(async (req, res) => {
+    const data = await dutyService.getUserStats(req.user.id);
     this.ok(res, data);
   });
 
@@ -166,6 +189,20 @@ class UserController extends BaseController {
       req.user.id,
     );
     this.ok(res, sanitizeUser(data));
+  });
+
+  syncAlumniStatus = this.handle(async (req, res) => {
+    const { userIds } = req.body;
+    const count = await this.service.syncAlumniStatus(userIds);
+    this.ok(res, { count, message: `Đã cập nhật ${count} thành viên sang trạng thái cựu thành viên` });
+  });
+
+  getPotentialAlumni = this.handle(async (_req, res) => {
+    const data = await this.service.getPotentialAlumni();
+    this.ok(
+      res,
+      data.map((u: any) => sanitizeUser(u)),
+    );
   });
 }
 
