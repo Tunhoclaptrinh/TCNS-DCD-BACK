@@ -9,27 +9,35 @@ import dutySlotsService from './duty-slots.service';
 
 class DutySwapRequestsService {
   async requestSwap(payload: GenericRecord, requesterUser: GenericRecord) {
-    const toSlotId = normalizeId(payload.slotId || payload.dutySlotId || payload.toSlotId);
-    const fromSlotId = payload.fromSlotId ? normalizeId(payload.fromSlotId) : null;
+    const toSlotId = normalizeId(payload.toSlotId || payload.dutySlotId || payload.slotId);
+    const fromSlotId = normalizeId(payload.fromSlotId);
     const targetUserId = payload.targetUserId ? normalizeId(payload.targetUserId) : null;
+    const reason = payload.reason || '';
 
     const toSlot = await dutySlotsRepository.findById(toSlotId);
     if (!toSlot) throw ApiError.notFound('Mục tiêu chuyển kíp không tồn tại');
 
+    const fromSlot = await dutySlotsRepository.findById(fromSlotId);
+    if (!fromSlot) throw ApiError.notFound('Kíp trực nguồn không tồn tại');
+
     const created = await dutySwapRequestsRepository.create({
-      dutySlotId: toSlotId,
-      fromSlotId: fromSlotId,
+      fromSlotId,
+      toSlotId,
       requesterId: normalizeId(requesterUser.id),
       targetUserId: targetUserId,
+      reason,
       status: 'pending',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
 
+    const toSlotLabel = await dutySlotsService.getSlotLabel(toSlot);
+    const fromSlotLabel = await dutySlotsService.getSlotLabel(fromSlot);
+
     if (targetUserId) {
       await notificationService.notifyUser(targetUserId, {
         title: 'Yêu cầu đổi ca trực',
-        message: `${requesterUser.name} muốn đổi ca với bạn: ${toSlot.shiftLabel}`,
+        message: `${requesterUser.name} muốn đổi ca với bạn: từ ${fromSlotLabel} sang ${toSlotLabel}`,
         category: 'swap',
         type: 'swap',
         refId: created.id,
@@ -39,7 +47,7 @@ class DutySwapRequestsService {
       for (const admin of admins) {
         await notificationService.notifyUser(admin.id as number, {
           title: 'Yêu cầu chuyển ca trực',
-          message: `${requesterUser.name} xin chuyển sang: ${toSlot.shiftLabel}`,
+          message: `${requesterUser.name} xin chuyển: từ ${fromSlotLabel} sang ${toSlotLabel}`,
           category: 'approval',
           type: 'approval',
           refId: created.id,
@@ -50,7 +58,7 @@ class DutySwapRequestsService {
     await dutyLogsService.log(
       'swap_transfer',
       'request',
-      `Yêu cầu đổi/chuyển kíp: ${toSlot.shiftLabel}. ${fromSlotId ? `Từ kíp #${fromSlotId}` : 'Chuyển mới'}.`,
+      `Yêu cầu chuyển kíp: ${fromSlotLabel} -> ${toSlotLabel}. Lý do: ${reason}`,
       requesterUser.id,
       requesterUser.id,
       toSlotId,
@@ -76,43 +84,103 @@ class DutySwapRequestsService {
     if (!isTargetUser && !isAdminOrStaff) throw ApiError.forbidden('Bạn không có quyền xử lý yêu cầu này');
 
     if (status === 'approved') {
-      const targetSlot = await dutySlotsRepository.findById(req.dutySlotId);
+      const targetSlot = await dutySlotsRepository.findById(req.toSlotId);
       if (!targetSlot) throw ApiError.notFound('Kíp trực đích không tồn tại');
 
+      const requesterId = normalizeId(req.requesterId);
+
+      // Handle Source Slot removal
       if (req.fromSlotId) {
         const sourceSlot = await dutySlotsRepository.findById(req.fromSlotId);
         if (sourceSlot) {
           const sourceAssigned = normalizeIdList(sourceSlot.assignedUserIds || []);
+          const sourceConfig = sourceSlot.config || {};
+          const sourceAdminAssigned = normalizeIdList(sourceConfig.adminAssignedUserIds || []);
+
+          const isWasAdminAssigned = sourceAdminAssigned.includes(requesterId);
+
           await dutySlotsRepository.update(sourceSlot.id, {
-            assignedUserIds: sourceAssigned.filter((id) => normalizeId(id) !== normalizeId(req.requesterId)),
+            assignedUserIds: sourceAssigned.filter((id) => normalizeId(id) !== requesterId),
+            config: {
+              ...sourceConfig,
+              adminAssignedUserIds: sourceAdminAssigned.filter((id) => normalizeId(id) !== requesterId),
+            },
+            updatedAt: new Date().toISOString(),
+          });
+
+          // Handle Target Slot addition with preserved nature
+          const targetAssigned = normalizeIdList(targetSlot.assignedUserIds || []);
+          const targetConfig = targetSlot.config || {};
+          const targetAdminAssigned = normalizeIdList(targetConfig.adminAssignedUserIds || []);
+
+          if (!targetAssigned.includes(requesterId)) {
+            targetAssigned.push(requesterId as any);
+          }
+
+          // Preserve nature: Only add to adminAssigned if they were assigned in source
+          if (isWasAdminAssigned && !targetAdminAssigned.includes(requesterId)) {
+            targetAdminAssigned.push(requesterId as any);
+          }
+
+          // Auto-increase capacity if needed
+          let newCapacity = targetSlot.capacity || 0;
+          if (targetAssigned.length > newCapacity) {
+            newCapacity = targetAssigned.length;
+          }
+
+          await dutySlotsRepository.update(targetSlot.id, {
+            assignedUserIds: targetAssigned,
+            capacity: newCapacity,
+            config: {
+              ...targetConfig,
+              adminAssignedUserIds: targetAdminAssigned,
+            },
             updatedAt: new Date().toISOString(),
           });
         }
+      } else {
+        // If no fromSlotId, just add to target (shouldn't happen in swap, but for safety)
+        const targetAssigned = normalizeIdList(targetSlot.assignedUserIds || []);
+        if (!targetAssigned.includes(requesterId)) targetAssigned.push(requesterId as any);
+        await dutySlotsRepository.update(targetSlot.id, {
+          assignedUserIds: targetAssigned,
+          updatedAt: new Date().toISOString(),
+        });
       }
 
-      const targetAssigned = normalizeIdList(targetSlot.assignedUserIds || []);
-      if (!targetAssigned.includes(normalizeId(req.requesterId)))
-        targetAssigned.push(normalizeId(req.requesterId) as any);
+      // Fetch users for descriptive logging
+      const [performer, requester] = await Promise.all([
+        usersRepository.findById(approverId),
+        usersRepository.findById(requesterId),
+      ]);
 
-      await dutySlotsRepository.update(targetSlot.id, {
-        assignedUserIds: targetAssigned,
-        updatedAt: new Date().toISOString(),
-      });
-
-      const targetLabel = await dutySlotsService.getSlotLabel(targetSlot);
+      // Log to Target Slot
       await dutyLogsService.log(
-        'swap_transfer',
+        'info',
         'transfer',
-        `Điều chuyển nhân sự: ${req.requesterId}. Lộ trình: ${req.fromSlotId ? `Kíp #${req.fromSlotId}` : 'N/A'} -> ${targetLabel} (#${targetSlot.id})`,
+        `Admin ${performer?.name || 'Hệ thống'} đã điều chuyển ${requester?.name || 'Thành viên'} sang kíp này`,
         approverId,
-        req.requesterId,
+        requesterId,
         targetSlot.id,
         requestId,
       );
 
+      // Log to Source Slot if exists
+      if (req.fromSlotId) {
+        await dutyLogsService.log(
+          'info',
+          'transfer',
+          `${requester?.name || 'Thành viên'} đã được điều chuyển sang kíp khác bởi ${performer?.name || 'Hệ thống'}`,
+          approverId,
+          requesterId,
+          req.fromSlotId,
+          requestId,
+        );
+      }
+
       await notificationService.notifyUser(req.requesterId as number, {
         title: 'Điều chuyển kíp trực thành công',
-        message: `Bạn đã được điều chuyển sang kíp trực: ${targetLabel}.`,
+        message: `Bạn đã được điều chuyển sang kíp trực: ${await dutySlotsService.getSlotLabel(targetSlot)}.`,
         category: 'duty',
         type: 'swap',
         refId: req.id,
@@ -132,7 +200,7 @@ class DutySwapRequestsService {
         `Từ chối yêu cầu đổi/chuyển kíp của nhân sự: ${req.requesterId}.`,
         approverId,
         req.requesterId,
-        req.dutySlotId,
+        req.toSlotId,
         requestId,
       );
     }
@@ -146,11 +214,11 @@ class DutySwapRequestsService {
   }
 
   async createSwapManual(data: GenericRecord, performerId: Identifier) {
-    const { requesterId, fromSlotId, dutySlotId, status = 'pending', reason = '' } = data;
+    const { requesterId, fromSlotId, toSlotId, status = 'pending', reason = '' } = data;
     const request = await dutySwapRequestsRepository.create({
       requesterId: normalizeId(requesterId),
       fromSlotId: normalizeId(fromSlotId) || null,
-      dutySlotId: normalizeId(dutySlotId),
+      toSlotId: normalizeId(toSlotId),
       status,
       reason,
       approvedBy: status === 'approved' ? normalizeId(performerId) : undefined,
@@ -201,7 +269,10 @@ class DutySwapRequestsService {
       ...req,
       requester: userMap.get(normalizeId(req.requesterId)),
       targetUser: userMap.get(normalizeId(req.targetUserId)),
-      slot: slotMap.get(normalizeId(req.dutySlotId)),
+      approver: userMap.get(normalizeId(req.approvedBy)),
+      fromSlot: slotMap.get(normalizeId(req.fromSlotId)),
+      toSlot: slotMap.get(normalizeId(req.toSlotId)),
+      slot: slotMap.get(normalizeId(req.toSlotId)), // Keep 'slot' for backward compatibility in UI if needed
     }));
 
     return { ...result, data };

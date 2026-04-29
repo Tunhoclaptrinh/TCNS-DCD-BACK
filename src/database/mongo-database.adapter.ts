@@ -308,6 +308,9 @@ class MongoConnect implements DatabaseAdapter {
   }
 
   private buildMongoQuery(query: AnyRecord) {
+    if (process.env.NODE_ENV === 'development' || true) {
+      console.log(`[MongoAdapter] Building query for:`, JSON.stringify(query));
+    }
     const mongoQuery: AnyRecord = {};
     // DO NOT camelizeObjectKeys here, as it breaks suffix detection (_gte, _lte, etc)
     const normalized = query;
@@ -352,6 +355,9 @@ class MongoConnect implements DatabaseAdapter {
           mongoQuery[field] = this.castQueryValue(val);
         }
       }
+    }
+    if (process.env.NODE_ENV === 'development' || true) {
+      console.log(`[MongoAdapter] Final Mongo Query:`, JSON.stringify(mongoQuery));
     }
     return mongoQuery;
   }

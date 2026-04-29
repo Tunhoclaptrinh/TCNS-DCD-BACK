@@ -12,11 +12,14 @@ router.get('/stats/summary', requirePermission('duty:view'), dutyController.getS
 router.get('/stats/comprehensive', requirePermission('duty:manage'), dutyController.getComprehensiveStats);
 router.get('/stats/export', requirePermission('duty:manage'), dutyController.exportStats);
 router.post('/stats/notify-absentees', requirePermission('duty:manage'), dutyController.notifyAbsentees);
+router.get('/remarks/user/:id', requirePermission('duty:manage'), dutyController.getUserRemarks);
 
 // Slots
 router.post('/slots', requirePermission('duty:manage'), dutyController.createSlot);
 router.post('/shifts', requirePermission('duty:manage'), dutyController.createActualShift);
+router.put('/shifts/:id', requirePermission('duty:manage'), dutyController.updateActualShift);
 router.post('/kips', requirePermission('duty:manage'), dutyController.createActualKip);
+router.put('/kips/:id', requirePermission('duty:manage'), dutyController.updateActualKip);
 router.delete('/kips/:id', requirePermission('duty:manage'), dutyController.deleteActualKip);
 
 router.put('/slots/:id', requirePermission('duty:manage'), dutyController.updateSlot);
@@ -24,9 +27,11 @@ router.delete('/slots/:id', requirePermission('duty:manage'), dutyController.del
 router.patch('/slots/:id/register', requirePermission('duty:register:self'), dutyController.registerToSlot);
 router.patch('/slots/:id/cancel', requirePermission('duty:update'), dutyController.cancelRegistration);
 router.post('/slots/:id/attendance', requirePermission('duty:manage'), dutyController.markAttendance);
+router.get('/slots/:id/logs', requirePermission('duty:view'), dutyController.getSlotLogs);
+router.get('/slots/:id/requests', requirePermission('duty:view'), dutyController.getSlotRequests);
 
 // Leave Requests
-router.post('/leave-request', requirePermission('duty:register'), dutyController.requestLeave);
+router.post('/leave-request', requirePermission('duty:register:self'), dutyController.requestLeave);
 router.get('/leave-requests', requirePermission('duty:view'), dutyController.getLeaveRequests);
 router.post('/leave-requests/manual', requirePermission('duty:manage'), dutyController.createLeaveManual);
 router.patch(
@@ -38,7 +43,7 @@ router.put('/leave-requests/:id', requirePermission('duty:manage'), dutyControll
 router.delete('/leave-requests/:id', requirePermission('duty:manage'), dutyController.deleteLeaveRequest);
 
 // Swaps
-router.post('/swaps', requirePermission('duty:register'), dutyController.requestSwap);
+router.post('/swaps', requirePermission('duty:register:self'), dutyController.requestSwap);
 router.get('/swaps', requirePermission('duty:view'), dutyController.getSwapRequests);
 router.patch('/swaps/:id/decision', requirePermission('duty:approve_swap'), dutyController.decideSwap);
 router.post('/swaps/manual', requirePermission('duty:manage'), dutyController.createSwapManual);
