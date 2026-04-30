@@ -1,7 +1,7 @@
 import BaseService from '@shared/common/base-service';
 import notificationsRepository from '@modules/notifications/repositories/notifications.repository';
 import ApiError from '@utils/api-error';
-import { socketService } from '@shared/socket/socket.service';
+import { socketService } from '@modules/socket/socket.service';
 
 const DEFAULT_SETTINGS = {
   shiftNotifications: true,
