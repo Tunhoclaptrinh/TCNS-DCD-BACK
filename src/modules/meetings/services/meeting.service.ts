@@ -326,13 +326,62 @@ class MeetingService extends BaseService {
       isAllParticipants: isAll,
       confirmations: finalConfirmations,
       ...(payload.minutesContent !== undefined ? { minutesContent: toStr(payload.minutesContent) } : {}),
-      ...(payload.chairpersonId !== undefined ? { chairpersonId: toNum(payload.chairpersonId) } : {}),
-      ...(payload.secretaryId !== undefined ? { secretaryId: toNum(payload.secretaryId) } : {}),
+      ...(payload.chairpersonIds !== undefined ? { chairpersonIds: normalizeIds(payload.chairpersonIds) } : {}),
+      ...(payload.secretaryIds !== undefined ? { secretaryIds: normalizeIds(payload.secretaryIds) } : {}),
       ...(payload.opinions !== undefined ? { opinions: toStr(payload.opinions) } : {}),
       ...(payload.proposals !== undefined ? { proposals: toStr(payload.proposals) } : {}),
       ...(payload.minutesStatus !== undefined ? { minutesStatus: payload.minutesStatus } : {}),
+      ...(payload.otherChairpersons !== undefined
+        ? {
+            otherChairpersons: Array.isArray(payload.otherChairpersons)
+              ? payload.otherChairpersons.map(String).filter((s) => s.trim())
+              : [],
+          }
+        : {}),
+      ...(payload.otherSecretaries !== undefined
+        ? {
+            otherSecretaries: Array.isArray(payload.otherSecretaries)
+              ? payload.otherSecretaries.map(String).filter((s) => s.trim())
+              : [],
+          }
+        : {}),
+      ...(payload.otherPresent !== undefined
+        ? {
+            otherPresent: Array.isArray(payload.otherPresent)
+              ? payload.otherPresent.map(String).filter((s) => s.trim())
+              : [],
+          }
+        : {}),
+      ...(payload.otherAbsent !== undefined
+        ? {
+            otherAbsent: Array.isArray(payload.otherAbsent)
+              ? payload.otherAbsent.map(String).filter((s) => s.trim())
+              : [],
+          }
+        : {}),
       ...a,
     };
+
+    // Track minutes history
+    const isMinutesChanging =
+      payload.minutesContent !== undefined ||
+      payload.minutesStatus !== undefined ||
+      payload.chairpersonIds !== undefined ||
+      payload.secretaryIds !== undefined ||
+      payload.otherChairpersons !== undefined ||
+      payload.otherSecretaries !== undefined ||
+      payload.otherPresent !== undefined ||
+      payload.otherAbsent !== undefined;
+
+    if (isMinutesChanging) {
+      const historyEntry = {
+        userId,
+        action: payload.minutesStatus === 'submitted' ? 'Nộp biên bản' : 'Lưu nháp biên bản',
+        timestamp: a.updatedAt,
+        note: payload.minutesStatus === 'submitted' ? 'Cập nhật nội dung chính thức' : 'Chỉnh sửa nội dung nháp',
+      };
+      (u as any).minutesHistory = [...(found.minutesHistory || []), historyEntry];
+    }
 
     const updated = await this.repository.update(meetingId, u);
     if (!updated) throw ApiError.notFound('Không thể cập nhật lịch họp');

@@ -99,17 +99,47 @@ export default defineSchema({
     required: false,
     maxLength: 20000,
   },
-  chairpersonId: {
-    type: 'number',
-    description: 'ID người chủ trì cuộc họp.',
+  chairpersonIds: {
+    type: 'array',
+    description: 'Danh sách ID người chủ trì.',
+    items: { type: 'number' },
     required: false,
-    foreignKey: 'users',
+    default: [],
   },
-  secretaryId: {
-    type: 'number',
-    description: 'ID thư ký ghi biên bản.',
+  otherChairpersons: {
+    type: 'array',
+    description: 'Danh sách tên người chủ trì khác (khách mời).',
+    items: { type: 'string' },
     required: false,
-    foreignKey: 'users',
+    default: [],
+  },
+  secretaryIds: {
+    type: 'array',
+    description: 'Danh sách ID thư ký ghi biên bản.',
+    items: { type: 'number' },
+    required: false,
+    default: [],
+  },
+  otherSecretaries: {
+    type: 'array',
+    description: 'Danh sách tên thư ký khác (khách mời).',
+    items: { type: 'string' },
+    required: false,
+    default: [],
+  },
+  otherPresent: {
+    type: 'array',
+    description: 'Danh sách thành phần tham dự khác (khách mời).',
+    items: { type: 'string' },
+    required: false,
+    default: [],
+  },
+  otherAbsent: {
+    type: 'array',
+    description: 'Danh sách thành phần vắng mặt khác (khách mời vắng).',
+    items: { type: 'string' },
+    required: false,
+    default: [],
   },
   opinions: {
     type: 'string',
@@ -129,5 +159,20 @@ export default defineSchema({
     enum: ['none', 'draft', 'submitted'],
     required: false,
     default: 'none',
+  },
+  minutesHistory: {
+    type: 'array',
+    description: 'Lịch sử chỉnh sửa biên bản cuộc họp.',
+    items: {
+      type: 'object',
+      properties: {
+        userId: { type: 'number', required: true },
+        action: { type: 'string', required: true },
+        timestamp: { type: 'date', required: true },
+        note: { type: 'string', required: false },
+      },
+    },
+    required: false,
+    default: [],
   },
 });
