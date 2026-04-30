@@ -6,10 +6,10 @@ const workbook = XLSX.readFile(filePath);
 
 console.log('Sheet Names:', workbook.SheetNames);
 
-workbook.SheetNames.forEach(sheetName => {
+workbook.SheetNames.forEach((sheetName) => {
   const worksheet = workbook.Sheets[sheetName];
   const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-  
+
   console.log(`\n--- Sheet: ${sheetName} ---`);
   data.forEach((row, index) => {
     const rowStr = JSON.stringify(row);
