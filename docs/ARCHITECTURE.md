@@ -7,6 +7,8 @@ Tài liệu này là bản đồ tổng thể về kiến trúc hệ thống c�
 | Tài liệu                                                | Nội dung chi tiết                                          |
 | :------------------------------------------------------ | :--------------------------------------------------------- |
 | [📂 Database Design](./DATABASE_DESIGN.md)              | Sơ đồ ERD, Schemas, Indexing và chiến lược MongoDB.        |
+| [📂 Dir Overview](./DIRECTORY_OVERVIEW.md)              | Tóm tắt cấu trúc thư mục & vai trò module.                 |
+| [📄 Full Spec](./PROJECT_STRUCTURE.md)                  | Đặc tả chi tiết đến từng tệp tin của hệ thống.             |
 | [🔒 Security Protocol](./SECURITY_PROTOCOL.md)          | JWT, RBAC, Data Protection và Nhật ký bảo mật.             |
 | [🛠️ Design Patterns](./DESIGN_PATTERNS.md)              | Repository/Service Pattern, Base Classes và tính đóng gói. |
 | [⚡ Real-time Architecture](./REALTIME_ARCHITECTURE.md) | Socket.io, Rooms, Namespaces và Event handling.            |

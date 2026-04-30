@@ -12,18 +12,31 @@ Hệ thống Backend quản lý toàn diện cho tổ chức, được xây dự
 
 Dự án được thiết kế theo mô hình **Service-Repository Pattern** kết hợp với **Module-based Structure**. Mỗi tính năng nghiệp vụ được đóng gói hoàn chỉnh trong một thư mục module riêng biệt.
 
-### 📂 Cấu trúc thư mục tóm tắt:
+### 📂 Cấu trúc thư mục (Project Structure)
 
 ```text
-src/
-├── modules/      # Logic nghiệp vụ chia theo module (Auth, Duty, Meetings,...)
-├── shared/       # Các lớp cơ sở (BaseController, BaseRepository,...)
-├── middleware/   # Bộ lọc bảo mật và xử lý phản hồi
-├── routes/       # Đăng ký tập trung tất cả các API endpoints
-└── utils/        # Công cụ hỗ trợ (Swagger, Logger, Helpers)
+base-backend/
+├── src/                        # Thư mục mã nguồn chính
+│   ├── server.ts               # Khởi tạo Express & Middleware
+│   ├── routes/                 # Điểm tập kết các route toàn hệ thống
+│   ├── middleware/             # Bộ lọc bảo mật (Auth, RBAC, Error handling)
+│   ├── modules/                # Logic nghiệp vụ chia theo Module (Auth, Users, Duty...)
+│   ├── shared/                 # Hạ tầng dùng chung (Base classes, Shared logic)
+│   ├── types/                  # Định nghĩa kiểu dữ liệu TypeScript
+│   ├── utils/                  # Tiện ích (Swagger, Logger, Helpers)
+│   └── database/               # Cấu hình kết nối Database
+├── docs/                       # Hệ thống tài liệu kỹ thuật chuyên sâu
+├── index.ts                    # Entrypoint ứng dụng
+└── .env                        # Biến môi trường
 ```
 
-_Xem chi tiết tại: [📄 Project Structure](./docs/PROJECT_STRUCTURE.md)_
+#### Phân tích các phân khu chính:
+
+- **`src/modules/`**: Trái tim của hệ thống, nơi áp dụng tính đóng gói. Mỗi module chứa đầy đủ Controller, Service, Repository và Schema riêng.
+- **`src/shared/`**: Chứa các lớp Base giúp chuẩn hóa toàn bộ mã nguồn và giảm thiểu lặp code.
+- **`src/middleware/`**: Hệ thống phòng vệ đa tầng, đảm bảo mọi request đều được kiểm tra an toàn.
+
+_Xem đặc tả chi tiết từng tệp tin tại: [📄 Full Project Spec](./docs/PROJECT_STRUCTURE.md)_
 
 ---
 
@@ -34,7 +47,8 @@ _Xem chi tiết tại: [📄 Project Structure](./docs/PROJECT_STRUCTURE.md)_
 | Tài liệu                                        | Nội dung                                       |
 | :---------------------------------------------- | :--------------------------------------------- |
 | [🏗️ Architecture](./docs/ARCHITECTURE.md)       | Bản đồ kiến trúc hệ thống tổng thể.            |
-| [📂 Structure](./docs/PROJECT_STRUCTURE.md)     | Chi tiết sơ đồ thư mục và vai trò các tệp tin. |
+| [📂 Structure](./docs/DIRECTORY_OVERVIEW.md)    | Tóm tắt cấu trúc thư mục & vai trò module.     |
+| [📄 Full Spec](./docs/PROJECT_STRUCTURE.md)     | Đặc tả chi tiết đến từng tệp tin của hệ thống. |
 | [🗄️ Database](./docs/DATABASE_DESIGN.md)        | Sơ đồ ERD và chiến lược lưu trữ dữ liệu.       |
 | [🔒 Security](./docs/SECURITY_PROTOCOL.md)      | Cơ chế bảo mật JWT, RBAC và bảo vệ dữ liệu.    |
 | [🛠️ Patterns](./docs/DESIGN_PATTERNS.md)        | Các mẫu thiết kế và tiêu chuẩn lập trình.      |
@@ -65,34 +79,95 @@ _Xem chi tiết tại: [📄 Project Structure](./docs/PROJECT_STRUCTURE.md)_
 
 ---
 
-## 🚀 Hướng dẫn khởi chạy
+## 🛠️ Hướng dẫn cài đặt (Installation)
 
-### Yêu cầu hệ thống:
+### 1. Yêu cầu hệ thống
 
-- Node.js >= 16.x
-- MongoDB (Local hoặc Atlas)
+- **Node.js**: Phiên bản 18.x trở lên.
+- **Package Manager**: npm hoặc yarn.
+- **Cơ sở dữ liệu**: MongoDB (Local hoặc Atlas) hoặc chế độ JSON (chỉ dùng cho Dev).
 
-### Các bước cài đặt:
+### 2. Các bước thiết lập
 
-1. **Cài đặt dependencies:**
+```bash
+# Clone dự án
+git clone <your-repo-url>
+cd Base/Backend
 
+# Cài đặt thư viện
+npm install
+
+# Cấu hình môi trường
+cp .env.example .env
+```
+
+---
+
+## ⚙️ Biến môi trường (`.env`)
+
+Bạn cần cấu hình các tham số trong file `.env` để hệ thống hoạt động chính xác:
+
+| Biến                          | Mô tả                                              | Mặc định               |
+| :---------------------------- | :------------------------------------------------- | :--------------------- |
+| **Server**                    |                                                    |                        |
+| `PORT`                        | Cổng lắng nghe của Server.                         | `3000`                 |
+| `LOG_LEVEL`                   | Mức độ ghi log (`info`, `error`, `debug`).         | `info`                 |
+| `NODE_ENV`                    | Môi trường chạy (`development` / `production`).    | `development`          |
+| **Authentication**            |                                                    |                        |
+| `JWT_SECRET`                  | Khóa bí mật để ký Access Token (Cần > 32 ký tự).   | _(Bắt buộc)_           |
+| `JWT_EXPIRE`                  | Thời hạn của Access Token.                         | `30d`                  |
+| `JWT_REFRESH_SECRET`          | Khóa bí mật cho Refresh Token.                     | _(Bắt buộc)_           |
+| `JWT_REFRESH_EXPIRE`          | Thời hạn của Refresh Token.                        | `30d`                  |
+| `OTP_SENDER_NAME`             | Tên người gửi hiển thị trong Email OTP.            | `Hệ thống TCNS`        |
+| `OTP_EXPIRE_MINUTES`          | Thời gian hết hạn của mã OTP (phút).               | `10`                   |
+| `OTP_MAX_VERIFY_ATTEMPTS`     | Số lần thử nhập sai OTP tối đa.                    | `5`                    |
+| `OTP_RESEND_COOLDOWN_SECONDS` | Thời gian chờ giữa 2 lần gửi lại OTP.              | `60`                   |
+| **Rate Limiting**             |                                                    |                        |
+| `AUTH_RATE_LIMIT_ENABLED`     | Bật/tắt giới hạn tần suất đăng nhập.               | `false`                |
+| `AUTH_RATE_LIMIT_WINDOW_MS`   | Khoảng thời gian giới hạn (ms).                    | `900000`               |
+| `AUTH_RATE_LIMIT_MAX`         | Số lần yêu cầu tối đa trong khoảng thời gian trên. | `5`                    |
+| **Email Gateway**             |                                                    |                        |
+| `OTP_EMAIL_API_URL`           | URL của dịch vụ gửi Email OTP.                     | _(Tùy chọn)_           |
+| `OTP_EMAIL_API_TOKEN`         | Token xác thực của dịch vụ Email.                  | _(Tùy chọn)_           |
+| **Storage Keys**              | (Cấu hình key lưu trữ phía Client)                 |                        |
+| `STORAGE_TOKEN_KEY`           | Tên key lưu Access Token.                          | `base_token`           |
+| `STORAGE_USER_KEY`            | Tên key lưu thông tin User.                        | `base_user`            |
+| `STORAGE_REFRESH_TOKEN_KEY`   | Tên key lưu Refresh Token.                         | `base_refresh_token`   |
+| **Database**                  |                                                    |                        |
+| `DB_CONNECTION`               | Loại DB sử dụng (`json` hoặc `mongodb`).           | `json`                 |
+| `DATABASE_URL`                | Chuỗi kết nối MongoDB (khi dùng mongodb).          | _(Cần khi dùng Mongo)_ |
+| **Cloudinary**                | (Yêu cầu cho module Upload)                        |                        |
+| `CLOUDINARY_CLOUD_NAME`       | Tên Cloud trên Cloudinary.                         | _(Bắt buộc)_           |
+| `CLOUDINARY_API_KEY`          | API Key từ dashboard Cloudinary.                   | _(Bắt buộc)_           |
+| `CLOUDINARY_API_SECRET`       | API Secret từ dashboard Cloudinary.                | _(Bắt buộc)_           |
+| `CLOUDINARY_FOLDER`           | Thư mục lưu trữ trên Cloudinary.                   | `tcns`                 |
+| **CORS**                      |                                                    |                        |
+| `CORS_ORIGIN`                 | Danh sách domain được phép truy cập.               | `*`                    |
+| `CORS_CREDENTIALS`            | Cho phép gửi credentials qua CORS hay không.       | `false`                |
+
+---
+
+## 🚀 Khởi chạy & Vận hành
+
+### Các lệnh NPM chính:
+
+- `npm run dev`: Chạy server trong môi trường phát triển (tự động reload).
+- `npm run build`: Biên dịch TypeScript sang JavaScript.
+- `npm start`: Chạy server production sau khi build.
+- `npm run format`: Tự động định dạng code bằng Prettier.
+- `npm run lint`: Kiểm tra lỗi cú pháp và tiêu chuẩn code.
+
+### 🏁 Thiết lập dữ liệu ban đầu (Initial Setup):
+
+Sau khi cài đặt xong, bạn cần chạy các lệnh sau để khởi tạo dữ liệu:
+
+1. **Khởi tạo quyền hạn (RBAC):**
    ```bash
-   npm install
+   npx ts-node src/scripts/seed-rbac.ts
    ```
-
-2. **Cấu hình môi trường:**
-   Sao chép file `.env.example` thành `.env` và điền các thông số cần thiết (DB_URI, JWT_SECRET, CLOUDINARY_URL,...).
-
-3. **Khởi chạy môi trường Phát triển:**
-
+2. **Tạo tài khoản Admin đầu tiên:**
    ```bash
-   npm run dev
-   ```
-
-4. **Biên dịch và Chạy Production:**
-   ```bash
-   npm run build
-   npm start
+   npx ts-node src/scripts/create-user.ts
    ```
 
 ---
@@ -122,7 +197,7 @@ Hệ thống hỗ trợ tài liệu API tương tác trực tiếp qua Swagger. 
 
 ## 👥 Đóng góp
 
-Dự án được phát triển và duy trì bởi đội ngũ Project.
+Dự án được phát triển và duy trì bởi đội ngũ Project Team.
 
 ---
 
