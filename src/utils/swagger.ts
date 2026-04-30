@@ -151,7 +151,7 @@ const TAG_METADATA: Record<string, { name: string; description: string }> = {
   },
   notifications: {
     name: 'Thông báo',
-    description: 'Lấy danh sách thông báo, đánh dấu đã đọc và cập nhật cài đặt thông báo.',
+    description: 'Xem danh sách thông báo cá nhân, đánh dấu đã đọc và tùy chỉnh kênh nhận thông báo.',
   },
   duty: {
     name: 'Kíp trực',
@@ -162,40 +162,40 @@ const TAG_METADATA: Record<string, { name: string; description: string }> = {
     description: 'Quản lý bản ghi thưởng phạt và thống kê tài chính liên quan.',
   },
   meetings: {
-    name: 'Họp hành',
-    description: 'Quản lý lịch họp, xác nhận tham gia, điểm danh và biên bản họp.',
+    name: 'Lịch họp',
+    description: 'Điều hành và quản lý các cuộc họp định kỳ, điểm danh thành viên và lưu trữ biên bản họp trực tuyến.',
   },
   'bonus-campaigns': {
     name: 'ĐRL, ĐƯT',
     description: 'Quản lý đợt cộng điểm, đăng ký thành viên, xét duyệt và xuất danh sách duyệt.',
   },
-  reports: {
-    name: 'Báo cáo',
-    description: 'Tổng hợp và xuất báo cáo quản trị.',
-  },
-  'audit-logs': {
-    name: 'Audit Logs',
-    description: 'Tra cứu lịch sử tác động và thay đổi dữ liệu của người dùng.',
-  },
   'bonus-registrations': {
     name: 'Đăng ký cộng điểm',
-    description: 'Quản lý chi tiết các bản đăng ký cộng điểm của thành viên.',
+    description: 'Quản lý danh sách đăng ký cộng điểm của thành viên.',
+  },
+  'audit-logs': {
+    name: 'Audit Logs - Nhật ký hệ thống',
+    description: 'Truy vết toàn bộ các hành động tác động đến dữ liệu, đảm bảo tính minh bạch và bảo mật của hệ thống.',
+  },
+  reports: {
+    name: 'Báo cáo',
+    description: 'Công cụ tổng hợp dữ liệu thông minh và kết xuất báo cáo đa định dạng (Excel, CSV) phục vụ quản trị.',
   },
   generations: {
-    name: 'Khóa',
-    description: 'Quản lý khóa/thế hệ thành viên và khóa hiện tại.',
+    name: 'Khóa học',
+    description: 'Quản lý thông tin các khóa sinh viên và thiết lập khóa hiện tại cho các nghiệp vụ liên quan.',
+  },
+  semesters: {
+    name: 'Kỳ học',
+    description: 'Thiết lập và quản lý các học kỳ, đảm bảo dữ liệu luôn được phân tách theo đúng mốc thời gian.',
   },
   roles: {
     name: 'Vai trò',
-    description: 'Quản lý vai trò và tập quyền của hệ thống.',
+    description: 'Hệ thống quản lý vai trò dựa trên quyền hạn (RBAC), kiểm soát truy cập phân tầng chặt chẽ.',
   },
   permissions: {
-    name: 'Quyền',
-    description: 'Quản lý danh mục permission dùng trong RBAC.',
-  },
-  semesters: {
-    name: 'Học kỳ',
-    description: 'Quản lý học kỳ và học kỳ hiện tại.',
+    name: 'Quyền hạn',
+    description: 'Tra cứu danh sách các quyền hạn có sẵn trong hệ thống.',
   },
 };
 
@@ -874,6 +874,7 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
   },
   'GET /users/{id}/activity': {
     summary: 'Lấy lịch sử hoạt động người dùng',
+    description: 'Truy vấn nhật ký các hoạt động chi tiết của một người dùng cụ thể dựa trên ID.',
     protected: true,
   },
   'GET /users/{id}': {
@@ -884,10 +885,12 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
 
   'GET /notifications/settings': {
     summary: 'Lấy cài đặt thông báo',
+    description: 'Lấy cấu hình nhận thông báo (Email, Hệ thống) của người dùng hiện tại.',
     protected: true,
   },
   'PUT /notifications/settings': {
     summary: 'Cập nhật cài đặt thông báo',
+    description: 'Thay đổi tùy chọn nhận thông báo cho từng loại sự kiện khác nhau.',
     protected: true,
     requestBody: buildSchemaRefBody('NotificationSettingsUpdateRequest', false),
   },
@@ -898,18 +901,22 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
   },
   'PATCH /notifications/{id}/read': {
     summary: 'Đánh dấu thông báo đã đọc',
+    description: 'Cập nhật trạng thái đã đọc cho một thông báo cụ thể của người dùng.',
     protected: true,
   },
   'PATCH /notifications/read-all': {
     summary: 'Đánh dấu tất cả thông báo đã đọc',
+    description: 'Cập nhật trạng thái đã đọc cho toàn bộ danh sách thông báo chưa đọc của người dùng hiện tại.',
     protected: true,
   },
   'DELETE /notifications/{id}': {
     summary: 'Xóa thông báo',
+    description: 'Gỡ bỏ một thông báo cụ thể khỏi danh sách của người dùng.',
     protected: true,
   },
   'DELETE /notifications': {
     summary: 'Xóa tất cả thông báo',
+    description: 'Xóa sạch toàn bộ lịch sử thông báo của người dùng hiện tại.',
     protected: true,
   },
 
@@ -1036,6 +1043,7 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
   },
   'GET /duty/stats/summary': {
     summary: 'Thống kê kíp trực',
+    description: 'Lấy dữ liệu tổng hợp về số ca trực, vi phạm và hiệu suất của thành viên.',
     protected: true,
     permission: 'duty:view',
   },
@@ -1156,41 +1164,48 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
 
   'GET /meetings': {
     summary: 'Lấy danh sách lịch họp',
+    description: 'Truy vấn danh sách các cuộc họp thành viên tham gia hoặc quản lý.',
     protected: true,
-    permission: 'duty:view',
+    permission: 'meetings:view',
   },
   'POST /meetings': {
     summary: 'Tạo lịch họp mới',
+    description: 'Tạo cuộc họp mới và tự động gửi thông báo cho các thành viên được mời.',
     protected: true,
-    permission: 'duty:manage',
+    permission: 'meetings:manage',
     requestBody: buildSchemaRefBody('MeetingCreateRequest'),
   },
   'GET /meetings/{id}': {
     summary: 'Lấy chi tiết cuộc họp',
+    description: 'Xem nội dung chi tiết, biên bản họp và danh sách điểm danh.',
     protected: true,
-    permission: 'duty:view',
+    permission: 'meetings:view',
   },
   'PUT /meetings/{id}': {
     summary: 'Cập nhật thông tin cuộc họp',
+    description: 'Thay đổi thời gian, địa điểm hoặc nội dung cuộc họp.',
     protected: true,
-    permission: 'duty:manage',
+    permission: 'meetings:manage',
     requestBody: buildSchemaRefBody('MeetingUpdateRequest', false),
   },
   'DELETE /meetings/{id}': {
     summary: 'Xóa cuộc họp',
+    description: 'Xóa vĩnh viễn hoặc hủy một lịch họp đã lên lịch.',
     protected: true,
-    permission: 'duty:manage',
+    permission: 'meetings:manage',
   },
   'PATCH /meetings/{id}/rsvp': {
     summary: 'Xác nhận tham gia họp',
+    description: 'Người dùng thực hiện xác nhận có tham gia họp hay không.',
     protected: true,
     requestBody: buildSchemaRefBody('MeetingRsvpRequest'),
   },
 
   'GET /bonus-campaigns': {
     summary: 'Danh sách đợt cộng điểm',
+    description: 'Lấy danh sách các đợt cộng điểm rèn luyện hoặc học bổng. Có thể lọc theo các đợt đang mở đăng ký.',
     protected: true,
-    permission: 'duty:view',
+    permission: 'bonus-campaigns:view',
     parameters: [
       {
         name: 'openOnly',
@@ -1202,41 +1217,49 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
   },
   'POST /bonus-campaigns': {
     summary: 'Tạo đợt cộng điểm mới',
+    description:
+      'Thiết lập một đợt cộng điểm mới cho một học kỳ cụ thể, bao gồm thời gian bắt đầu và kết thúc đăng ký.',
     protected: true,
-    permission: 'duty:manage',
+    permission: 'bonus-campaigns:manage',
     requestBody: buildSchemaRefBody('BonusCampaignCreateRequest'),
   },
   'GET /bonus-campaigns/{id}': {
     summary: 'Chi tiết đợt cộng điểm',
+    description: 'Xem thông tin cấu hình và trạng thái của một đợt cộng điểm cụ thể.',
     protected: true,
-    permission: 'duty:view',
+    permission: 'bonus-campaigns:view',
   },
   'PUT /bonus-campaigns/{id}': {
     summary: 'Cập nhật đợt cộng điểm',
+    description: 'Sửa đổi thông tin cấu hình hoặc điều chỉnh thời hạn của đợt cộng điểm.',
     protected: true,
-    permission: 'duty:manage',
+    permission: 'bonus-campaigns:manage',
     requestBody: buildSchemaRefBody('BonusCampaignUpdateRequest'),
   },
   'DELETE /bonus-campaigns/{id}': {
     summary: 'Xóa đợt cộng điểm',
+    description: 'Xóa đợt cộng điểm khỏi hệ thống. Lưu ý: Thao tác này có thể ảnh hưởng đến các bản đăng ký hiện có.',
     protected: true,
-    permission: 'duty:manage',
+    permission: 'bonus-campaigns:manage',
   },
   'PATCH /bonus-campaigns/{id}/register': {
     summary: 'Đăng ký tham gia đợt cộng điểm',
+    description: 'Người dùng hiện tại thực hiện gửi yêu cầu đăng ký tham gia vào đợt cộng điểm đang mở.',
     protected: true,
-    permission: 'duty:view',
+    permission: 'bonus-campaigns:view',
   },
   'POST /bonus-campaigns/{id}/review': {
     summary: 'Xét duyệt danh sách đăng ký',
+    description: 'Quản trị viên thực hiện phê duyệt hoặc từ chối hàng loạt các yêu cầu cộng điểm trong một đợt.',
     protected: true,
-    permission: 'duty:manage',
+    permission: 'bonus-campaigns:review',
     requestBody: buildSchemaRefBody('BonusCampaignReviewRequest'),
   },
   'GET /bonus-campaigns/{id}/export': {
     summary: 'Xuất Excel danh sách đã duyệt',
+    description: 'Trích xuất danh sách thành viên đã được phê duyệt cộng điểm ra file Excel để báo cáo.',
     protected: true,
-    permission: 'duty:manage',
+    permission: 'bonus-campaigns:manage',
   },
 
   'GET /audit-logs': {
@@ -1269,11 +1292,14 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
 
   'GET /reports/overview': {
     summary: 'Lấy báo cáo tổng quan',
+    description:
+      'Tổng hợp số liệu thống kê từ nhiều module như Nhân sự, Trực nhật, Cộng điểm để đưa ra cái nhìn tổng thể.',
     protected: true,
     permission: 'reports:view',
   },
   'GET /reports/export': {
     summary: 'Xuất báo cáo tổng quan',
+    description: 'Kết xuất báo cáo tổng quan ra các định dạng tệp tin như Excel hoặc CSV.',
     protected: true,
     permission: 'reports:export',
     parameters: [
@@ -1297,128 +1323,151 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
   },
 
   'GET /generations': {
+    description: 'Lấy danh sách các khóa học/thế hệ thành viên (K65, K66, v.v.).',
     summary: 'Danh sách khóa',
     protected: true,
     permission: 'generations:manage',
   },
   'GET /generations/{id}': {
+    description: 'Xem thông tin chi tiết của một khóa học cụ thể.',
     summary: 'Chi tiết khóa',
     protected: true,
     permission: 'generations:manage',
   },
   'POST /generations': {
+    description: 'Khai báo một khóa học mới vào hệ thống.',
     summary: 'Tạo khóa',
     protected: true,
     permission: 'generations:manage',
     requestBody: buildSchemaRefBody('Generations'),
   },
   'PUT /generations/{id}': {
+    description: 'Thay đổi thông tin tên hoặc mô tả của khóa học.',
     summary: 'Cập nhật khóa',
     protected: true,
     permission: 'generations:manage',
     requestBody: buildSchemaRefBody('Generations', false),
   },
   'DELETE /generations/{id}': {
+    description: 'Loại bỏ một khóa học khỏi hệ thống quản lý.',
     summary: 'Xóa khóa',
     protected: true,
     permission: 'generations:manage',
   },
   'PATCH /generations/{id}/set-current': {
+    description: 'Thiết lập khóa này làm khóa mặc định cho các bộ lọc và thống kê.',
     summary: 'Đặt khóa hiện tại',
     protected: true,
     permission: 'generations:manage',
   },
 
   'GET /roles': {
+    description: 'Truy vấn danh sách các vai trò (Roles) trong hệ thống cùng các quyền hạn đi kèm.',
     summary: 'Danh sách vai trò',
     protected: true,
     permission: 'system:manage_roles',
   },
   'GET /roles/{id}': {
+    description: 'Xem thông tin chi tiết và danh sách quyền hạn của một vai trò cụ thể.',
     summary: 'Chi tiết vai trò',
     protected: true,
     permission: 'system:manage_roles',
   },
   'POST /roles': {
+    description: 'Tạo một vai trò mới và gán danh sách các quyền hạn (Permissions) ban đầu.',
     summary: 'Tạo vai trò',
     protected: true,
     permission: 'system:manage_roles',
     requestBody: buildSchemaRefBody('Roles'),
   },
   'PUT /roles/{id}': {
+    description: 'Thay đổi tên hoặc cập nhật lại toàn bộ danh sách quyền hạn của vai trò.',
     summary: 'Cập nhật vai trò',
     protected: true,
     permission: 'system:manage_roles',
     requestBody: buildSchemaRefBody('Roles', false),
   },
   'PATCH /roles/{id}': {
+    description: 'Cập nhật một vài trường thông tin của vai trò mà không làm thay đổi các trường khác.',
     summary: 'Cập nhật một phần vai trò',
     protected: true,
     permission: 'system:manage_roles',
     requestBody: buildSchemaRefBody('Roles', false),
   },
   'DELETE /roles/{id}': {
+    description: 'Xóa một vai trò khỏi hệ thống. Lưu ý: Cần kiểm tra xem có người dùng nào đang gán vai trò này không.',
     summary: 'Xóa vai trò',
     protected: true,
     permission: 'system:manage_roles',
   },
 
   'GET /permissions': {
+    description: 'Lấy danh sách tất cả các quyền hạn (Permissions) khả dụng trong hệ thống.',
     summary: 'Danh sách quyền',
     protected: true,
     permission: 'system:manage_roles',
   },
   'GET /permissions/{id}': {
+    description: 'Xem thông tin chi tiết của một quyền hạn cụ thể.',
     summary: 'Chi tiết quyền',
     protected: true,
     permission: 'system:manage_roles',
   },
   'POST /permissions': {
+    description: 'Khai báo một quyền hạn mới vào hệ thống.',
     summary: 'Tạo quyền',
     protected: true,
     permission: 'system:manage_roles',
     requestBody: buildSchemaRefBody('Permissions'),
   },
   'PUT /permissions/{id}': {
+    description: 'Sửa đổi tên hoặc mô tả của quyền hạn.',
     summary: 'Cập nhật quyền',
     protected: true,
     permission: 'system:manage_roles',
     requestBody: buildSchemaRefBody('Permissions', false),
   },
   'DELETE /permissions/{id}': {
+    description: 'Xóa một quyền hạn khỏi hệ thống.',
     summary: 'Xóa quyền',
     protected: true,
     permission: 'system:manage_roles',
   },
 
   'GET /semesters': {
+    description: 'Lấy danh sách tất cả các học kỳ đã khai báo trong hệ thống.',
     summary: 'Danh sách học kỳ',
     protected: true,
     permission: 'settings:view',
   },
   'GET /semesters/{id}': {
+    description: 'Xem thông tin chi tiết của một học kỳ cụ thể.',
     summary: 'Chi tiết học kỳ',
     protected: true,
     permission: 'settings:view',
   },
   'POST /semesters': {
+    description: 'Khai báo một học kỳ mới. Chỉ một học kỳ có thể được đặt là hiện tại.',
     summary: 'Tạo học kỳ',
     protected: true,
     permission: 'settings:manage',
     requestBody: buildSchemaRefBody('Semesters'),
   },
   'PUT /semesters/{id}': {
+    description: 'Sửa đổi thông tin tên hoặc thời gian của học kỳ.',
     summary: 'Cập nhật học kỳ',
     protected: true,
     permission: 'settings:manage',
     requestBody: buildSchemaRefBody('Semesters', false),
   },
   'DELETE /semesters/{id}': {
+    description: 'Xóa học kỳ khỏi hệ thống. Thao tác này yêu cầu quyền quản trị.',
     summary: 'Xóa học kỳ',
     protected: true,
     permission: 'settings:manage',
   },
   'PATCH /semesters/{id}/set-current': {
+    description: 'Thiết lập học kỳ này làm học kỳ đang diễn ra cho toàn hệ thống.',
     summary: 'Đặt học kỳ hiện tại',
     protected: true,
     permission: 'settings:manage',
