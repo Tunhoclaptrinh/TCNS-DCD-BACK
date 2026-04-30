@@ -11,11 +11,7 @@ function ensureValidRequest(req) {
 }
 
 class AuthController extends BaseController {
-  register = this.handle(async (req, res) => {
-    ensureValidRequest(req);
-    const data = await authService.register(req.body);
-    this.created(res, data);
-  });
+  // Public register is disabled.
 
   login = this.handle(async (req, res) => {
     ensureValidRequest(req);

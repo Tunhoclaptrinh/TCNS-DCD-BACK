@@ -6,7 +6,6 @@ export type NormalizedError = {
   statusCode: number;
   message: string;
   errors?: unknown;
-  isOperational: boolean;
   type: string;
 };
 
@@ -91,7 +90,6 @@ export function transformError(error: unknown): NormalizedError {
       statusCode: error.statusCode,
       message: error.message,
       errors: error.errors,
-      isOperational: true,
       type: error.name,
     };
   }
@@ -101,7 +99,6 @@ export function transformError(error: unknown): NormalizedError {
       statusCode: 400,
       message: 'Dữ liệu không hợp lệ',
       errors: buildValidationFieldErrors(error),
-      isOperational: true,
       type: error.name,
     };
   }
@@ -112,7 +109,6 @@ export function transformError(error: unknown): NormalizedError {
       statusCode: 400,
       message: `Giá trị '${String(error.value)}' không hợp lệ cho trường '${toFieldLabel(field)}'`,
       errors: [{ field, message: error.message }],
-      isOperational: true,
       type: error.name,
     };
   }
@@ -124,7 +120,6 @@ export function transformError(error: unknown): NormalizedError {
         statusCode: 409,
         message: duplicate.message,
         errors: duplicate.errors,
-        isOperational: true,
         type: String(error.name || 'MongoServerError'),
       };
     }
@@ -133,7 +128,6 @@ export function transformError(error: unknown): NormalizedError {
       return {
         statusCode: 503,
         message: 'Dịch vụ cơ sở dữ liệu tạm thời không khả dụng',
-        isOperational: true,
         type: String(error.name || 'MongoConnectionError'),
       };
     }
@@ -142,7 +136,6 @@ export function transformError(error: unknown): NormalizedError {
       return {
         statusCode: 400,
         message: 'Nội dung JSON không hợp lệ',
-        isOperational: true,
         type: 'SyntaxError',
       };
     }
@@ -151,7 +144,6 @@ export function transformError(error: unknown): NormalizedError {
       return {
         statusCode: 400,
         message: mapMulterMessage(error.code),
-        isOperational: true,
         type: String(error.name || 'MulterError'),
       };
     }
@@ -160,7 +152,6 @@ export function transformError(error: unknown): NormalizedError {
       return {
         statusCode: 401,
         message: 'Token không hợp lệ hoặc đã hết hạn',
-        isOperational: true,
         type: String(error.name || 'JsonWebTokenError'),
       };
     }
@@ -170,7 +161,6 @@ export function transformError(error: unknown): NormalizedError {
         statusCode: error.statusCode,
         message: typeof error.message === 'string' ? error.message : 'Yêu cầu không thành công',
         errors: error.errors,
-        isOperational: true,
         type: String(error.name || 'Error'),
       };
     }
@@ -179,8 +169,7 @@ export function transformError(error: unknown): NormalizedError {
   if (error instanceof Error) {
     return {
       statusCode: 500,
-      message: error.message || 'Internal Server Error',
-      isOperational: false,
+      message: 'Internal Server Error',
       type: error.name,
     };
   }
@@ -188,7 +177,6 @@ export function transformError(error: unknown): NormalizedError {
   return {
     statusCode: 500,
     message: 'Internal Server Error',
-    isOperational: false,
     type: 'UnknownError',
   };
 }

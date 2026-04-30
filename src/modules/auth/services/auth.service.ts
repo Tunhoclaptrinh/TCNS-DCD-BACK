@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import passwordResetService from '@modules/auth/services/password-reset.service';
+// import generationsRepository from '@modules/generations/repositories/generations.repository';
 import usersRepository from '@modules/users/repositories/users.repository';
 import ApiError from '@utils/api-error';
 import { comparePassword, generateRefreshToken, generateToken, hashPassword, sanitizeUser } from '@utils/helpers';
@@ -25,33 +26,70 @@ class AuthService {
     };
   }
 
-  async register(payload: AnyRecord) {
-    const { email, password, name, phone, address } = payload;
-    const normalizedEmail = this.normalizeEmail(email);
+  // async register(payload: AnyRecord) {
+  //   const { email, password, name, phone, address } = payload;
+  //   const normalizedEmail = this.normalizeEmail(email);
+  //   const fullName = String(name || '').trim();
 
-    const existingUser = await this.userRepository.findByEmail(normalizedEmail);
-    if (existingUser) {
-      throw ApiError.badRequest('Email already registered');
-    }
-    console.log(payload);
+  //   const missingFields = [
+  //     !normalizedEmail ? { field: 'email', message: 'email is required' } : null,
+  //     !password ? { field: 'password', message: 'password is required' } : null,
+  //     !fullName ? { field: 'name', message: 'name is required' } : null,
+  //   ].filter(Boolean);
 
-    const hashedPassword = await hashPassword(password);
-    const now = new Date().toISOString();
-    const user = await this.userRepository.create({
-      email: normalizedEmail,
-      password: hashedPassword,
-      name,
-      phone,
-      address: address || '',
-      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
-      role: 'customer',
-      isActive: true,
-      createdAt: now,
-      updatedAt: now,
-    });
+  //   if (missingFields.length > 0) {
+  //     throw ApiError.badRequest('Validation failed', missingFields);
+  //   }
 
-    return await this.buildAuthResponse(user);
-  }
+  //   const existingUser = await this.userRepository.findByEmail(normalizedEmail);
+  //   if (existingUser) {
+  //     throw ApiError.badRequest('Email already registered');
+  //   }
+
+  //   const nameParts = fullName.split(/\s+/);
+  //   const firstName = payload.firstName || nameParts.pop() || fullName;
+  //   const lastName = payload.lastName || nameParts.join(' ') || firstName;
+
+  //   let generation: AnyRecord | null | undefined;
+  //   if (payload.generationId !== undefined && payload.generationId !== null && payload.generationId !== '') {
+  //     const generationId = Number(payload.generationId);
+  //     if (!Number.isInteger(generationId) || generationId <= 0) {
+  //       throw ApiError.badRequest('generationId must be a number');
+  //     }
+
+  //     generation = await generationsRepository.findById(generationId);
+  //     if (!generation) throw ApiError.badRequest('generationId không tồn tại');
+  //   } else {
+  //     generation =
+  //       (await generationsRepository.findOne({ isCurrent: true })) ||
+  //       (await generationsRepository.findOne({ isActive: true })) ||
+  //       (await generationsRepository.findAll())[0];
+  //   }
+
+  //   if (!generation) {
+  //     throw ApiError.badRequest('Không tìm thấy khóa để đăng ký tài khoản');
+  //   }
+
+  //   const hashedPassword = await hashPassword(password);
+  //   const now = new Date().toISOString();
+  //   const user = await this.userRepository.create({
+  //     email: normalizedEmail,
+  //     password: hashedPassword,
+  //     name: fullName,
+  //     firstName,
+  //     lastName,
+  //     generationId: generation.id,
+  //     phone,
+  //     address: address || '',
+  //     avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=random`,
+  //     role: 'customer',
+  //     isActive: true,
+  //     createdAt: now,
+  //     updatedAt: now,
+  //   });
+
+  //   return await this.buildAuthResponse(user);
+  // }
 
   async login(payload: AnyRecord) {
     const normalizedEmail = this.normalizeEmail(payload.email);

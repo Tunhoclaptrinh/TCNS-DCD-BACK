@@ -181,14 +181,25 @@ const TAG_METADATA: Record<string, { name: string; description: string }> = {
     name: 'Đăng ký cộng điểm',
     description: 'Quản lý chi tiết các bản đăng ký cộng điểm của thành viên.',
   },
+  generations: {
+    name: 'Khóa',
+    description: 'Quản lý khóa/thế hệ thành viên và khóa hiện tại.',
+  },
+  roles: {
+    name: 'Vai trò',
+    description: 'Quản lý vai trò và tập quyền của hệ thống.',
+  },
+  permissions: {
+    name: 'Quyền',
+    description: 'Quản lý danh mục permission dùng trong RBAC.',
+  },
+  semesters: {
+    name: 'Học kỳ',
+    description: 'Quản lý học kỳ và học kỳ hiện tại.',
+  },
 };
 
 const EXTRA_SCHEMAS: AnyRecord = {
-  AuthRegisterRequest: buildObjectSchema(
-    buildPropertiesFromSchemaFields(pickFields(userSchema, ['email', 'password', 'name', 'phone', 'address'])),
-    ['email', 'password', 'name'],
-    'Dữ liệu đăng ký tài khoản mới.',
-  ),
   AuthLoginRequest: buildObjectSchema(
     {
       email: ruleToProperty(userSchema.email),
@@ -432,7 +443,7 @@ const EXTRA_SCHEMAS: AnyRecord = {
     buildPropertiesFromSchemaFields(
       omitFields(bonusCampaignSchema, ['createdBy', 'updatedBy', 'maDot', 'createdAt', 'updatedAt']),
     ),
-    ['maKhoa', 'thoiGianBatDau', 'thoiGianKetThuc'],
+    ['semesterId', 'thoiGianBatDau', 'thoiGianKetThuc'],
     'Tạo đợt cộng điểm DRL/HB.',
   ),
   BonusCampaignUpdateRequest: buildObjectSchema(
@@ -599,15 +610,6 @@ const EXTRA_SCHEMAS: AnyRecord = {
 };
 
 const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
-  'POST /auth/register': {
-    summary: 'Đăng ký tài khoản',
-    description: 'Tạo tài khoản người dùng mới bằng email và mật khẩu.',
-    requestBody: buildSchemaRefBody('AuthRegisterRequest'),
-    responses: {
-      201: { description: 'Đăng ký thành công' },
-      400: { description: 'Email đã tồn tại hoặc dữ liệu không hợp lệ' },
-    },
-  },
   'POST /auth/login': {
     summary: 'Đăng nhập',
     description: 'Xác thực người dùng và trả về access token, refresh token cùng danh sách quyền.',
@@ -1239,7 +1241,10 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
 
   'GET /audit-logs': {
     summary: 'Danh sách nhật ký hệ thống',
+    description:
+      'Tra cứu audit log. Có thể lọc theo `userId`, `action`, `module`, `resourceId`, `status`, hoặc khoảng thời gian bằng `createdAt_gte` và `createdAt_lte`. Mặc định API populate quan hệ `user`.',
     protected: true,
+    permission: 'system:manage',
   },
 
   'GET /bonus-registrations': {
@@ -1290,6 +1295,134 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
       },
     },
   },
+
+  'GET /generations': {
+    summary: 'Danh sách khóa',
+    protected: true,
+    permission: 'generations:manage',
+  },
+  'GET /generations/{id}': {
+    summary: 'Chi tiết khóa',
+    protected: true,
+    permission: 'generations:manage',
+  },
+  'POST /generations': {
+    summary: 'Tạo khóa',
+    protected: true,
+    permission: 'generations:manage',
+    requestBody: buildSchemaRefBody('Generations'),
+  },
+  'PUT /generations/{id}': {
+    summary: 'Cập nhật khóa',
+    protected: true,
+    permission: 'generations:manage',
+    requestBody: buildSchemaRefBody('Generations', false),
+  },
+  'DELETE /generations/{id}': {
+    summary: 'Xóa khóa',
+    protected: true,
+    permission: 'generations:manage',
+  },
+  'PATCH /generations/{id}/set-current': {
+    summary: 'Đặt khóa hiện tại',
+    protected: true,
+    permission: 'generations:manage',
+  },
+
+  'GET /roles': {
+    summary: 'Danh sách vai trò',
+    protected: true,
+    permission: 'system:manage_roles',
+  },
+  'GET /roles/{id}': {
+    summary: 'Chi tiết vai trò',
+    protected: true,
+    permission: 'system:manage_roles',
+  },
+  'POST /roles': {
+    summary: 'Tạo vai trò',
+    protected: true,
+    permission: 'system:manage_roles',
+    requestBody: buildSchemaRefBody('Roles'),
+  },
+  'PUT /roles/{id}': {
+    summary: 'Cập nhật vai trò',
+    protected: true,
+    permission: 'system:manage_roles',
+    requestBody: buildSchemaRefBody('Roles', false),
+  },
+  'PATCH /roles/{id}': {
+    summary: 'Cập nhật một phần vai trò',
+    protected: true,
+    permission: 'system:manage_roles',
+    requestBody: buildSchemaRefBody('Roles', false),
+  },
+  'DELETE /roles/{id}': {
+    summary: 'Xóa vai trò',
+    protected: true,
+    permission: 'system:manage_roles',
+  },
+
+  'GET /permissions': {
+    summary: 'Danh sách quyền',
+    protected: true,
+    permission: 'system:manage_roles',
+  },
+  'GET /permissions/{id}': {
+    summary: 'Chi tiết quyền',
+    protected: true,
+    permission: 'system:manage_roles',
+  },
+  'POST /permissions': {
+    summary: 'Tạo quyền',
+    protected: true,
+    permission: 'system:manage_roles',
+    requestBody: buildSchemaRefBody('Permissions'),
+  },
+  'PUT /permissions/{id}': {
+    summary: 'Cập nhật quyền',
+    protected: true,
+    permission: 'system:manage_roles',
+    requestBody: buildSchemaRefBody('Permissions', false),
+  },
+  'DELETE /permissions/{id}': {
+    summary: 'Xóa quyền',
+    protected: true,
+    permission: 'system:manage_roles',
+  },
+
+  'GET /semesters': {
+    summary: 'Danh sách học kỳ',
+    protected: true,
+    permission: 'settings:view',
+  },
+  'GET /semesters/{id}': {
+    summary: 'Chi tiết học kỳ',
+    protected: true,
+    permission: 'settings:view',
+  },
+  'POST /semesters': {
+    summary: 'Tạo học kỳ',
+    protected: true,
+    permission: 'settings:manage',
+    requestBody: buildSchemaRefBody('Semesters'),
+  },
+  'PUT /semesters/{id}': {
+    summary: 'Cập nhật học kỳ',
+    protected: true,
+    permission: 'settings:manage',
+    requestBody: buildSchemaRefBody('Semesters', false),
+  },
+  'DELETE /semesters/{id}': {
+    summary: 'Xóa học kỳ',
+    protected: true,
+    permission: 'settings:manage',
+  },
+  'PATCH /semesters/{id}/set-current': {
+    summary: 'Đặt học kỳ hiện tại',
+    protected: true,
+    permission: 'settings:manage',
+  },
 };
 
 const LIST_ROUTE_KEYS = new Set([
@@ -1300,6 +1433,7 @@ const LIST_ROUTE_KEYS = new Set([
   'GET /duty/swaps',
   'GET /meetings',
   'GET /bonus-campaigns',
+  'GET /audit-logs',
 ]);
 
 const SUMMARY_MAP: Array<[RegExp, string, (entity: string) => string]> = [
@@ -1386,11 +1520,36 @@ function buildDefaultListParameters(routeKey: string) {
   if (!LIST_ROUTE_KEYS.has(routeKey)) return [];
 
   return [
-    { name: '_page', in: 'query', schema: { type: 'integer', default: 1 }, description: 'Trang hiện tại.' },
-    { name: '_limit', in: 'query', schema: { type: 'integer', default: 10 }, description: 'Số bản ghi mỗi trang.' },
-    { name: '_sort', in: 'query', schema: { type: 'string' }, description: 'Field sắp xếp.' },
-    { name: '_order', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] }, description: 'Thứ tự sắp xếp.' },
-    { name: 'q', in: 'query', schema: { type: 'string' }, description: 'Từ khóa tìm kiếm.' },
+    {
+      name: '_page',
+      in: 'query',
+      schema: { type: 'integer', default: 1, minimum: 1 },
+      description: 'Trang hiện tại. Alias: `page`.',
+    },
+    {
+      name: '_limit',
+      in: 'query',
+      schema: { type: 'integer', default: 10, minimum: 1, maximum: 1000 },
+      description: 'Số bản ghi mỗi trang. Alias: `limit`.',
+    },
+    {
+      name: '_sort',
+      in: 'query',
+      schema: { type: 'string', example: 'createdAt' },
+      description: 'Field sắp xếp. Có thể truyền nhiều field, cách nhau bằng dấu phẩy. Alias: `sort`.',
+    },
+    {
+      name: '_order',
+      in: 'query',
+      schema: { type: 'string', enum: ['asc', 'desc'], default: 'asc' },
+      description: 'Thứ tự sắp xếp. Alias: `order`.',
+    },
+    {
+      name: 'q',
+      in: 'query',
+      schema: { type: 'string' },
+      description: 'Từ khóa tìm kiếm tự do. Alias: `_q`.',
+    },
   ];
 }
 
