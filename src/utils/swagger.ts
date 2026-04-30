@@ -432,7 +432,7 @@ const EXTRA_SCHEMAS: AnyRecord = {
     buildPropertiesFromSchemaFields(
       omitFields(bonusCampaignSchema, ['createdBy', 'updatedBy', 'maDot', 'createdAt', 'updatedAt']),
     ),
-    ['maKhoa', 'thoiGianBatDau', 'thoiGianKetThuc'],
+    ['semesterId', 'thoiGianBatDau', 'thoiGianKetThuc'],
     'Tạo đợt cộng điểm DRL/HB.',
   ),
   BonusCampaignUpdateRequest: buildObjectSchema(
