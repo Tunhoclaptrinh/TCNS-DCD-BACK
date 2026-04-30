@@ -184,11 +184,6 @@ const TAG_METADATA: Record<string, { name: string; description: string }> = {
 };
 
 const EXTRA_SCHEMAS: AnyRecord = {
-  AuthRegisterRequest: buildObjectSchema(
-    buildPropertiesFromSchemaFields(pickFields(userSchema, ['email', 'password', 'name', 'phone', 'address'])),
-    ['email', 'password', 'name'],
-    'Dữ liệu đăng ký tài khoản mới.',
-  ),
   AuthLoginRequest: buildObjectSchema(
     {
       email: ruleToProperty(userSchema.email),
@@ -599,15 +594,6 @@ const EXTRA_SCHEMAS: AnyRecord = {
 };
 
 const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
-  'POST /auth/register': {
-    summary: 'Đăng ký tài khoản',
-    description: 'Tạo tài khoản người dùng mới bằng email và mật khẩu.',
-    requestBody: buildSchemaRefBody('AuthRegisterRequest'),
-    responses: {
-      201: { description: 'Đăng ký thành công' },
-      400: { description: 'Email đã tồn tại hoặc dữ liệu không hợp lệ' },
-    },
-  },
   'POST /auth/login': {
     summary: 'Đăng nhập',
     description: 'Xác thực người dùng và trả về access token, refresh token cùng danh sách quyền.',

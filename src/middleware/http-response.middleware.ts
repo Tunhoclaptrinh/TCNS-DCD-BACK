@@ -6,7 +6,6 @@ import { transformError } from './error-transform.middleware';
 type ResponseEnvelope = AnyRecord & {
   success: boolean;
   statusCode?: number;
-  timestamp?: string;
 };
 type PaginationPayload = AnyRecord & {
   data?: unknown;
@@ -14,7 +13,6 @@ type PaginationPayload = AnyRecord & {
 };
 type ErrorLike = Error & {
   statusCode?: number;
-  isOperational?: boolean;
   errors?: unknown;
 };
 
@@ -30,7 +28,7 @@ function hasPaginationPayload(value: unknown): value is PaginationPayload {
   return isRecord(value) && 'pagination' in value;
 }
 
-function addTimestamp<T extends AnyRecord & { timestamp?: string }>(payload: T) {
+function addTimestamp<T extends AnyRecord>(payload: T) {
   return {
     ...payload,
     timestamp: new Date().toISOString(),
@@ -86,20 +84,20 @@ export const wrapJson = (_req: Request, res: Response, next: NextFunction) => {
 export const handleError = (error: ErrorLike, req: Request, res: Response, _next: NextFunction) => {
   const normalizedError = transformError(error);
   const statusCode = normalizedError.statusCode;
-  const isOperationalError = normalizedError.isOperational;
+  const shouldLogError = statusCode >= 500;
 
-  if (!isOperationalError) {
+  if (shouldLogError) {
     logUnexpectedError(error, req);
   }
 
   const response: AnyRecord = {
     success: false,
     statusCode,
-    message: isOperationalError ? normalizedError.message : 'Internal Server Error',
+    message: normalizedError.message,
   };
 
   if (normalizedError.errors) response.errors = normalizedError.errors;
-  if (process.env.NODE_ENV === 'development' && !isOperationalError) {
+  if (process.env.NODE_ENV === 'development' && shouldLogError) {
     response.error = { type: normalizedError.type, stack: error.stack };
   }
 
