@@ -49,6 +49,7 @@ class MongoConnect implements DatabaseAdapter {
       bonus_campaigns: {
         creator: { ref: 'users', localField: 'createdBy', foreignField: 'id', justOne: true },
         updater: { ref: 'users', localField: 'updatedBy', foreignField: 'id', justOne: true },
+        semester: { ref: 'semesters', localField: 'semesterId', foreignField: 'id', justOne: true },
       },
       duty_swap_requests: {
         requester: { ref: 'users', localField: 'requesterId', foreignField: 'id', justOne: true },
