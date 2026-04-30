@@ -275,6 +275,37 @@ class MeetingService extends BaseService {
       updatedAt: new Date().toISOString(),
     };
 
+    const finalConfirmations = this.buildConfirmations(
+      participantIds,
+      found.confirmations,
+      Number(found.createdBy) || userId,
+    );
+
+    // Sync attendance from minutes or batch update
+    if (payload.attendanceUpdates || Array.isArray(payload.presentIds) || Array.isArray(payload.absentIds)) {
+      const updates = payload.attendanceUpdates || {};
+      const presentSet = new Set(normalizeIds(payload.presentIds));
+      const absentSet = new Set(normalizeIds(payload.absentIds));
+
+      finalConfirmations.forEach((c) => {
+        const cid = Number(c.userId);
+
+        // Priority 1: Direct attendanceUpdates map
+        if (updates[cid]) {
+          c.status = this.normalizeRsvp(updates[cid], 'pending');
+          c.respondedAt = c.respondedAt || new Date().toISOString();
+        }
+        // Priority 2: presentIds/absentIds (from minutes modal)
+        else if (presentSet.has(cid)) {
+          c.status = 'present';
+          c.respondedAt = c.respondedAt || new Date().toISOString();
+        } else if (absentSet.has(cid)) {
+          c.status = 'absent';
+          c.respondedAt = c.respondedAt || new Date().toISOString();
+        }
+      });
+    }
+
     const u = {
       ...(payload.title !== undefined ? { title: toStr(payload.title) } : {}),
       ...(payload.location !== undefined ? { location: toStr(payload.location) } : {}),
@@ -287,7 +318,7 @@ class MeetingService extends BaseService {
       endAt,
       participantIds,
       isAllParticipants: isAll,
-      confirmations: this.buildConfirmations(participantIds, found.confirmations, Number(found.createdBy) || userId),
+      confirmations: finalConfirmations,
       ...(payload.minutesContent !== undefined ? { minutesContent: toStr(payload.minutesContent) } : {}),
       ...(payload.chairpersonId !== undefined ? { chairpersonId: toNum(payload.chairpersonId) } : {}),
       ...(payload.secretaryId !== undefined ? { secretaryId: toNum(payload.secretaryId) } : {}),
