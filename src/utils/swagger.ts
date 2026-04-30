@@ -162,40 +162,40 @@ const TAG_METADATA: Record<string, { name: string; description: string }> = {
     description: 'Quản lý bản ghi thưởng phạt và thống kê tài chính liên quan.',
   },
   meetings: {
-    name: 'Họp hành',
-    description: 'Quản lý lịch họp, xác nhận tham gia, điểm danh và biên bản họp.',
+    name: 'Lịch họp',
+    description: 'Quản lý lịch họp, điểm danh và xác nhận tham gia.',
   },
   'bonus-campaigns': {
     name: 'ĐRL, ĐƯT',
     description: 'Quản lý đợt cộng điểm, đăng ký thành viên, xét duyệt và xuất danh sách duyệt.',
   },
-  reports: {
-    name: 'Báo cáo',
-    description: 'Tổng hợp và xuất báo cáo quản trị.',
-  },
-  'audit-logs': {
-    name: 'Audit Logs',
-    description: 'Tra cứu lịch sử tác động và thay đổi dữ liệu của người dùng.',
-  },
   'bonus-registrations': {
     name: 'Đăng ký cộng điểm',
-    description: 'Quản lý chi tiết các bản đăng ký cộng điểm của thành viên.',
+    description: 'Quản lý danh sách đăng ký cộng điểm của thành viên.',
+  },
+  'audit-logs': {
+    name: 'Audit Logs - Nhật ký hệ thống',
+    description: 'Tra cứu lịch sử tác động của người dùng lên hệ thống.',
+  },
+  reports: {
+    name: 'Báo cáo',
+    description: 'Xuất báo cáo thống kê tổng hợp.',
   },
   generations: {
-    name: 'Khóa',
-    description: 'Quản lý khóa/thế hệ thành viên và khóa hiện tại.',
+    name: 'Khóa/Thế hệ',
+    description: 'Quản lý danh sách các khóa học/thế hệ/khóa sinh viên.',
+  },
+  semesters: {
+    name: 'Kỳ học',
+    description: 'Quản lý danh sách các học kỳ trong hệ thống.',
   },
   roles: {
     name: 'Vai trò',
-    description: 'Quản lý vai trò và tập quyền của hệ thống.',
+    description: 'Quản lý vai trò (RBAC) và phân quyền.',
   },
   permissions: {
-    name: 'Quyền',
-    description: 'Quản lý danh mục permission dùng trong RBAC.',
-  },
-  semesters: {
-    name: 'Học kỳ',
-    description: 'Quản lý học kỳ và học kỳ hiện tại.',
+    name: 'Quyền hạn',
+    description: 'Tra cứu danh sách các quyền hạn có sẵn trong hệ thống.',
   },
 };
 
@@ -1269,11 +1269,14 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
 
   'GET /reports/overview': {
     summary: 'Lấy báo cáo tổng quan',
+    description:
+      'Tổng hợp số liệu thống kê từ nhiều module như Nhân sự, Trực nhật, Cộng điểm để đưa ra cái nhìn tổng thể.',
     protected: true,
     permission: 'reports:view',
   },
   'GET /reports/export': {
     summary: 'Xuất báo cáo tổng quan',
+    description: 'Kết xuất báo cáo tổng quan ra các định dạng tệp tin như Excel hoặc CSV.',
     protected: true,
     permission: 'reports:export',
     parameters: [
