@@ -86,7 +86,6 @@ const authLimiter = rateLimit({
 });
 if (AUTH_RATE_LIMIT_ENABLED) {
   app.use('/api/auth/login', authLimiter);
-  app.use('/api/auth/register', authLimiter);
 }
 
 // ==================== ROUTES ====================
