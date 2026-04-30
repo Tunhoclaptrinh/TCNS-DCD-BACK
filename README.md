@@ -206,15 +206,17 @@ Hệ thống cung cấp một bộ tham số URL mạnh mẽ, giúp Frontend lin
 
 ### 1. Phân trang & Điều hướng (Pagination)
 
-| Tham số  | Ý nghĩa                           | Ví dụ              |
-| :------- | :-------------------------------- | :----------------- |
-| `_page`  | Trang cần lấy (mặc định: 1)       | `?_page=2`         |
-| `_limit` | Số bản ghi/trang (mặc định: 10)   | `?_limit=50`       |
-| `_sort`  | Trường sắp xếp                    | `?_sort=createdAt` |
-| `_order` | Hướng (`asc` / `desc`)            | `?_order=desc`     |
-| `_q`     | Tìm kiếm toàn văn (Global search) | `?_q=nguyen`       |
+Hệ thống linh hoạt hỗ trợ cả định dạng tiêu chuẩn và định dạng có tiền tố `_`. Nếu truyền cả hai, hệ thống sẽ ưu tiên tham số có tiền tố `_`.
 
-### 2. Các toán tử so sánh (Query Operators)
+| Tham số chính | Tham số thay thế | Ý nghĩa                           | Ví dụ             |
+| :------------ | :--------------- | :-------------------------------- | :---------------- |
+| `_page`       | `page`           | Trang cần lấy (mặc định: 1)       | `?page=2`         |
+| `_limit`      | `limit`          | Số bản ghi/trang (mặc định: 10)   | `?_limit=50`      |
+| `_sort`       | `sort`           | Trường cần sắp xếp                | `?sort=createdAt` |
+| `_order`      | `order`          | Hướng (`asc` / `desc`)            | `?order=desc`     |
+| `_q`          | `q`              | Tìm kiếm toàn văn (Global search) | `?q=keyword`      |
+
+### 2. Các toán tử so sánh nâng cao (Query Operators)
 
 Bạn có thể kết hợp tên trường với các hậu tố để thực hiện lọc nâng cao:
 
@@ -903,444 +905,68 @@ Tra cứu nhanh các vấn đề kỹ thuật thường gặp khi vận hành h�
 **Q: Làm sao để mở rộng giới hạn Upload file?**
 A: Chỉnh sửa tham số `limit` trong `express.json()` và `express.urlencoded()` tại file `src/server.ts`.
 
-### 5. Module Học kỳ (Semesters)
+---
 
-- `GET /api/semesters`: Xem danh sách học kỳ.
-- `POST /api/semesters`: Tạo học kỳ mới.
-- `PUT /api/semesters/:id`: Cập nhật thông tin học kỳ.
-- `DELETE /api/semesters/:id`: Xóa học kỳ.
-- `PATCH /api/semesters/:id/default`: Thiết lập học kỳ mặc định.
+## 📖 Tài liệu API Chi tiết (Swagger UI)
 
-### 6. Module Khóa/Thế hệ (Generations)
+Thay vì liệt kê thủ công các Endpoint (vốn rất dễ bị thiếu sót khi hệ thống cập nhật), dự án sử dụng **Swagger UI** để tự động tạo tài liệu API tương tác. Tại đây, bạn có thể xem đầy đủ Method, Path, Request Body và Response Schema của **100% các Module** trong hệ thống.
 
-- `GET /api/generations`: Danh sách khóa.
-- `POST /api/generations`: Thêm khóa mới.
-- `GET /api/generations/:id`: Chi tiết khóa.
-- `DELETE /api/generations/:id`: Xóa khóa.
-
-### 7. Module Báo cáo (Reports)
-
-- `GET /api/reports/summary`: Thống kê tổng quan.
-- `GET /api/reports/duty`: Báo cáo chi tiết trực nhật.
-- `GET /api/reports/bonus`: Thống kê điểm thưởng.
-- `POST /api/reports/export`: Yêu cầu xuất file báo cáo.
-
-### 8. Module Thưởng Phạt (Reward & Penalties)
-
-- `GET /api/reward-penalties`: Danh sách điểm số.
-- `POST /api/reward-penalties`: Chấm điểm thi đua.
-- `GET /api/reward-penalties/stats`: Thống kê điểm theo học kỳ.
-
-### 9. Module Nhật ký hệ thống (Audit Logs)
-
-- `GET /api/audit-logs`: Truy vấn nhật ký hành động (Chỉ dành cho Admin).
-- `GET /api/audit-logs/:id`: Xem chi tiết thay đổi dữ liệu (Diff view).
+- **Đường dẫn truy cập:** `http://localhost:<PORT>/api-docs`
+- **Tính năng:** Thử nghiệm API trực tiếp, xem ví dụ Payload chuẩn, tra cứu Permission yêu cầu cho từng Endpoint.
 
 ---
 
-## 💎 Cẩm nang Payload API chuyên sâu (Complete Module Snippets)
+---
 
-### 9. Tạo học kỳ mới (Create Semester)
+## 💎 Cẩm nang Payload API (Standard JSON Snippets)
 
-**Request:**
+Dưới đây là các bộ Payload chuẩn cho các nghiệp vụ cốt lõi, giúp Frontend tích hợp nhanh chóng:
+
+### 1. Đăng nhập (Auth Login)
 
 ```json
 {
-  "name": "Học kỳ 1 - Năm học 2024-2025",
-  "startDate": "2024-09-01",
-  "endDate": "2025-01-15",
-  "isDefault": true
+  "email": "admin@gmail.com",
+  "password": "your_secure_password"
 }
 ```
 
-### 10. Chấm điểm thi đua (Reward/Penalty)
-
-**Request:**
+### 2. Tạo ca trực (Create Duty Slot)
 
 ```json
 {
-  "userId": "65f5e6f7g8h9i0j1k2l3",
-  "points": 10,
-  "reason": "Hoàn thành xuất sắc nhiệm vụ trực nhật tuần 20",
-  "category": "chuyen_can"
+  "date": "2024-06-01T00:00:00.000Z",
+  "startTime": "08:00",
+  "endTime": "11:00",
+  "points": 5,
+  "quota": 2,
+  "description": "Trực tại sảnh chính tòa nhà A"
 }
 ```
 
-### 11. Cập nhật quyền hạn Vai trò (Update Role Permissions)
-
-**Request:**
+### 3. Tạo cuộc họp (Create Meeting)
 
 ```json
 {
-  "permissions": ["users:list", "users:view", "duty:view", "duty:register"]
+  "title": "Họp chiến lược Quý 2",
+  "startTime": "2024-06-01T09:00:00.000Z",
+  "endTime": "2024-06-01T11:00:00.000Z",
+  "location": "Phòng họp A1",
+  "type": "internal"
 }
 ```
 
 ---
 
-## 🏗️ Phân tích Logic Module (Inside Module Structure)
-
-Mỗi module nghiệp vụ (vd: `src/modules/duty`) được thiết kế đồng nhất theo cấu trúc:
-
-- **`controllers/`**: Tiếp nhận và validate sơ bộ các tham số từ HTTP Request.
-- **`services/`**: Chứa toàn bộ "trí tuệ" nghiệp vụ. Tính toán, kiểm tra xung đột và phối hợp các Repository.
-- **`repositories/`**: Tầng giao tiếp dữ liệu duy nhất, đảm bảo tính đóng gói của Database Schema.
-- **`schemas/`**: Định nghĩa cấu trúc Mongoose và các quy tắc validation cho từng thực thể.
-- **`routes/`**: Định nghĩa các endpoint và gắn các middleware bảo vệ (Auth, RBAC).
-
----
-
-## ⚡ Socket.io Namespace & Room Specification
-
-Hệ thống phân tách luồng dữ liệu để tối ưu băng thông:
-
-- **Namespace `/` (Default):** Dùng cho các thông báo hệ thống chung và xác thực socket.
-- **Namespace `/duty`**: Dành riêng cho các cập nhật tức thời về lịch trực nhật.
-- **Namespace `/meetings`**: Đồng bộ trạng thái RSVP và biên bản họp trong thời gian thực.
-
----
-
-## 📈 Lộ trình phát triển Chi tiết (Expanded Roadmap)
-
-- [x] **Giai đoạn 1 (Base Core):** Hoàn thiện bộ khung Modular và hệ thống RBAC.
-- [x] **Giai đoạn 2 (Module Sync):** Đồng bộ dữ liệu giữa JSON và MongoDB Atlas.
-- [ ] **Giai đoạn 3 (Enterprise Features):**
-  - Tích hợp hệ thống phân tích dữ liệu AI để gợi ý xếp lịch trực.
-  - Xây dựng Mobile App (React Native) kết nối qua bộ API này.
-  - Triển khai hệ thống lưu trữ phi tập trung cho các tệp tin báo cáo.
-
-### 10. Thực thể Quyền hạn (Permission Schema)
-
-| Trường        | Kiểu dữ liệu | Mô tả                                                |
-| :------------ | :----------- | :--------------------------------------------------- |
-| `name`        | `String`     | Tên quyền thân thiện (vd: Xem danh sách thành viên). |
-| `code`        | `String`     | Mã định danh quyền (vd: `users:list`).               |
-| `module`      | `String`     | Thuộc module nghiệp vụ nào.                          |
-| `description` | `String`     | Mô tả chi tiết phạm vi tác động.                     |
-
-### 11. Thực thể Nhật ký (AuditLog Schema)
-
-| Trường      | Kiểu dữ liệu | Mô tả                                           |
-| :---------- | :----------- | :---------------------------------------------- |
-| `user`      | `ObjectId`   | Người thực hiện hành động.                      |
-| `action`    | `String`     | Loại hành động (create, update, delete, login). |
-| `resource`  | `String`     | Tài nguyên bị tác động.                         |
-| `details`   | `Object`     | Dữ liệu cũ và mới để so khớp (Diff).            |
-| `ipAddress` | `String`     | Địa chỉ IP của client.                          |
-
----
-
-## 💎 Cẩm nang Payload API Nâng cao (Advanced Snippets)
-
-### 12. Cập nhật trạng thái Cuộc họp (Update Meeting Status)
-
-**Request:**
-
-```json
-{
-  "status": "finished",
-  "minutes": "Cuộc họp kết thúc lúc 11h. Thống nhất phương án triển khai giai đoạn 2."
-}
-```
-
-### 13. Phân quyền nhanh cho Vai trò (Bulk Permission Assignment)
-
-**Request:**
-
-```json
-{
-  "roleId": "65f6e7f8g9h0i1j2k3l4",
-  "permissions": ["users:*", "duty:view", "meetings:rsvp"]
-}
-```
-
----
-
-## 🔒 Phân tích Kỹ thuật Bảo mật & Hiệu năng (Deep-Dive)
-
-### 1. Chiến lược Indexing MongoDB
-
-Hệ thống được tối ưu hóa tốc độ truy vấn thông qua các loại Index:
-
-- **Compound Index:** Kết hợp `(status, createdAt)` cho các danh sách phân trang.
-- **Text Index:** Áp dụng cho `fullName` và `email` để phục vụ tham số `_q`.
-- **TTL Index:** Tự động xóa các bản ghi thông báo cũ sau 30 ngày để giảm dung lượng DB.
-
-### 2. Cơ chế Xử lý Lỗi tập trung (Error Centralization)
-
-Mọi lỗi trong hệ thống đều đi qua `api-error.ts`. Điều này đảm bảo:
-
-- Không lộ stack trace (thông tin nhạy cảm) ra ngoài Production.
-- Định dạng lỗi JSON luôn đồng nhất cho Frontend dễ dàng xử lý.
-- Tự động ghi log lỗi vào file `logs/error.log` kèm theo Request ID để tra cứu.
-
----
-
-## 🌐 Triển khai Production với Docker Compose
-
-Nếu bạn muốn triển khai hệ thống nhanh chóng bằng Docker:
-
-```yaml
-version: '3.8'
-services:
-  app:
-    build: .
-    ports:
-      - '3000:3000'
-    environment:
-      - DATABASE_URL=mongodb://db:27017/tcns
-    depends_on:
-      - db
-  db:
-    image: mongo:latest
-    volumes:
-      - mongo_data:/data/db
-
-volumes:
-  mongo_data:
-```
-
----
-
-## 📚 Quy chuẩn Phát triển & Đóng góp (Contributor Guide)
-
-Để duy trì chất lượng mã nguồn, mọi thành viên cần tuân thủ:
-
-1. **Linting:** Chạy `npm run lint` trước khi commit để đảm bảo không có lỗi cú pháp.
-2. **Formatting:** Sử dụng Prettier (đã cấu hình sẵn trong `.prettierrc`).
-3. **Branching:** Mọi tính năng mới phải nằm trên nhánh `feature/` và được review qua Pull Request.
-4. **Documentation:** Nếu thêm API mới, bắt buộc phải cập nhật định nghĩa Swagger trong Controller.
-
-### 12. Thực thể Học kỳ (Semester Schema)
-
-| Trường      | Kiểu dữ liệu | Mô tả                                      |
-| :---------- | :----------- | :----------------------------------------- |
-| `name`      | `String`     | Tên học kỳ (vd: Kỳ 1 - 2024).              |
-| `isDefault` | `Boolean`    | Có phải là học kỳ mặc định hiện tại không. |
-| `startDate` | `Date`       | Ngày bắt đầu.                              |
-| `endDate`   | `Date`       | Ngày kết thúc.                             |
-
-### 13. Thực thể Khóa (Generation Schema)
-
-| Trường        | Kiểu dữ liệu | Mô tả                          |
-| :------------ | :----------- | :----------------------------- |
-| `name`        | `String`     | Tên khóa (vd: Khóa 65).        |
-| `code`        | `String`     | Mã định danh khóa (vd: `K65`). |
-| `description` | `String`     | Mô tả chung.                   |
-
-### 14. Thực thể Thưởng Phạt (RewardPenalty Schema)
-
-| Trường     | Kiểu dữ liệu | Mô tả                                      |
-| :--------- | :----------- | :----------------------------------------- |
-| `user`     | `ObjectId`   | Thành viên bị áp dụng.                     |
-| `points`   | `Number`     | Số điểm (Dương = Thưởng, Âm = Phạt).       |
-| `reason`   | `String`     | Lý do cụ thể.                              |
-| `category` | `String`     | Phân loại (chuyên cần, kỷ luật, đóng góp). |
-
----
-
-## ⚡ Danh mục Sự kiện Real-time (Socket.io Dictionary)
-
-Bảng tra cứu toàn bộ các sự kiện truyền tin thời gian thực trong hệ thống:
-
-| Sự kiện (Event)       | Hướng            | Dữ liệu trả về       | Ý nghĩa                                   |
-| :-------------------- | :--------------- | :------------------- | :---------------------------------------- |
-| `notification:new`    | Server -> Client | `NotificationObject` | Đẩy thông báo mới cho cá nhân.            |
-| `duty:slot_update`    | Server -> Client | `{ slotId, status }` | Cập nhật trạng thái ca trực ngay lập tức. |
-| `meeting:reminder`    | Server -> Client | `{ title, time }`    | Nhắc nhở lịch họp tự động.                |
-| `user:status_changed` | Server -> Client | `{ userId, status }` | Cập nhật trạng thái Online/Offline.       |
-| `room:join`           | Client -> Server | `{ roomName }`       | Yêu cầu tham gia vào một Room cụ thể.     |
-| `room:leave`          | Client -> Server | `{ roomName }`       | Yêu cầu thoát khỏi Room.                  |
-
----
-
-## 🔒 Phân tích Kỹ thuật chuyên sâu (Deep-Dive Analysis)
-
-### 1. Cơ chế Xử lý Lỗi (Global Error Handling)
-
-Mọi lỗi trong hệ thống đều kế thừa từ lớp `ApiError`. Điều này cho phép:
-
-- **Consistency:** Phản hồi lỗi luôn có định dạng `{ success: false, message: "..." }`.
-- **Security:** Stack trace chỉ hiển thị trong môi trường `development`.
-- **Transformation:** Tự động chuyển đổi các lỗi Mongoose (vd: ValidationError) thành mã HTTP 400 thân thiện.
-
-### 2. Tối ưu hóa Database (MongoDB Optimization)
-
-Hệ thống sử dụng các kỹ thuật sau để đạt tốc độ phản hồi cực nhanh:
-
-- **Pre-indexing:** 100% các trường sử dụng trong `_sort` và `_q` đều được đánh Index.
-- **Lean Queries:** Sử dụng `.lean()` trong Mongoose cho các truy vấn Read-only để giảm tải bộ nhớ.
-- **Connection Pooling:** Duy trì danh sách các kết nối mở để tái sử dụng, tránh độ trễ khi tạo kết nối mới.
-
----
-
-## 🚀 Hướng dẫn Triển khai Production (Ops Manual)
-
-### 1. Thiết lập PM2 Cluster Mode
-
-Để tận dụng tối đa CPU đa nhân, hãy khởi chạy server bằng Cluster Mode:
-
-```bash
-pm2 start dist/index.js -i max --name "base-backend"
-```
-
-### 2. Cấu hình Nginx tối ưu (Sample Config)
-
-```nginx
-server {
-    listen 80;
-    server_name api.yourdomain.com;
-
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
-```
-
-### 15. Thực thể Thông báo (Notification Schema)
-
-| Trường      | Kiểu dữ liệu | Mô tả                                            |
-| :---------- | :----------- | :----------------------------------------------- |
-| `recipient` | `ObjectId`   | Người nhận thông báo cá nhân.                    |
-| `title`     | `String`     | Tiêu đề thông báo.                               |
-| `content`   | `String`     | Nội dung đầy đủ (hỗ trợ Markdown).               |
-| `type`      | `String`     | Phân loại: `system`, `duty`, `meeting`, `bonus`. |
-| `isRead`    | `Boolean`    | Trạng thái đã đọc hay chưa.                      |
-| `link`      | `String`     | URL điều hướng khi người dùng tương tác.         |
-
-### 16. Thực thể Vai trò (Role Schema)
-
-| Trường        | Kiểu dữ liệu    | Mô tả                               |
-| :------------ | :-------------- | :---------------------------------- |
-| `name`        | `String`        | Tên hiển thị (vd: Quản trị viên).   |
-| `code`        | `String`        | Mã định danh vai trò (vd: `admin`). |
-| `permissions` | `Array<String>` | Tập hợp các mã quyền hạn gắn kèm.   |
-| `description` | `String`        | Mô tả trách nhiệm của vai trò.      |
-
----
-
-## 📐 Quy chuẩn Lập trình Sạch (Clean Code Handbook)
-
-Dự án này không chỉ là mã nguồn, nó là một chuẩn mực về cách viết code chuyên nghiệp:
-
-### 1. Nguyên tắc Đặt tên (Naming Philosophy)
-
-- **Tính mô tả:** Tên hàm phải bắt đầu bằng động từ và mô tả chính xác kết quả (vd: `calculateUserPerformanceMetrics` thay vì `calc`).
-- **Tính nhất quán:** Nếu đã dùng `fetch` cho API thì không dùng `get` ở chỗ khác cho cùng một mục đích.
-- **Tránh tên vô nghĩa:** Tuyệt đối không sử dụng các biến tạm như `a`, `b`, `c` ngoại trừ trong các vòng lặp toán học thuần túy.
-
-### 2. Cấu trúc hàm tối ưu
-
-- **Nguyên tắc "Small":** Một hàm không nên dài quá 20 dòng. Nếu dài hơn, hãy tách nhỏ nó ra.
-- **Single Responsibility:** Một hàm chỉ làm đúng một việc và làm tốt việc đó.
-- **Tránh lồng ghép quá sâu:** Sử dụng `Early Return` để code phẳng và dễ đọc hơn.
-
-### 3. Xử lý logic nghiệp vụ trong Service
-
-- Tầng Service là nơi chứa toàn bộ "não bộ" của ứng dụng.
-- Tuyệt đối không để Service phụ thuộc vào `req` hay `res` của Express. Service chỉ nhận tham số và trả về dữ liệu thuần túy.
-- Sử dụng `transaction` (khi dùng MongoDB) cho các thao tác thay đổi dữ liệu trên nhiều thực thể để đảm bảo tính toàn vẹn (Atomicity).
-
----
-
-## 🛡️ Bảng kiểm Bảo mật Hệ thống (Security Audit Checklist)
-
-Hệ thống được thiết kế để vượt qua các tiêu chuẩn bảo mật khắt khe nhất:
-
-- [x] **Mã hóa mật khẩu:** Sử dụng Bcrypt với 12 rounds salt.
-- [x] **Xác thực đa lớp:** JWT kết hợp Refresh Token và cơ chế xoay vòng (Rotation).
-- [x] **Phân quyền RBAC:** Kiểm soát quyền hạn đến từng Resource và Action cụ thể.
-- [x] **Chống NoSQL Injection:** Sử dụng Mongoose Schema Validation cho 100% đầu vào.
-- [x] **Bảo vệ XSS:** Tích hợp Helmet.js và lọc sạch dữ liệu (Sanitization).
-- [x] **Rate Limiting:** Chống Brute-force cho các route nhạy cảm như Login, OTP.
-- [x] **CORS Policy:** Chỉ cho phép danh sách trắng (Whitelisting) các domain tin cậy.
-- [x] **Audit Logging:** Lưu vết mọi hành động thay đổi dữ liệu của Admin và Moderator.
-- [x] **Secure Headers:** Cấu hình HSTS, Clickjacking protection và Content Security Policy.
-- [x] **Environment Security:** Tách biệt hoàn toàn biến môi trường, không để lộ trong code.
-
----
-
-## 📚 Từ điển Thuật ngữ Dự án (Full Project Glossary)
-
-Tra cứu nhanh các khái niệm kỹ thuật và nghiệp vụ trong dự án:
-
-| Thuật ngữ             | Định nghĩa kỹ thuật       | Vai trò trong hệ thống                                            |
-| :-------------------- | :------------------------ | :---------------------------------------------------------------- |
-| **RBAC**              | Role-Based Access Control | Cơ chế phân quyền dựa trên vai trò của người dùng.                |
-| **JWT**               | JSON Web Token            | Chuỗi mã hóa dùng để xác thực và trao đổi thông tin an toàn.      |
-| **ODM**               | Object Data Modeling      | Công cụ ánh xạ dữ liệu giữa code (Object) và DB (Document).       |
-| **Middleware**        | Phần mềm trung gian       | Các hàm xử lý trung chuyển request trước khi tới logic chính.     |
-| **Endpoint**          | Điểm cuối API             | Một địa chỉ URL cụ thể để truy cập tài nguyên (vd: `/api/users`). |
-| **Payload**           | Dữ liệu hữu ích           | Phần dữ liệu thực sự được gửi đi trong request body.              |
-| **Sanitization**      | Làm sạch dữ liệu          | Loại bỏ các mã độc tiềm ẩn trong chuỗi văn bản đầu vào.           |
-| **Bcrypt**            | Thuật toán băm            | Dùng để mã hóa mật khẩu một chiều, không thể dịch ngược.          |
-| **Repository**        | Tầng dữ liệu              | Nơi tập trung toàn bộ các câu truy vấn cơ sở dữ liệu.             |
-| **Service**           | Tầng nghiệp vụ            | Nơi chứa logic xử lý các quy tắc kinh doanh của tổ chức.          |
-| **Controller**        | Tầng điều khiển           | Tiếp nhận yêu cầu từ client và điều hướng tới service phù hợp.    |
-| **Audit Log**         | Nhật ký kiểm soát         | Bản ghi chi tiết về việc "ai đã làm gì, vào lúc nào, ở đâu".      |
-| **Refresh Token**     | Token làm mới             | Dùng để cấp lại Access Token mới mà không cần đăng nhập lại.      |
-| **Bearer Token**      | Token định danh           | Loại token được gửi kèm trong header Authorization.               |
-| **RSVP**              | Xác nhận tham gia         | Trạng thái đồng ý hoặc từ chối tham gia một cuộc họp.             |
-| **Socket Room**       | Phòng giao tiếp           | Nhóm các kết nối để gửi thông báo đồng thời cho nhiều người.      |
-| **Rate Limit**        | Giới hạn tần suất         | Ngăn chặn việc gửi quá nhiều yêu cầu trong một thời gian ngắn.    |
-| **Cluster Mode**      | Chế độ đa nhân            | Chạy nhiều phiên bản server để tận dụng tối đa sức mạnh CPU.      |
-| **Graceful Shutdown** | Tắt máy an toàn           | Đảm bảo hoàn tất các tiến trình đang chạy trước khi dừng server.  |
-
-| `CORS_POLICY_VIOLATION` | Domain client không nằm trong `CORS_ORIGIN`. | Cấu hình lại biến `CORS_ORIGIN` trong file `.env`. |
-| `MAX_FILE_SIZE_EXCEEDED`| File upload vượt quá giới hạn server. | Tăng giới hạn `limit` trong `server.ts` hoặc nén file. |
-| `INVALID_SCHEMA_PATH` | Tham số query lọc trên field không tồn tại. | Kiểm tra lại tên field trong Schema của module tương ứng. |
-| `DB_WRITE_CONFLICT` | Ghi dữ liệu đồng thời vào cùng một bản ghi. | Sử dụng cơ chế `session` và `transaction` của MongoDB. |
-| `STALE_REFRESH_TOKEN` | Refresh token đã bị sử dụng hoặc vô hiệu. | Yêu cầu người dùng đăng nhập lại từ đầu để cấp token mới. |
-
----
-
-## 📚 Từ điển Thuật ngữ Dự án (Full Project Glossary - Continued)
-
-| Thuật ngữ        | Định nghĩa kỹ thuật            | Vai trò trong hệ thống                                            |
-| :--------------- | :----------------------------- | :---------------------------------------------------------------- |
-| **HSTS**         | HTTP Strict Transport Security | Cường chế trình duyệt chỉ kết nối qua giao thức HTTPS bảo mật.    |
-| **CSP**          | Content Security Policy        | Chính sách kiểm soát các nguồn tài nguyên (script, ảnh) được tải. |
-| **TTL**          | Time To Live                   | Thời gian sống của dữ liệu (thường dùng cho Cache hoặc Token).    |
-| **WebHook**      | Cơ chế gọi ngược               | Tự động gửi dữ liệu tới một hệ thống khác khi có sự kiện xảy ra.  |
-| **Payload Size** | Kích thước dữ liệu             | Dung lượng của gói tin HTTP được gửi đi hoặc nhận về.             |
-
----
-
-## 📈 Lộ trình Phát triển & Tầm nhìn (Long-term Roadmap)
-
-Dự án được hoạch định phát triển qua nhiều giai đoạn chiến lược để trở thành một hệ sinh thái quản lý toàn diện:
-
-### Giai đoạn 1: Xây dựng Nền tảng (Đã hoàn thành)
-
-- **Quý 4/2023:** Thiết kế kiến trúc Modular và chuẩn hóa tầng Shared.
-- **Quý 1/2024:** Triển khai hệ thống RBAC động và Xác thực đa lớp.
-- **Quý 2/2024:** Tích hợp Socket.io và hoàn thiện Module Trực nhật, Họp hành.
-
-### Giai đoạn 2: Tối ưu hóa & Hiệu năng (Hiện tại)
-
-- **Tháng 5/2024:** Tối ưu hóa Database Indexing và dọn dẹp mã nguồn.
-- **Tháng 6/2024:** Triển khai hệ thống Logging tập trung và Audit Logs chi tiết.
-- **Tháng 7/2024:** Xây dựng bộ Unit Test bao phủ 80% các Service cốt lõi.
-
-### Giai đoạn 3: Mở rộng Hệ sinh thái (Sắp tới)
-
-- **Quý 3/2024:** Tích hợp trí tuệ nhân tạo (AI) để tự động hóa việc sắp xếp lịch trực nhật dựa trên thói quen người dùng.
-- **Quý 4/2024:** Phát triển bộ SDK chính thức cho Mobile (iOS/Android) kết nối qua bộ API này.
-- **Quý 1/2025:** Hỗ trợ kiến trúc Microservices để sẵn sàng cho quy mô hàng triệu người dùng.
-
----
-
-## 🛡️ Báo cáo Lỗ hổng Bảo mật (Security Reporting)
-
-Nếu bạn phát hiện bất kỳ lỗ hổng bảo mật nào, vui lòng không công khai. Hãy gửi thông báo chi tiết cho chúng tôi qua:
-
-- **Email:** security@yourproject.com
-- **Bug Bounty:** [Link chương trình săn lỗi nhận thưởng]
-- **Thời gian phản hồi:** Chúng tôi cam kết phản hồi trong vòng 24h làm việc.
+## 🛡️ Bảng kiểm Bảo mật & Vận hành
+
+| Hạng mục               | Trạng thái  | Ghi chú                                       |
+| :--------------------- | :---------- | :-------------------------------------------- |
+| **Bcrypt (12 rounds)** | ✅ Hoàn tất | Bảo vệ mật khẩu người dùng.                   |
+| **JWT Rotation**       | ✅ Hoàn tất | Refresh Token tự động làm mới Access Token.   |
+| **RBAC Dynamic**       | ✅ Hoàn tất | Phân quyền linh hoạt theo từng mã Permission. |
+| **Input Sanitize**     | ✅ Hoàn tất | Chống NoSQL Injection và XSS.                 |
+| **Nginx / PM2**        | ✅ Sẵn sàng | Cấu hình triển khai Production.               |
 
 ---
 
