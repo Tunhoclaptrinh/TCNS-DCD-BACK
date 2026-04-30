@@ -123,7 +123,6 @@ base-backend/
 
 | Method | Path               | Auth | Mô tả                  |
 | ------ | ------------------ | ---- | ---------------------- |
-| POST   | `/register`        | ✗    | Đăng ký tài khoản      |
 | POST   | `/login`           | ✗    | Đăng nhập, trả JWT     |
 | GET    | `/me`              | ✓    | Lấy thông tin bản thân |
 | POST   | `/logout`          | ✓    | Đăng xuất              |

@@ -2,7 +2,6 @@ import express from 'express';
 import userController from '@modules/users/controllers/user.controller';
 import { requireAuth } from '@middleware/auth.middleware';
 import { requirePermission } from '@middleware/rbac.middleware';
-import { validateSchema } from '@middleware/schema-validation.middleware';
 import importExportController from '@shared/import-export/controllers/import-export.controller';
 
 const router = express.Router();
@@ -20,7 +19,7 @@ router.post('/validate', requireAuth, userController.validate);
 
 // === ADMIN ROUTES ===
 // Quản lý user, stats, status
-router.post('/', requireAuth, requirePermission('users:create'), validateSchema('user'), userController.create);
+router.post('/', requireAuth, requirePermission('users:create'), userController.create);
 
 router.put(
   '/:id',
