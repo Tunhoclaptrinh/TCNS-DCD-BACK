@@ -6,7 +6,7 @@ import auditLogsService from '@modules/audit-logs/services/audit-logs.service';
 import ApiError from '@utils/api-error';
 import type { AnyRecord, Identifier } from '@app-types/common';
 
-const RSVP_VALUES = new Set(['pending', 'accepted', 'declined']);
+const RSVP_VALUES = new Set(['pending', 'accepted', 'declined', 'present', 'late', 'absent']);
 const STATUS_VALUES = new Set(['scheduled', 'completed', 'cancelled']);
 
 function toNum(value: unknown) {
@@ -79,6 +79,33 @@ class MeetingService extends BaseService {
     return ids.sort((a, b) => a - b);
   }
 
+  async populateParticipants(meeting: AnyRecord) {
+    if (!meeting) return meeting;
+    const ids = normalizeIds(meeting.participantIds);
+    if (ids.length === 0) return { ...meeting, participants: [] };
+
+    const users = await usersRepository.findMany({ id_in: ids });
+    const userMap = new Map(
+      users.map((u) => [
+        Number(u.id),
+        {
+          id: u.id,
+          name: u.name,
+          avatar: u.avatar,
+          studentId: u.studentId,
+          email: u.email,
+          department: u.department,
+          position: u.position,
+        },
+      ]),
+    );
+
+    return {
+      ...meeting,
+      participants: ids.map((id) => userMap.get(id) || { id, name: `Thành viên #${id}` }),
+    };
+  }
+
   buildConfirmations(ids: number[], source: unknown, creatorId: number) {
     const byUser = new Map<number, AnyRecord>();
     const now = new Date().toISOString();
@@ -93,7 +120,7 @@ class MeetingService extends BaseService {
 
     return ids.map((userId) => {
       const current = byUser.get(userId) || {};
-      const status = this.normalizeRsvp(current.status, userId === creatorId ? 'accepted' : 'pending');
+      const status = this.normalizeRsvp(current.status, 'pending');
       return {
         userId,
         status,
@@ -123,12 +150,15 @@ class MeetingService extends BaseService {
       filter.participantIds = userId;
     }
 
-    return await this.repository.findAllAdvanced({
+    const result = await this.repository.findAllAdvanced({
       ...options,
       filter,
       sort: options.sort || 'meetingAt,createdAt',
       order: options.order || 'desc,desc',
     });
+
+    result.data = await Promise.all((result.data || []).map((m) => this.populateParticipants(m)));
+    return result;
   }
 
   async getMeetingById(id: Identifier, user: AnyRecord = {}) {
@@ -136,7 +166,7 @@ class MeetingService extends BaseService {
     if (!meeting) throw ApiError.notFound('Không tìm thấy lịch họp');
 
     this.ensureReadable(meeting, user);
-    return meeting;
+    return await this.populateParticipants(meeting);
   }
 
   async createMeeting(payload: AnyRecord = {}, actorId: Identifier) {
@@ -155,7 +185,16 @@ class MeetingService extends BaseService {
       throw ApiError.badRequest('endAt phải lớn hơn hoặc bằng meetingAt');
     }
 
-    const participantIds = await this.resolveParticipantIds(payload.participantIds, userId);
+    let participantIds: number[] = [];
+    const isAll = payload.isAllParticipants === true || payload.isAllParticipants === 'true';
+
+    if (isAll) {
+      const allUsers = await usersRepository.findAllAdvanced({ pageSize: 2000 });
+      participantIds = (allUsers.data || []).map((u: AnyRecord) => Number(u.id));
+    } else {
+      participantIds = await this.resolveParticipantIds(payload.participantIds, userId);
+    }
+
     const now = new Date().toISOString();
 
     const created = await this.repository.create({
@@ -166,6 +205,7 @@ class MeetingService extends BaseService {
       agenda: toStr(payload.agenda || payload.description),
       status: this.normalizeStatus(payload.status),
       participantIds,
+      isAllParticipants: isAll,
       confirmations: this.buildConfirmations(participantIds, payload.confirmations, userId),
       note: toStr(payload.note),
       createdBy: userId,
@@ -194,7 +234,7 @@ class MeetingService extends BaseService {
       resourceId: String(created.id),
     });
 
-    return created;
+    return await this.populateParticipants(created);
   }
 
   async updateMeeting(id: Identifier, payload: AnyRecord = {}, actorId: Identifier) {
@@ -213,10 +253,22 @@ class MeetingService extends BaseService {
       throw ApiError.badRequest('endAt phải lớn hơn hoặc bằng meetingAt');
     }
 
-    const participantIds =
-      payload.participantIds !== undefined
-        ? await this.resolveParticipantIds(payload.participantIds, userId)
-        : normalizeIds(found.participantIds);
+    const isAll =
+      payload.isAllParticipants !== undefined
+        ? payload.isAllParticipants === true || payload.isAllParticipants === 'true'
+        : !!found.isAllParticipants;
+
+    let participantIds: number[];
+    if (payload.isAllParticipants !== undefined || payload.participantIds !== undefined) {
+      if (isAll) {
+        const allUsers = await usersRepository.findAllAdvanced({ pageSize: 2000 });
+        participantIds = (allUsers.data || []).map((u: AnyRecord) => Number(u.id));
+      } else {
+        participantIds = await this.resolveParticipantIds(payload.participantIds, userId);
+      }
+    } else {
+      participantIds = normalizeIds(found.participantIds);
+    }
 
     const a = {
       updatedBy: userId,
@@ -234,7 +286,14 @@ class MeetingService extends BaseService {
       meetingAt,
       endAt,
       participantIds,
+      isAllParticipants: isAll,
       confirmations: this.buildConfirmations(participantIds, found.confirmations, Number(found.createdBy) || userId),
+      ...(payload.minutesContent !== undefined ? { minutesContent: toStr(payload.minutesContent) } : {}),
+      ...(payload.chairpersonId !== undefined ? { chairpersonId: toNum(payload.chairpersonId) } : {}),
+      ...(payload.secretaryId !== undefined ? { secretaryId: toNum(payload.secretaryId) } : {}),
+      ...(payload.opinions !== undefined ? { opinions: toStr(payload.opinions) } : {}),
+      ...(payload.proposals !== undefined ? { proposals: toStr(payload.proposals) } : {}),
+      ...(payload.minutesStatus !== undefined ? { minutesStatus: payload.minutesStatus } : {}),
       ...a,
     };
 
@@ -249,7 +308,7 @@ class MeetingService extends BaseService {
       resourceId: String(updated.id),
     });
 
-    return updated;
+    return await this.populateParticipants(updated);
   }
 
   async deleteMeeting(id: Identifier, actorId: Identifier) {
@@ -317,7 +376,42 @@ class MeetingService extends BaseService {
       });
     }
 
-    return updated;
+    return await this.populateParticipants(updated);
+  }
+
+  async markAttendance(payload: AnyRecord = {}, actor: AnyRecord = {}) {
+    const meetingId = toId(payload.meetingId);
+    const userId = toNum(payload.userId);
+    const status = toStr(payload.status);
+    const reason = toStr(payload.reason);
+
+    if (!meetingId) throw ApiError.badRequest('meetingId là bắt buộc');
+    if (!userId) throw ApiError.badRequest('userId là bắt buộc');
+    if (!status) throw ApiError.badRequest('status là bắt buộc');
+
+    const meeting = await this.repository.findById(meetingId);
+    if (!meeting) throw ApiError.notFound('Không tìm thấy lịch họp');
+
+    if (!this.canManage(actor)) throw ApiError.forbidden('Bạn không có quyền điểm danh');
+
+    const participantIds = normalizeIds(meeting.participantIds);
+    if (!participantIds.includes(userId)) participantIds.push(userId);
+
+    const now = new Date().toISOString();
+    const confirmations = this.buildConfirmations(
+      participantIds,
+      meeting.confirmations,
+      Number(meeting.createdBy) || userId,
+    ).map((c) => (String(c.userId) === String(userId) ? { ...c, status, reason, respondedAt: now } : c));
+
+    const updated = await this.repository.update(meetingId, {
+      participantIds,
+      confirmations,
+      updatedBy: toNum(actor.id),
+      updatedAt: now,
+    });
+
+    return await this.populateParticipants(updated);
   }
 }
 

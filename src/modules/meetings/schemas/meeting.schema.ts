@@ -44,6 +44,12 @@ export default defineSchema({
     required: false,
     default: [],
   },
+  isAllParticipants: {
+    type: 'boolean',
+    description: 'Đánh dấu mời toàn bộ thành viên trong đội.',
+    required: false,
+    default: false,
+  },
   confirmations: {
     type: 'array',
     description: 'Danh sách phản hồi RSVP của các thành viên.',
@@ -67,5 +73,43 @@ export default defineSchema({
     description: 'ID người cập nhật gần nhất.',
     required: false,
     foreignKey: 'users',
+  },
+  // Meeting Minutes Fields
+  minutesContent: {
+    type: 'string',
+    description: 'Nội dung chi tiết của biên bản họp (HTML).',
+    required: false,
+    maxLength: 20000,
+  },
+  chairpersonId: {
+    type: 'number',
+    description: 'ID người chủ trì cuộc họp.',
+    required: false,
+    foreignKey: 'users',
+  },
+  secretaryId: {
+    type: 'number',
+    description: 'ID thư ký ghi biên bản.',
+    required: false,
+    foreignKey: 'users',
+  },
+  opinions: {
+    type: 'string',
+    description: 'Ý kiến của thành viên hoặc tập thể.',
+    required: false,
+    maxLength: 5000,
+  },
+  proposals: {
+    type: 'string',
+    description: 'Kiến nghị, đề xuất.',
+    required: false,
+    maxLength: 5000,
+  },
+  minutesStatus: {
+    type: 'enum',
+    description: 'Trạng thái biên bản họp.',
+    enum: ['none', 'draft', 'submitted'],
+    required: false,
+    default: 'none',
   },
 });
