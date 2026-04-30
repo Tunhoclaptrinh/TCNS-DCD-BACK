@@ -31,6 +31,11 @@ class MeetingController extends BaseController {
     const data = await meetingService.rsvpMeeting(req.params.id, req.body, req.user);
     this.ok(res, data);
   });
+
+  markAttendance = this.handle(async (req, res) => {
+    const data = await meetingService.markAttendance(req.body, req.user);
+    this.ok(res, data);
+  });
 }
 
 export default new MeetingController();
