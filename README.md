@@ -1,185 +1,112 @@
-# Base Backend API
+# 🚀 Base Backend Project - Modular Architecture
 
-## Overview
+![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
+![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)
+![TypeScript](https://img.shields.io/badge/language-TypeScript-blue.svg)
 
-Base Backend được xây dựng trên **Node.js + Express**, theo kiến trúc **Modular Layered Architecture**. Dự án được tổ chức theo từng module nghiệp vụ như `auth`, `users`, `duty`, `files`, mỗi module có các tầng rõ ràng như `routes -> controllers -> services -> repositories`.
-
-Kiến trúc chi tiết xem tại: [`docs/architecture.md`](docs/architecture.md)
-
-Phù hợp làm nền tảng cho bất kỳ dự án nào nhờ các tính năng sẵn có:
-
-- **Authentication**: JWT (Access Token + Refresh Token), Change Password, Logout.
-- **Authorization**: Permission-based RBAC (`resource:action`). Admin bypass toàn bộ với wildcard `*`.
-- **Users**: CRUD đầy đủ, quản lý trạng thái, thống kê, activity log, cập nhật profile.
-- **Notifications**: CRUD thông báo theo từng user.
-- **Uploads**: Upload avatar & file lên Cloudinary, quản lý asset từ admin endpoint.
-- **Import / Export**: Import/Export dữ liệu CSV/XLSX, download template.
-- **Database**: JSON file (dev, zero-config) hoặc MongoDB (production).
-- **Swagger**: Tài liệu API khai báo tĩnh, bám sát tài liệu mong muốn của hệ thống.
-
-## Tài liệu sử dụng nhanh module cốt lõi
-
-- Xem hướng dẫn thao tác đầy đủ tại: `CORE_MODULES_USAGE.md`
+Hệ thống Backend quản lý toàn diện cho tổ chức, được xây dựng trên nền tảng **Node.js** và **TypeScript** với kiến trúc **Module-based** hiện đại, đảm bảo tính mở rộng và bảo mật cao.
 
 ---
 
-## Getting Started
+## 🏛️ Kiến trúc hệ thống (System Architecture)
 
-### Prerequisites
+Dự án được thiết kế theo mô hình **Service-Repository Pattern** kết hợp với **Module-based Structure**. Mỗi tính năng nghiệp vụ được đóng gói hoàn chỉnh trong một thư mục module riêng biệt.
 
-- Node.js v18+
-- npm hoặc yarn
+### Sơ đồ cấu trúc Module:
 
-### Installation
-
-```bash
-# 1. Clone repository
-git clone <repo-url>
-cd base-backend
-
-# 2. Cài dependencies
-npm install
-
-# 3. Cấu hình môi trường
-cp .env.example .env
-# Chỉnh sửa .env theo nhu cầu
-
-# 4. Chạy dev server
-npm run dev
+```mermaid
+graph TD
+    A[API Gateways / Routes] --> B[Middleware]
+    B --> C[Controllers]
+    C --> D[Services]
+    D --> E[Repositories]
+    E --> F[(MongoDB / Mongoose)]
+    D --> G[External Services: Cloudinary, Mailer]
+    D --> H[Real-time: Socket.io]
 ```
 
-### Environment Variables (`.env`)
+### Các Module cốt lõi:
 
-| Biến                    | Mô tả                                     | Mặc định                     |
-| ----------------------- | ----------------------------------------- | ---------------------------- |
-| `PORT`                  | Port server lắng nghe                     | `3000`                       |
-| `NODE_ENV`              | Môi trường (`development` / `production`) | `development`                |
-| `JWT_SECRET`            | Secret key JWT (tối thiểu 32 ký tự)       | _(bắt buộc)_                 |
-| `JWT_EXPIRE`            | Thời hạn token                            | `30d`                        |
-| `DB_CONNECTION`         | Loại database (`json` / `mongodb`)        | `json`                       |
-| `DATABASE_URL`          | MongoDB connection string                 | \*(khi dùng mongo)           |
-| `CLOUDINARY_CLOUD_NAME` | Cloudinary cloud name cho upload          | _(bắt buộc khi dùng upload)_ |
-| `CLOUDINARY_API_KEY`    | Cloudinary API key                        | _(bắt buộc khi dùng upload)_ |
-| `CLOUDINARY_API_SECRET` | Cloudinary API secret                     | _(bắt buộc khi dùng upload)_ |
-| `CLOUDINARY_FOLDER`     | Thư mục gốc trên Cloudinary               | `tcns`                       |
-| `CORS_ORIGIN`           | Allowed CORS origins                      | `*`                          |
-| `STORAGE_TOKEN_KEY`     | Key lưu token trên client                 | `base_token`                 |
+- **Auth & Security:** Hệ thống xác thực JWT, RBAC (Role-Based Access Control) phân quyền đến từng hành động.
+- **Duty Management:** Quản lý kíp trực nhật, đổi ca, và đăng ký tự động.
+- **Meetings:** Quản lý lịch họp, RSVP và biên bản họp trực tuyến.
+- **Reward & Penalties:** Hệ thống chấm điểm thi đua, thưởng phạt minh bạch.
+- **Bonus Campaigns:** Quản lý các đợt cộng điểm Ưu tú/Rèn luyện.
+- **Notifications:** Hệ thống thông báo đa kênh (Real-time, Email).
 
 ---
 
-## Project Structure
+## 🛠️ Công nghệ sử dụng (Tech Stack)
 
-```
-base-backend/
-├── index.ts                        # Entrypoint
-├── src/
-│   ├── server.ts                   # Khởi tạo Express, middleware, routes
-│   ├── database/                   # Mongo adapter và entrypoint database
-│   ├── middleware/
-│   │   ├── auth.middleware.ts
-│   │   ├── rbac.middleware.ts
-│   │   ├── api-query.middleware.ts
-│   │   ├── http-response.middleware.ts
-│   │   └── ...
-│   ├── modules/                    # Chia theo module nghiệp vụ
-│   │   ├── auth/
-│   │   │   ├── routes/
-│   │   │   ├── controllers/
-│   │   │   ├── services/
-│   │   │   └── repositories/
-│   │   ├── users/
-│   │   │   ├── routes/
-│   │   │   ├── controllers/
-│   │   │   ├── services/
-│   │   │   ├── repositories/
-│   │   │   └── schemas/
-│   │   ├── duty/
-│   │   ├── files/
-│   │   ├── notifications/
-│   │   ├── reward-penalties/
-│   │   └── reports/
-│   ├── routes/
-│   │   └── index.ts                # Mount tất cả module routes
-│   ├── schemas/                    # Schema dùng chung/toàn cục
-│   ├── shared/
-│   │   ├── common/                 # BaseController, BaseService
-│   │   ├── repositories/           # BaseRepository
-│   │   ├── import-export/
-│   │   └── security/
-│   ├── types/                      # Kiểu dùng chung và Express augmentation
-│   ├── utils/
-│   │   ├── api-error.ts
-│   │   ├── helpers.ts
-│   │   └── swagger.ts
-├── docs/
-│   └── architecture.md             # Tài liệu kiến trúc hệ thống
-```
+- **Ngôn ngữ:** TypeScript (đảm bảo Type-safety)
+- **Framework:** Express.js
+- **Database:** MongoDB với Mongoose ODM
+- **Real-time:** Socket.io
+- **Storage:** Cloudinary (Quản lý tệp tin & hình ảnh)
+- **Documentation:** Swagger UI (OpenAPI 3.0)
+- **Tooling:** Prettier, ESLint, Husky
 
 ---
 
-## API Endpoints
+## 🚀 Hướng dẫn khởi chạy
 
-### Auth — `/api/auth`
+### Yêu cầu hệ thống:
 
-| Method | Path               | Auth | Mô tả                  |
-| ------ | ------------------ | ---- | ---------------------- |
-| POST   | `/login`           | ✗    | Đăng nhập, trả JWT     |
-| GET    | `/me`              | ✓    | Lấy thông tin bản thân |
-| POST   | `/logout`          | ✓    | Đăng xuất              |
-| PUT    | `/change-password` | ✓    | Đổi mật khẩu           |
-| POST   | `/refresh`         | ✗    | Refresh token          |
+- Node.js >= 16.x
+- MongoDB (Local hoặc Atlas)
 
-### Users — `/api/users`
+### Các bước cài đặt:
 
-| Method | Path             | Permission            | Mô tả                       |
-| ------ | ---------------- | --------------------- | --------------------------- |
-| GET    | `/`              | `users:list`          | Danh sách users (có filter) |
-| POST   | `/`              | `users:create`        | Tạo user mới                |
-| GET    | `/:id`           | ✓ (auth)              | Xem profile                 |
-| PUT    | `/:id`           | `users:update`        | Cập nhật user               |
-| DELETE | `/:id`           | `users:delete`        | Xoá mềm user                |
-| DELETE | `/:id/permanent` | `users:delete`        | Xoá vĩnh viễn               |
-| PATCH  | `/:id/status`    | `users:manage_status` | Bật/tắt trạng thái          |
-| GET    | `/stats/summary` | `users:view_stats`    | Thống kê users              |
-| GET    | `/:id/activity`  | ✓ (auth)              | Lịch sử hoạt động           |
-| PUT    | `/profile`       | ✓ (auth)              | Tự cập nhật profile         |
-| GET    | `/template`      | `users:import_export` | Download template import    |
-| POST   | `/import`        | `users:import_export` | Import users từ file        |
-| GET    | `/export`        | `users:import_export` | Export users ra file        |
+1. **Cài đặt dependencies:**
 
-### Notifications — `/api/notifications`
+   ```bash
+   npm install
+   ```
 
-| Method | Path        | Auth | Mô tả                   |
-| ------ | ----------- | ---- | ----------------------- |
-| GET    | `/`         | ✓    | Lấy danh sách thông báo |
-| PATCH  | `/:id/read` | ✓    | Đánh dấu đã đọc         |
-| PATCH  | `/read-all` | ✓    | Đánh dấu tất cả đã đọc  |
-| DELETE | `/:id`      | ✓    | Xoá một thông báo       |
-| DELETE | `/`         | ✓    | Xoá tất cả thông báo    |
+2. **Cấu hình môi trường:**
+   Sao chép file `.env.example` thành `.env` và điền các thông số cần thiết (DB_URI, JWT_SECRET, CLOUDINARY_URL,...).
 
-### Upload — `/api/upload`
+3. **Khởi chạy môi trường Phát triển:**
 
-| Method | Path         | Auth  | Mô tả                                        |
-| ------ | ------------ | ----- | -------------------------------------------- |
-| POST   | `/avatar`    | ✓     | Upload avatar (ảnh)                          |
-| POST   | `/general`   | ✓     | Upload ảnh tổng quát lên Cloudinary          |
-| DELETE | `/file`      | admin | Xoá file theo `publicId` hoặc `url`          |
-| GET    | `/file/info` | admin | Thông tin file từ Cloudinary                 |
-| GET    | `/stats`     | admin | Thống kê storage theo folder trên Cloudinary |
-| POST   | `/cleanup`   | admin | Dọn asset cũ trên Cloudinary                 |
+   ```bash
+   npm run dev
+   ```
+
+4. **Biên dịch và Chạy Production:**
+   ```bash
+   npm run build
+   npm start
+   ```
 
 ---
 
-## Scripts
+## 📖 Tài liệu API (Swagger)
 
-```bash
-npm run dev      # Chạy dev server với nodemon
-npm start        # Chạy production
-npm run format   # Format code với Prettier
-```
+Hệ thống hỗ trợ tài liệu API tương tác trực tiếp qua Swagger. Sau khi khởi chạy, bạn có thể truy cập tại:
+`http://localhost:<PORT>/api-docs`
 
 ---
 
-## License
+## 📈 Đánh giá & Phân tích hệ thống
 
-MIT
+### Ưu điểm nổi bật:
+
+- **Tính Module hóa (Modularity):** Dễ dàng thêm mới tính năng mà không ảnh hưởng đến code cũ.
+- **Hiệu năng:** Git history đã được tối ưu (Purged junk files), Repo nhẹ nhàng (~15k dòng logic).
+- **Bảo mật:** Middleware phân quyền (RBAC) chặt chẽ, tự động chuyển đổi lỗi (Error Transform).
+
+### Lộ trình phát triển (Roadmap):
+
+- [ ] Tích hợp Microservices cho các tác vụ xử lý báo cáo nặng.
+- [ ] Nâng cấp hệ thống Logs bằng ELK Stack hoặc Grafana.
+- [ ] Triển khai Unit Test cho các Service cốt lõi.
+
+---
+
+## 👥 Đóng góp
+
+Dự án được phát triển và duy trì bởi đội ngũ EduSentia.
+
+---
+
+_© 2026 EduSentia Team. All rights reserved._
