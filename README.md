@@ -1,10 +1,98 @@
-# 🚀 Base Backend Project - Modular Architecture
+---
 
-![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
-![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)
-![TypeScript](https://img.shields.io/badge/language-TypeScript-blue.svg)
+## 📑 Mục lục (Table of Contents)
 
-Hệ thống Backend quản lý toàn diện cho tổ chức, được xây dựng trên nền tảng **Node.js** và **TypeScript** với kiến trúc **Module-based** hiện đại, đảm bảo tính mở rộng và bảo mật cao.
+- [⚡ Khởi chạy nhanh (Quick Start)](#-khởi-chạy-nhanh-quick-start)
+- [🏗️ Kiến trúc & Triết lý hệ thống](#️-kiến-trúc--triết-lý-hệ-thống)
+- [🚀 Hướng dẫn cài đặt chi tiết](#-hướng-dẫn-cài-đặt-chi-tiết-setup-guide)
+- [⚙️ Biến môi trường (.env)](#️-biến-môi-trường-env)
+- [🔍 Hệ thống truy vấn API nâng cao](#-hệ-thống-truy-vấn-api-nâng-cao-universal-query-guide)
+- [⚡ Kiến trúc Real-time (Socket.io)](#-kiến-trúc-real-time-socketio)
+- [🏗️ Quy trình phát triển (Developer SOP)](#️-quy-trình-phát-triển-developer-sop)
+- [🔐 Bảo mật & Quy chuẩn](#-bảo-mật--quy-chuẩn)
+- [📚 Tra cứu & Thuật ngữ](#-tra-cứu--thuật-ngữ)
+
+---
+
+## 💡 Triết lý Dự án (Project Philosophy)
+
+Dự án này không chỉ là một ứng dụng, mà là một **Bộ khung (Base Framework)** được thiết kế để giải quyết các vấn đề kinh điển của Backend:
+
+- **Ngăn chặn "Fat Controller":** Đẩy toàn bộ logic vào Service, Controller chỉ làm nhiệm vụ điều phối.
+- **Tối ưu hóa Database:** Mọi truy vấn đều qua tầng Repository để dễ dàng chuyển đổi DB hoặc tối ưu Indexing.
+- **Tư duy Modular:** "Mọi thứ là một Module". Nếu bạn muốn xóa một tính năng, bạn chỉ cần xóa một thư mục mà không làm hỏng toàn bộ app.
+
+---
+
+## ⚡ Khởi chạy nhanh (Quick Start)
+
+Dành cho các nhà phát triển đã cài đặt sẵn Node.js và MongoDB/JSON:
+
+```bash
+# 1. Cài đặt phụ thuộc
+npm install
+
+# 2. Cấu hình môi trường
+cp .env.example .env
+
+# 3. Khởi tạo dữ liệu hệ thống (Quyền hạn & Admin)
+# Lệnh này sẽ chạy seed-rbac và create-user tự động
+npm run seed:all
+
+# 4. Chạy môi trường phát triển
+npm run dev
+```
+
+---
+
+## 🏗️ Kiến trúc Hệ thống (System Architecture)
+
+Dự án được xây dựng theo mô hình **Modular Monolith**, đảm bảo tính đóng gói của từng module nghiệp vụ:
+
+```mermaid
+graph TD
+    Client[Frontend / Mobile] -->|HTTPS / WSS| Nginx{Nginx Reverse Proxy}
+    Nginx -->|Load Balancing| Node[Node.js Cluster]
+    Node -->|Auth & RBAC| Middleware[Middleware Layers]
+    Middleware -->|Modular Logic| Modules[Business Modules]
+    Modules -->|Query Helper| Shared[Shared Base Classes]
+    Shared -->|Adapter| DB[(MongoDB / JSON Storage)]
+    Modules -->|Real-time| Socket[Socket.io Engine]
+    Socket -->|Push| Client
+```
+
+---
+
+## 🚀 Hướng dẫn cài đặt chi tiết (Setup Guide)
+
+### 1. Yêu cầu hệ thống:
+
+- **Node.js**: Phiên bản 18.x hoặc cao hơn.
+- **Database**: MongoDB (Atlas hoặc Local) hoặc đơn giản là dùng JSON file (mặc định).
+- **Package Manager**: NPM hoặc Yarn.
+
+### 2. Các bước cài đặt:
+
+```bash
+# Clone dự án
+git clone <repository-url>
+
+# Vào thư mục dự án
+cd base-backend
+
+# Cài đặt thư viện
+npm install
+
+# Cấu hình môi trường (Cập nhật DATABASE_URL nếu dùng MongoDB)
+cp .env.example .env
+```
+
+### 3. Thiết lập dữ liệu ban đầu:
+
+Hệ thống yêu cầu một số dữ liệu nền tảng để hoạt động (Quyền hạn, Vai trò, Tài khoản Admin).
+
+- **Khởi tạo RBAC:** `npx ts-node src/scripts/seed-rbac.ts`
+- **Tạo Admin:** `npx ts-node src/scripts/create-user.ts`
 
 ---
 
@@ -29,6 +117,23 @@ base-backend/
 ├── index.ts                    # Entrypoint ứng dụng
 └── .env                        # Biến môi trường
 ```
+
+### 📊 Sơ đồ quan hệ thực thể (ERD Simplified)
+
+```mermaid
+erDiagram
+    USER ||--o{ ROLE : has
+    USER ||--o{ GENERATION : belongs_to
+    USER ||--o{ DUTY_SLOT : registers
+    USER ||--o{ MEETING_RSVP : responds
+    USER ||--o{ NOTIFICATION : receives
+    ROLE ||--o{ PERMISSION : contains
+    MEETING ||--o{ USER : organizes
+    DUTY_SLOT }|--|| SEMESTER : part_of
+    REWARD_PENALTY }|--|| USER : applied_to
+```
+
+---
 
 #### Phân tích các phân khu chính:
 
@@ -76,30 +181,6 @@ _Xem đặc tả chi tiết từng tệp tin tại: [📄 Full Project Spec](./d
 - **Storage:** Cloudinary (Quản lý tệp tin & hình ảnh)
 - **Documentation:** Swagger UI (OpenAPI 3.0)
 - **Tooling:** Prettier, ESLint, Husky
-
----
-
-## 🛠️ Hướng dẫn cài đặt (Installation)
-
-### 1. Yêu cầu hệ thống
-
-- **Node.js**: Phiên bản 18.x trở lên.
-- **Package Manager**: npm hoặc yarn.
-- **Cơ sở dữ liệu**: MongoDB (Local hoặc Atlas) hoặc chế độ JSON (chỉ dùng cho Dev).
-
-### 2. Các bước thiết lập
-
-```bash
-# Clone dự án
-git clone <your-repo-url>
-cd Base/Backend
-
-# Cài đặt thư viện
-npm install
-
-# Cấu hình môi trường
-cp .env.example .env
-```
 
 ---
 
@@ -204,7 +285,7 @@ Hệ thống linh hoạt hỗ trợ cả định dạng tiêu chuẩn và địn
 
 ### 2. Các toán tử so sánh nâng cao (Query Operators)
 
-Bạn có thể kết hợp tên trường với các hậu tố để thực hiện lọc nâng cao:
+Bạn có thể kết hợp tên trường với các hậu tố để thực hiện lọc dữ liệu phức tạp ngay trên URL:
 
 - **`_like`**: Tìm kiếm chứa chuỗi (vd: `fullName_like=An`).
 - **`_ilike`**: Tìm kiếm không phân biệt hoa thường (vd: `email_ilike=USER`).
@@ -214,7 +295,28 @@ Bạn có thể kết hợp tên trường với các hậu tố để thực hi
 - **`_in`**: Nằm trong danh sách (vd: `role_in=admin,manager`).
 - **`_nin`**: Không nằm trong danh sách.
 
----
+> [!TIP]
+> **Cơ chế Ưu tiên:** Hệ thống ưu tiên tham số có tiền tố `_` (vd: `_page`) hơn tham số không có tiền tố (`page`). Điều này giúp tránh xung đột với các trường dữ liệu có tên trùng với từ khóa hệ thống.
+
+### 3. Ví dụ thực tế kết hợp (Advanced Examples)
+
+**Lọc người dùng đang hoạt động, thuộc khóa K65, sắp xếp theo tên tăng dần, lấy trang 2:**
+
+```text
+GET /api/users?status=active&generation_code=K65&_sort=fullName&_order=asc&_page=2&_limit=10
+```
+
+**Tìm kiếm toàn văn các ca trực có từ khóa "sảnh", lọc theo ngày lớn hơn hiện tại:**
+
+```text
+GET /api/duty/slots?_q=sảnh&date_gte=2024-05-01T00:00:00Z
+```
+
+**Lọc nâng cao với toán tử so sánh (Ví dụ: Điểm thưởng từ 10 đến 50):**
+
+```text
+GET /api/reward-penalties?points_gte=10&points_lte=50
+```
 
 ---
 
@@ -222,11 +324,34 @@ Bạn có thể kết hợp tên trường với các hậu tố để thực hi
 
 Hệ thống sử dụng Socket.io để đẩy thông báo tức thời đến Client.
 
-### Các sự kiện chính (Events):
+### 1. Các sự kiện chính (Events):
 
 1. **`notification:new`**: Đẩy thông báo mới cho người dùng.
 2. **`duty:slot_update`**: Cập nhật trạng thái ca trực khi có biến động.
 3. **`meeting:reminder`**: Nhắc nhở lịch họp tự động.
+
+### 2. Cơ chế Xác thực (Socket Authentication)
+
+Để đảm bảo an toàn, Socket.io yêu cầu gửi Token ngay trong bước bắt tay (Handshake).
+
+**Client-side (React/Vue):**
+
+```javascript
+const socket = io(process.env.BACKEND_URL, {
+  auth: {
+    token: `Bearer ${localStorage.getItem('token')}`,
+  },
+});
+```
+
+**Server-side:** Middleware `auth.middleware.ts` sẽ tự động giải mã token và gán `socket.user` để bạn sử dụng trong các logic tiếp theo.
+
+### 3. Tham gia phòng (Room Subscription)
+
+```javascript
+// Đăng ký nhận cập nhật từ một phòng cụ thể
+socket.emit('room:join', 'duty_updates');
+```
 
 ---
 
@@ -242,13 +367,27 @@ Hệ thống sử dụng Socket.io để đẩy thông báo tức thời đến 
 
 ## 🏗️ Hướng dẫn mở rộng hệ thống (Developer SOP)
 
-Để thêm một module mới đúng chuẩn Base, hãy thực hiện các bước sau:
+Để thêm một module mới (ví dụ: `Module Tài sản`), hãy tuân thủ quy trình 5 bước:
 
-1. **Schema**: Định nghĩa cấu trúc dữ liệu trong thư mục `schemas/`.
-2. **Repository**: Kế thừa `BaseRepository` để sử dụng các hàm CRUD có sẵn.
-3. **Service**: Viết logic nghiệp vụ, kế thừa `BaseService` để có sẵn tính năng Phân trang/Filter.
-4. **Controller**: Kế thừa `BaseController` để chuẩn hóa Response.
-5. **Route**: Khai báo và gắn vào `src/routes/index.ts`.
+1. **Schema (`schemas/asset.schema.ts`):**
+   - Định nghĩa Mongoose Schema. `src/schemas/`
+   - Xuất Interface cho TypeScript để đảm bảo kiểm soát kiểu.
+2. **Repository (`repositories/asset.repository.ts`):**
+   - Kế thừa `BaseRepository`. `src/repositories/`
+   - Thêm các hàm truy vấn đặc thù (nếu các hàm CRUD cơ bản không đủ).
+3. **Service (`services/asset.service.ts`):**
+   - Kế thừa `BaseService`. `src/services/`
+   - Đây là nơi xử lý Logic: kiểm tra trùng lặp, tính toán, gọi Socket thông báo.
+4. **Controller (`controllers/asset.controller.ts`):**
+   - Kế thừa `BaseController`. `src/controllers/`
+   - Chỉ chứa logic điều hướng và gọi Service.
+5. **Route (`asset.routes.ts`):**
+   - Khai báo các đường dẫn API. `src/routes/`
+   - Gắn Middleware `auth` và `rbac` (vd: `rbac('assets:create')`). `src/middleware/`
+   - Đăng ký vào `src/routes/index.ts`.
+
+> [!IMPORTANT]
+> Luôn luôn sử dụng `ApiError` để ném lỗi từ tầng Service. Hệ thống Middleware sẽ tự động "bắt" và định dạng lại lỗi cho bạn.
 
 ---
 
@@ -345,7 +484,64 @@ Dưới đây là ví dụ thực tế về cấu trúc dữ liệu khi giao ti�
 
 ---
 
-## ⚡ Hướng dẫn tích hợp Real-time (Socket.io Guide)
+## 💎 Cẩm nang Payload API mở rộng (Full Module Snippets)
+
+Dưới đây là các bộ Payload chuẩn cho các module nâng cao, giúp Frontend tích hợp nhanh chóng:
+
+### 4. Quản lý Học kỳ (Create Semester)
+
+```json
+{
+  "name": "Học kỳ 1 - 2024",
+  "startDate": "2024-09-01",
+  "endDate": "2025-01-15",
+  "isDefault": true
+}
+```
+
+### 5. Khóa / Thế hệ (Create Generation)
+
+```json
+{
+  "name": "Khóa 65",
+  "code": "K65",
+  "description": "Thành viên nhập học năm 2024"
+}
+```
+
+### 6. Chấm điểm thi đua (Reward/Penalty)
+
+```json
+{
+  "userId": "65f1a2b3...",
+  "points": 10,
+  "reason": "Hoàn thành xuất sắc nhiệm vụ tuần 12",
+  "category": "discipline"
+}
+```
+
+### 7. Xuất báo cáo (Export Request)
+
+```json
+{
+  "module": "duty",
+  "format": "excel",
+  "filter": {
+    "semesterId": "65f2b3c4...",
+    "type": "summary"
+  }
+}
+```
+
+### 8. Cập nhật quyền hạn vai trò (Role Permissions)
+
+```json
+{
+  "permissions": ["users:list", "users:view", "duty:register", "meetings:rsvp"]
+}
+```
+
+---
 
 Hệ thống cung cấp khả năng giao tiếp hai chiều. Để lắng nghe thông báo, Client cần thực hiện:
 
@@ -418,6 +614,49 @@ Bảng tra cứu các thuật ngữ kỹ thuật và nghiệp vụ sử dụng t
 | **Bcrypt**        | Thuật toán băm                | Dùng để mã hóa mật khẩu một chiều một cách an toàn.                 |
 | **Slot**          | Ca/Kíp                        | Đơn vị thời gian nhỏ nhất trong hệ thống Trực nhật.                 |
 | **RSVP**          | Xác nhận tham gia             | Trạng thái phản hồi cho các lời mời họp.                            |
+
+---
+
+## 🔄 Hướng dẫn di chuyển dữ liệu (Migration Guide)
+
+Hệ thống cho phép chuyển đổi linh hoạt giữa lưu trữ file JSON và MongoDB Atlas mà không thay đổi code nghiệp vụ.
+
+### Chuyển từ JSON sang MongoDB:
+
+1. **Dọn dẹp dữ liệu:** Kiểm tra file trong `database/data/*.json`.
+2. **Cập nhật .env:**
+   ```env
+   DB_CONNECTION=mongodb
+   DATABASE_URL=mongodb+srv://user:pass@cluster0.mongodb.net/dbname
+   ```
+3. **Chạy script đồng bộ:**
+   ```bash
+   npm run db:sync
+   ```
+   _Script này sẽ đọc toàn bộ JSON và đẩy vào MongoDB Atlas theo đúng cấu trúc Schema._
+
+---
+
+## 🧪 Quy chuẩn Kiểm thử (Testing Strategy)
+
+Mọi tính năng quan trọng đều cần được bao phủ bởi Unit Test để đảm bảo tính ổn định lâu dài.
+
+- **Vị trí:** `src/modules/<module_name>/tests/`
+- **Công cụ:** Jest kết hợp với Supertest.
+- **Quy tắc:**
+  - Test tầng **Service**: Mock Repository để kiểm tra logic nghiệp vụ.
+  - Test tầng **Controller**: Sử dụng Supertest để kiểm tra Endpoint và Middleware.
+
+```typescript
+// Ví dụ test Service
+describe('UserService', () => {
+  it('should hash password before creating user', async () => {
+    const userData = { email: 'test@gmail.com', password: '123' };
+    const user = await userService.create(userData);
+    expect(user.password).not.toBe('123');
+  });
+});
+```
 
 ---
 
@@ -524,10 +763,35 @@ Thay vì liệt kê thủ công các Endpoint (vốn rất dễ bị thiếu só
 
 ---
 
-## 👥 Đóng góp
+---
 
-Dự án được phát triển và duy trì bởi đội ngũ Project Team.
+## 🛠️ Danh mục Khắc phục sự cố (Troubleshooting)
+
+| Vấn đề                       | Nguyên nhân phổ biến                                        | Giải pháp                                                                   |
+| :--------------------------- | :---------------------------------------------------------- | :-------------------------------------------------------------------------- |
+| **Socket connection failed** | Sai cấu hình CORS hoặc thiếu Handshake Token.               | Kiểm tra `CORS_ORIGIN` và đảm bảo Client gửi Token trong `auth`.            |
+| **JSON Data lost**           | Tiến trình Node.js bị tắt đột ngột khi đang ghi file.       | Đảm bảo server chạy qua PM2 và cân nhắc chuyển sang MongoDB cho Production. |
+| **JWT Invalid Signature**    | `JWT_SECRET` bị thay đổi hoặc không khớp giữa các instance. | Kiểm tra lại file `.env` và đảm bảo Secret đủ độ phức tạp.                  |
+| **Rate Limit Triggered**     | Client gửi quá nhiều request OTP/Login.                     | Đợi hết thời gian `windowMs` hoặc điều chỉnh tham số trong `.env`.          |
 
 ---
 
-_© 2026 Project Team. All rights reserved._
+## 🏗️ Đặc tả hạ tầng tệp tin (Infrastructure Deep-Dive)
+
+### 📂 Lớp Shared (src/shared/common)
+
+Tầng này đảm bảo tính thống nhất của toàn bộ hệ thống:
+
+- `base-controller.ts`: Chứa logic chuẩn hóa `success: true/false` và mã trạng thái HTTP.
+- `base-service.ts`: "Trái tim" xử lý dữ liệu, nơi tích hợp tự động phân trang và lọc dữ liệu.
+- `base-repository.ts`: Lớp trừu tượng giúp bạn gọi `this.model.find()` một cách an toàn.
+
+### 📂 Lớp Middleware (src/middleware)
+
+- `auth.middleware.ts`: Bảo vệ Endpoint, chỉ cho phép người dùng có Token hợp lệ đi qua.
+- `rbac.middleware.ts`: "Cánh cửa" cuối cùng, kiểm tra xem User có quyền thực hiện hành động cụ thể không.
+- `error-transform.middleware.ts`: Chuyển đổi mọi lỗi hệ thống thành định dạng JSON thân thiện với Frontend.
+
+---
+
+## 👥 Đóng góp & Bản quyền
