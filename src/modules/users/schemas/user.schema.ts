@@ -90,8 +90,35 @@ export default defineSchema({
     type: 'string',
     required: false,
     minLength: 10,
-    maxLength: 11,
+    maxLength: 10,
     label: 'Số điện thoại',
+    custom: (value) => {
+      const phone = String(value || '').trim();
+
+      if (!/^0[35789]\d{8}$/.test(phone)) {
+        return 'Số điện thoại phải gồm 10 chữ số và bắt đầu bằng đầu số di động hợp lệ';
+      }
+
+      if (/^(\d)\1+$/.test(phone)) {
+        return 'Số điện thoại không hợp lệ';
+      }
+
+      const sequences = [
+        '012345',
+        '123456',
+        '234567',
+        '345678',
+        '456789',
+        '987654',
+        '876543',
+        '765432',
+        '654321',
+        '543210',
+      ];
+      if (sequences.some((sequence) => phone.includes(sequence))) {
+        return 'Số điện thoại không hợp lệ';
+      }
+    },
   },
   address: {
     type: 'string',

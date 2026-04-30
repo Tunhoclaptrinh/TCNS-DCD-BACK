@@ -1,28 +1,21 @@
 import express from 'express';
 import authController from '@modules/auth/controllers/auth.controller';
 import { requireAuth } from '@middleware/auth.middleware';
-import { mapNewPassword, requireResetEmail } from '@middleware/normalize-auth-payload.middleware';
-import { validateFields, validateSchema } from '@middleware/schema-validation.middleware';
+import { mapNewPassword } from '@middleware/normalize-auth-payload.middleware';
 
 const router = express.Router();
 
-// Register - validate tất cả schema fields
-router.post('/register', validateSchema('user'), authController.register);
+// Public register is disabled.
+// router.post('/register', authController.register);
 
 // Login - custom validate email (removed password validation as requested)
-router.post('/login', validateFields('user', ['email']), authController.login);
+router.post('/login', authController.login);
 
 // Forgot password
-router.post('/forgot-password', requireResetEmail, validateFields('user', ['email']), authController.forgotPassword);
+router.post('/forgot-password', authController.forgotPassword);
 
 // Reset password
-router.post(
-  '/reset-password',
-  requireResetEmail,
-  mapNewPassword,
-  validateFields('user', ['email', 'password']),
-  authController.resetPassword,
-);
+router.post('/reset-password', mapNewPassword, authController.resetPassword);
 
 // Get me
 router.get('/me', requireAuth, authController.getMe);
@@ -31,13 +24,7 @@ router.get('/me', requireAuth, authController.getMe);
 router.post('/logout', requireAuth, authController.logout);
 
 // Change password - custom validate
-router.put(
-  '/change-password',
-  requireAuth,
-  mapNewPassword,
-  validateFields('user', ['password']),
-  authController.changePassword,
-);
+router.put('/change-password', requireAuth, mapNewPassword, authController.changePassword);
 
 // Refresh Token
 router.post('/refresh', authController.refresh);
