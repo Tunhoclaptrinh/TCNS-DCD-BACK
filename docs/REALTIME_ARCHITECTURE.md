@@ -55,4 +55,4 @@ Kết nối Socket cũng được bảo mật tương đương với API:
 
 ---
 
-_EduSentia Real-time Messaging Team_
+_Project Real-time Messaging Team_

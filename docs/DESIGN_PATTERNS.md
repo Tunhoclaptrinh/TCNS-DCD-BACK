@@ -62,4 +62,4 @@ Hệ thống sử dụng các hàm chuẩn hóa (Mapping/Transform) trước khi
 
 ---
 
-_EduSentia Architecture Team_
+_Project Architecture Team_

@@ -66,4 +66,4 @@ npm run lint    # Kiểm tra lỗi cú pháp và tiêu chuẩn code
 
 ---
 
-_EduSentia Developer Experience (DevEx) Team_
+_Project Developer Experience (DevEx) Team_

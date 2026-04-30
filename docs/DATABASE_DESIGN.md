@@ -72,4 +72,4 @@ Tất cả các trạng thái quan trọng (`status`) đều được định ng
 
 ---
 
-_EduSentia Data Engineering Team_
+_Project Data Engineering Team_

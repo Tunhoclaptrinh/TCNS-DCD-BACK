@@ -73,4 +73,4 @@ Cơ chế khôi phục mật khẩu sử dụng mã OTP (One-Time Password) có 
 
 ---
 
-_EduSentia Security Department_
+_Project Security Department_

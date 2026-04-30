@@ -1,6 +1,6 @@
 # 🏛️ Master System Architecture Plan
 
-Tài liệu này là bản đồ tổng thể về kiến trúc hệ thống của EduSentia Backend. Để đi sâu vào từng khía cạnh, vui lòng tham khảo các tài liệu chuyên biệt bên dưới.
+Tài liệu này là bản đồ tổng thể về kiến trúc hệ thống của Project Backend. Để đi sâu vào từng khía cạnh, vui lòng tham khảo các tài liệu chuyên biệt bên dưới.
 
 ## 1. Bản đồ Tài liệu (Documentation Map)
 
@@ -64,4 +64,4 @@ Hệ thống tuân thủ nghiêm ngặt mô hình 4 tầng để đảm bảo t�
 
 ---
 
-_Last Updated: 01/05/2026 by EduSentia Architecture Team_
+_Last Updated: 01/05/2026 by Project Architecture Team_

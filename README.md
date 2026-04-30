@@ -12,18 +12,35 @@ Hệ thống Backend quản lý toàn diện cho tổ chức, được xây dự
 
 Dự án được thiết kế theo mô hình **Service-Repository Pattern** kết hợp với **Module-based Structure**. Mỗi tính năng nghiệp vụ được đóng gói hoàn chỉnh trong một thư mục module riêng biệt.
 
-### Sơ đồ cấu trúc Module:
+### 📂 Cấu trúc thư mục tóm tắt:
 
-```mermaid
-graph TD
-    A[API Gateways / Routes] --> B[Middleware]
-    B --> C[Controllers]
-    C --> D[Services]
-    D --> E[Repositories]
-    E --> F[(MongoDB / Mongoose)]
-    D --> G[External Services: Cloudinary, Mailer]
-    D --> H[Real-time: Socket.io]
+```text
+src/
+├── modules/      # Logic nghiệp vụ chia theo module (Auth, Duty, Meetings,...)
+├── shared/       # Các lớp cơ sở (BaseController, BaseRepository,...)
+├── middleware/   # Bộ lọc bảo mật và xử lý phản hồi
+├── routes/       # Đăng ký tập trung tất cả các API endpoints
+└── utils/        # Công cụ hỗ trợ (Swagger, Logger, Helpers)
 ```
+
+_Xem chi tiết tại: [📄 Project Structure](./docs/PROJECT_STRUCTURE.md)_
+
+---
+
+## 📚 Hệ thống tài liệu chuyên sâu
+
+Để tìm hiểu chi tiết về từng khía cạnh kỹ thuật, vui lòng tham khảo các tài liệu chuyên biệt:
+
+| Tài liệu                                        | Nội dung                                       |
+| :---------------------------------------------- | :--------------------------------------------- |
+| [🏗️ Architecture](./docs/ARCHITECTURE.md)       | Bản đồ kiến trúc hệ thống tổng thể.            |
+| [📂 Structure](./docs/PROJECT_STRUCTURE.md)     | Chi tiết sơ đồ thư mục và vai trò các tệp tin. |
+| [🗄️ Database](./docs/DATABASE_DESIGN.md)        | Sơ đồ ERD và chiến lược lưu trữ dữ liệu.       |
+| [🔒 Security](./docs/SECURITY_PROTOCOL.md)      | Cơ chế bảo mật JWT, RBAC và bảo vệ dữ liệu.    |
+| [🛠️ Patterns](./docs/DESIGN_PATTERNS.md)        | Các mẫu thiết kế và tiêu chuẩn lập trình.      |
+| [⚡ Real-time](./docs/REALTIME_ARCHITECTURE.md) | Kiến trúc Socket.io và xử lý sự kiện.          |
+| [📖 SOP Guide](./docs/API_DEVELOPMENT_GUIDE.md) | Hướng dẫn phát triển và mở rộng hệ thống.      |
+| [📊 Evaluation](./docs/PROJECT_EVALUATION.md)   | Báo cáo đánh giá chất lượng và tối ưu hóa.     |
 
 ### Các Module cốt lõi:
 
@@ -105,8 +122,8 @@ Hệ thống hỗ trợ tài liệu API tương tác trực tiếp qua Swagger. 
 
 ## 👥 Đóng góp
 
-Dự án được phát triển và duy trì bởi đội ngũ EduSentia.
+Dự án được phát triển và duy trì bởi đội ngũ Project.
 
 ---
 
-_© 2026 EduSentia Team. All rights reserved._
+_© 2026 Project Team. All rights reserved._
