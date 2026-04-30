@@ -42,7 +42,6 @@ class OtpDeliveryService {
         </span>
       </div>
       <p style="color: #555; font-size: 16px;">Mã này có hiệu lực trong vòng <strong>${expiresMinutes} phút</strong>. Vui lòng không chia sẻ mã này với bất kỳ ai.</p>
-      <p style="color: #555; font-size: 16px;">Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này.</p>
       <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
       <p style="color: #888; font-size: 12px; text-align: center;">Email này được gửi tự động từ ${this.senderName}, vui lòng không phản hồi.</p>
     </div>
