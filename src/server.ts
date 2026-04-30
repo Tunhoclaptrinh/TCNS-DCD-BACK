@@ -16,7 +16,7 @@ import { camelizeBody } from './middleware/normalize-request-body.middleware';
 import logRequest from './middleware/request-logger.middleware';
 import { handleError, notFound, wrapJson } from './middleware/http-response.middleware';
 import routes from './routes';
-import { socketService } from './shared/socket/socket.service';
+import { socketService } from './modules/socket/socket.service';
 import { logger } from './utils/logger';
 import { setupSwagger } from './utils/swagger';
 
