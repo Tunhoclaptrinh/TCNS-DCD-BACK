@@ -1,13 +1,11 @@
 class ApiError extends Error {
   statusCode: number;
   errors: any;
-  isOperational: boolean;
 
   constructor(statusCode: number, message: string, errors: any = null) {
     super(message);
     this.statusCode = statusCode;
     this.errors = errors;
-    this.isOperational = true;
   }
 
   static badRequest(message: string, errors?: any) {

@@ -1,26 +1,30 @@
-import express from 'express';
+import axios from 'axios';
 import cors from 'cors';
+import dns from 'dns';
 import dotenv from 'dotenv';
+import express from 'express';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
+import { createServer } from 'http';
 import path from 'path';
-import axios from 'axios';
-import dns from 'dns';
+import { Server as SocketServer } from 'socket.io';
 
-import logRequest from './middleware/request-logger.middleware';
-import { handleError, notFound, wrapJson } from './middleware/http-response.middleware';
+import { initDatabase } from '@database';
+import { startOtpCleanupScheduler } from '@modules/auth/services/otp-cleanup.scheduler';
 import { appendPaginationHeaders, parseApiQuery } from './middleware/api-query.middleware';
 import { camelizeBody } from './middleware/normalize-request-body.middleware';
-import { setupSwagger } from './utils/swagger';
+import logRequest from './middleware/request-logger.middleware';
+import { handleError, notFound, wrapJson } from './middleware/http-response.middleware';
 import routes from './routes';
-import { initDatabase } from '@database';
+import { socketService } from './shared/socket/socket.service';
 import { logger } from './utils/logger';
-import { startOtpCleanupScheduler } from '@modules/auth/services/otp-cleanup.scheduler';
+import { setupSwagger } from './utils/swagger';
 
+// ==================== ENV & DNS ====================
 dotenv.config();
-// ép Node dùng DNS ngoài
 dns.setServers(['8.8.8.8', '1.1.1.1']);
 
+// ==================== APP CONFIG ====================
 const app = express();
 const PORT = process.env.PORT || 3000;
 const KEEPALIVE_INTERVAL = 14 * 60 * 1000;
@@ -31,79 +35,92 @@ const AUTH_RATE_LIMIT_ENABLED = process.env.AUTH_RATE_LIMIT_ENABLED
   : IS_PRODUCTION;
 const AUTH_RATE_LIMIT_WINDOW_MS = Math.max(1000, Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000));
 const AUTH_RATE_LIMIT_MAX = Math.max(1, Number(process.env.AUTH_RATE_LIMIT_MAX || 5));
+const CORS_METHODS = ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'];
+const CORS_HEADERS = ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'];
+
+// ==================== CORS ====================
+function getAllowedOrigins() {
+  return process.env.CORS_ORIGIN?.split(',').map((origin) => origin.trim().replace(/\/$/, '')) || [];
+}
 
 // ==================== SECURITY ====================
-app.use(
-  helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        scriptSrc: ["'self'"],
-        imgSrc: ["'self'", 'data:', 'https:'],
+function setupSecurity() {
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          scriptSrc: ["'self'"],
+          imgSrc: ["'self'", 'data:', 'https:'],
+        },
       },
-    },
-    hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
-    crossOriginResourcePolicy: { policy: 'cross-origin' },
-  }),
-);
+      hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
+}
 
 // ==================== CORE MIDDLEWARE ====================
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
+function setupCoreMiddleware() {
+  app.use(
+    cors({
+      origin: function (origin, callback) {
+        if (!origin) return callback(null, true);
+        if (!process.env.CORS_ORIGIN || process.env.CORS_ORIGIN === '*') return callback(null, true);
 
-      if (!process.env.CORS_ORIGIN || process.env.CORS_ORIGIN === '*') {
-        return callback(null, true); // true sets Access-Control-Allow-Origin to the request origin
-      }
-
-      const allowedOrigins = process.env.CORS_ORIGIN.split(',').map((o) => o.trim().replace(/\/$/, ''));
-      const reqOrigin = origin.replace(/\/$/, '');
-
-      if (allowedOrigins.includes(reqOrigin)) {
-        return callback(null, true);
-      }
-      return callback(null, false);
-    },
-    credentials: process.env.CORS_CREDENTIALS ? process.env.CORS_CREDENTIALS === 'true' : true,
-    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
-  }),
-);
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use('/uploads', express.static(UPLOAD_DIR));
+        return callback(null, getAllowedOrigins().includes(origin.replace(/\/$/, '')));
+      },
+      credentials: process.env.CORS_CREDENTIALS ? process.env.CORS_CREDENTIALS === 'true' : true,
+      methods: CORS_METHODS,
+      allowedHeaders: CORS_HEADERS,
+    }),
+  );
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+  app.use('/uploads', express.static(UPLOAD_DIR));
+}
 
 // ==================== API MIDDLEWARE ====================
-app.use('/api', camelizeBody, logRequest, wrapJson, appendPaginationHeaders, parseApiQuery);
+function setupApiMiddleware() {
+  app.use('/api', camelizeBody, logRequest, wrapJson, appendPaginationHeaders, parseApiQuery);
+}
 
 // ==================== RATE LIMITING ====================
-const authLimiter = rateLimit({
-  windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
-  max: AUTH_RATE_LIMIT_MAX,
-  message: 'Too many login attempts, please try again later',
-});
-if (AUTH_RATE_LIMIT_ENABLED) {
-  app.use('/api/auth/login', authLimiter);
+function setupRateLimiting() {
+  if (!AUTH_RATE_LIMIT_ENABLED) return;
+
+  app.use(
+    '/api/auth/login',
+    rateLimit({
+      windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
+      max: AUTH_RATE_LIMIT_MAX,
+      message: 'Too many login attempts, please try again later',
+    }),
+  );
 }
 
 // ==================== ROUTES ====================
-setupSwagger(app);
-app.use('/api', routes);
+function setupRoutes() {
+  setupSwagger(app);
+  app.use('/api', routes);
 
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'OK',
-    uptime: process.uptime(),
-    environment: process.env.NODE_ENV || 'development',
+  app.get('/api/health', (_req, res) => {
+    res.json({
+      status: 'OK',
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV || 'development',
+    });
   });
-});
+}
 
 // ==================== ERROR HANDLING ====================
-app.use(notFound);
-app.use(handleError);
+function setupErrorHandling() {
+  app.use(notFound);
+  app.use(handleError);
+}
 
+// ==================== KEEP ALIVE ====================
 async function pingService(url) {
   try {
     await axios.get(url, { timeout: 10000 });
@@ -121,35 +138,40 @@ function startKeepAlive() {
 
   try {
     const targetUrl = `${new URL(serviceUrl).origin}/`;
-    pingService(targetUrl);
+    void pingService(targetUrl);
     setInterval(() => pingService(targetUrl), KEEPALIVE_INTERVAL);
   } catch (err: any) {
     logger.error(err.message, 'SERVER');
   }
 }
 
-// ==================== START ====================
-import { createServer } from 'http';
-import { Server } from 'socket.io';
-import { socketService } from './shared/socket/socket.service';
-
-async function bootstrap() {
-  await initDatabase();
-  startOtpCleanupScheduler();
-
-  const httpServer = createServer(app);
-
-  // Initialize Socket.IO with CORS
-  const io = new Server(httpServer, {
+// ==================== SOCKET ====================
+function setupSocket(httpServer: ReturnType<typeof createServer>) {
+  const io = new SocketServer(httpServer, {
     cors: {
-      origin: process.env.CORS_ORIGIN
-        ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim().replace(/\/$/, ''))
-        : '*',
+      origin: process.env.CORS_ORIGIN ? getAllowedOrigins() : '*',
       credentials: Boolean(process.env.CORS_CREDENTIALS) || true,
     },
   });
 
   socketService.init(io);
+}
+
+// ==================== APP SETUP ====================
+setupSecurity();
+setupCoreMiddleware();
+setupApiMiddleware();
+setupRateLimiting();
+setupRoutes();
+setupErrorHandling();
+
+// ==================== START SERVER ====================
+async function bootstrap() {
+  await initDatabase();
+  startOtpCleanupScheduler();
+
+  const httpServer = createServer(app);
+  setupSocket(httpServer);
 
   httpServer.listen(PORT, () => {
     const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
@@ -160,8 +182,8 @@ async function bootstrap() {
   });
 }
 
-bootstrap().catch((err) => {
-  logger.error('Failed to start server:', 'SERVER', err);
+bootstrap().catch((error) => {
+  logger.error('Failed to start server:', 'SERVER', error);
   process.exit(1);
 });
 
