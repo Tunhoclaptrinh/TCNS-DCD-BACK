@@ -2,7 +2,6 @@ import express from 'express';
 import generationController from '@modules/generations/controllers/generation.controller';
 import { requireAuth } from '@middleware/auth.middleware';
 import { requirePermission } from '@middleware/rbac.middleware';
-import { validateSchema } from '@middleware/schema-validation.middleware';
 
 const router = express.Router();
 
@@ -12,9 +11,9 @@ router.use(requireAuth);
 router.get('/', requirePermission('generations:manage'), generationController.getAll);
 router.get('/:id', requirePermission('generations:manage'), generationController.getById);
 
-router.post('/', requirePermission('generations:manage'), validateSchema('generation'), generationController.create);
+router.post('/', requirePermission('generations:manage'), generationController.create);
 
-router.put('/:id', requirePermission('generations:manage'), validateSchema('generation'), generationController.update);
+router.put('/:id', requirePermission('generations:manage'), generationController.update);
 
 router.delete('/:id', requirePermission('generations:manage'), generationController.delete);
 
