@@ -83,6 +83,7 @@ const PERMISSIONS = [
   { key: 'meeting:view', name: 'Xem lịch họp & RSVP', module: 'meeting' },
   { key: 'meeting:attendance', name: 'Điểm danh họp', module: 'meeting' },
   { key: 'meeting:minutes', name: 'Ghi biên bản cuộc họp', module: 'meeting' },
+  { key: 'meeting:minutes:edit_submitted', name: 'Sửa biên bản sau khi đã nộp (Admin/Leader)', module: 'meeting' },
 
   // Góp ý
   { key: 'feedback:send', name: 'Gửi ý kiến (Ẩn danh/Công khai)', module: 'feedback' },
@@ -115,7 +116,13 @@ const PERMISSIONS = [
   { key: 'bonus-campaigns:delete', name: 'Xóa bản đăng ký cộng điểm', module: 'bonus-campaigns' },
 ];
 
-const LEADER_PERMISSIONS = ['meeting:view', 'meeting:create:dept', 'meeting:attendance', 'meeting:minutes'];
+const LEADER_PERMISSIONS = [
+  'meeting:view',
+  'meeting:create:dept',
+  'meeting:attendance',
+  'meeting:minutes',
+  'meeting:minutes:edit_submitted',
+];
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
   admin: ['*'],
@@ -158,6 +165,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'meeting:create:dept',
     'meeting:attendance',
     'meeting:minutes',
+    'meeting:minutes:edit_submitted',
     'feedback:send',
     'feedback:receive',
     'feedback:respond',
@@ -219,6 +227,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'meeting:create:dept',
     'meeting:attendance',
     'meeting:minutes',
+    'meeting:minutes:edit_submitted',
     'feedback:send',
     'feedback:receive',
     'feedback:respond',
@@ -280,6 +289,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'meeting:create:dept',
     'meeting:attendance',
     'meeting:minutes',
+    'meeting:minutes:edit_submitted',
     'feedback:send',
     'feedback:receive',
     'feedback:respond',
@@ -322,6 +332,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'meeting:create:dept',
     'meeting:attendance',
     'meeting:minutes',
+    'meeting:minutes:edit_submitted',
     'feedback:send',
     'feedback:respond',
     'system:notify:dept',
@@ -349,6 +360,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'meeting:create:dept',
     'meeting:attendance',
     'meeting:minutes',
+    'meeting:minutes:edit_submitted',
     'feedback:send',
     'feedback:respond',
     'system:notify:dept',
@@ -376,6 +388,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'meeting:create:dept',
     'meeting:attendance',
     'meeting:minutes',
+    'meeting:minutes:edit_submitted',
     'feedback:send',
     'feedback:respond',
     'system:notify:dept',
@@ -403,6 +416,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'meeting:create:dept',
     'meeting:attendance',
     'meeting:minutes',
+    'meeting:minutes:edit_submitted',
     'feedback:send',
     'feedback:respond',
     'system:notify:dept',
@@ -430,6 +444,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'meeting:create:dept',
     'meeting:attendance',
     'meeting:minutes',
+    'meeting:minutes:edit_submitted',
     'feedback:send',
     'feedback:respond',
     'system:notify:dept',
@@ -457,6 +472,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'meeting:create:dept',
     'meeting:attendance',
     'meeting:minutes',
+    'meeting:minutes:edit_submitted',
     'feedback:send',
     'feedback:respond',
     'system:notify:dept',
