@@ -465,6 +465,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'settings:view',
   ],
   member: [
+    'users:list:dept',
     'users:read:self',
     'users:update:profile',
     'duty:view',
@@ -479,6 +480,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'meeting:view',
   ],
   ctv: [
+    'users:list:dept',
     'users:read:self',
     'users:update:profile',
     'duty:view',

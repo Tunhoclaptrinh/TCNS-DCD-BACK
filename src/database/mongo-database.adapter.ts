@@ -134,37 +134,60 @@ class MongoConnect implements DatabaseAdapter {
 
   // ==================== SCHEMA LOADING ====================
 
+  private toMongooseFields(schemaDef: SchemaDefinition): Record<string, any> {
+    const mongooseFields: Record<string, any> = {};
+
+    for (const [key, val] of Object.entries(schemaDef) as Array<[string, SchemaRule]>) {
+      if (key === 'custom') continue;
+
+      let type: any = String;
+      if (val.type === 'number') type = Number;
+      if (val.type === 'boolean') type = Boolean;
+      if (val.type === 'date') type = Date;
+      if (val.type === 'email') type = String;
+
+      if (val.type === 'array') {
+        if (val.items) {
+          const itemFields = this.toMongooseFields({ item: val.items });
+          type = [itemFields.item];
+        } else {
+          type = Array;
+        }
+      }
+
+      if (val.type === 'object') {
+        if (val.properties) {
+          type = this.toMongooseFields(val.properties);
+        } else {
+          type = mongoose.Schema.Types.Mixed;
+        }
+      }
+
+      if (val.foreignKey) type = Number;
+
+      mongooseFields[key] = {
+        type: type,
+        required: val.required || false,
+        default: val.default,
+        unique: val.unique || false,
+      };
+
+      if (val.enum) mongooseFields[key].enum = val.enum;
+      if (val.min !== undefined) mongooseFields[key].min = val.min;
+      if (val.max !== undefined) mongooseFields[key].max = val.max;
+      if (val.minLength) mongooseFields[key].minlength = val.minLength;
+      if (val.maxLength) mongooseFields[key].maxlength = val.maxLength;
+    }
+
+    return mongooseFields;
+  }
+
   async loadSchemasAsModels() {
     for (const [entityName, schemaDef] of Object.entries(schemas) as Array<[string, SchemaDefinition]>) {
-      const mongooseFields: Record<string, any> = {};
+      const mongooseFields = this.toMongooseFields(schemaDef);
 
       // Auto-increment numeric id field
       mongooseFields.id = { type: Number, unique: true, index: true };
-
-      for (const [key, val] of Object.entries(schemaDef) as Array<[string, SchemaRule]>) {
-        if (key === 'custom') continue;
-
-        let type: any = String;
-        if (val.type === 'number') type = Number;
-        if (val.type === 'boolean') type = Boolean;
-        if (val.type === 'date') type = Date;
-        if (val.type === 'array') type = Array;
-        if (val.type === 'object') type = mongoose.Schema.Types.Mixed;
-        if (val.foreignKey) type = Number;
-
-        mongooseFields[key] = {
-          type: type,
-          required: val.required || false,
-          default: val.default,
-          unique: val.unique || false,
-        };
-
-        if (val.enum) mongooseFields[key].enum = val.enum;
-        if (val.min !== undefined) mongooseFields[key].min = val.min;
-        if (val.max !== undefined) mongooseFields[key].max = val.max;
-        if (val.minLength) mongooseFields[key].minlength = val.minLength;
-        if (val.maxLength) mongooseFields[key].maxlength = val.maxLength;
-      }
 
       if (!mongoose.models[entityName]) {
         const schema = new mongoose.Schema(mongooseFields, {

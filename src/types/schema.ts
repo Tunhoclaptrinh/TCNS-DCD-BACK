@@ -17,6 +17,8 @@ export type SchemaRule = {
   values?: any[];
   label?: string;
   hidden?: boolean;
+  items?: SchemaRule;
+  properties?: SchemaDefinition;
   custom?: (value: any, data: AnyRecord) => string | void | Promise<string | void>;
 };
 
