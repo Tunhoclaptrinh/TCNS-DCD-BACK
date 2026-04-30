@@ -14,6 +14,7 @@ router.post('/', requirePermission('duty:manage'), meetingController.createMeeti
 router.put('/:id', requirePermission('duty:manage'), meetingController.updateMeeting);
 router.delete('/:id', requirePermission('duty:manage'), meetingController.deleteMeeting);
 
-router.patch('/:id/rsvp', meetingController.rsvpMeeting);
+router.post('/:id/rsvp', meetingController.rsvpMeeting);
+router.post('/attendance', requirePermission('duty:manage'), meetingController.markAttendance);
 
 export default router;

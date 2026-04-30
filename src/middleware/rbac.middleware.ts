@@ -50,7 +50,10 @@ export const requirePermission = (permission: string) => {
 
     // 2. Kiểm tra quyền trực tiếp (Tính cả Đa vai trò và Ghi đè cá nhân)
     const hasDirectPermission =
-      userPermissions.includes(permission) || (permission === 'duty:view' && userPermissions.includes('duty:view:all'));
+      userPermissions.includes(permission) ||
+      (permission === 'duty:view' && userPermissions.includes('duty:view:all')) ||
+      (permission === 'users:list' &&
+        (userPermissions.includes('users:list:all') || userPermissions.includes('users:list:dept')));
 
     if (!hasDirectPermission && !isAdmin) {
       return res.status(403).json({
