@@ -1,7 +1,7 @@
 import XLSX from 'xlsx';
 import BaseService from '@shared/common/base-service';
 import bonusCampaignsRepository from '@modules/bonus-campaigns/repositories/bonus-campaigns.repository';
-import generationsRepository from '@modules/generations/repositories/generations.repository';
+import semestersRepository from '@modules/semesters/repositories/semesters.repository';
 import bonusRegistrationService from '@modules/bonus-registrations/services/bonus-registration.service';
 import dutySlotsRepository from '@modules/duty/repositories/duty-slots.repository';
 import usersRepository from '@modules/users/repositories/users.repository';
@@ -58,18 +58,18 @@ class BonusCampaignService extends BaseService {
   }
 
   async createCampaign(payload: AnyRecord = {}, actorId: Identifier) {
-    const maKhoa = toText(payload.maKhoa);
-    if (!maKhoa) throw ApiError.badRequest('maKhoa là bắt buộc');
+    const semesterId = toNumber(payload.semesterId);
+    if (!semesterId) throw ApiError.badRequest('semesterId là bắt buộc');
 
-    const generation = await generationsRepository.findOne({ maKhoa });
-    if (!generation) throw ApiError.badRequest('maKhoa không tồn tại');
+    const semester = await semestersRepository.findById(semesterId);
+    if (!semester) throw ApiError.badRequest('semesterId không tồn tại');
 
-    const count = await this.repository.count({ maKhoa });
-    const maDot = `${maKhoa}${count + 1}`;
+    const count = await this.repository.count({ semesterId });
+    const maDot = `${semesterId}${count + 1}`;
 
     const campaign = await this.repository.create({
       ...payload,
-      maKhoa,
+      semesterId,
       maDot,
       thoiGianBatDau: toIsoDate(payload.thoiGianBatDau),
       thoiGianKetThuc: toIsoDate(payload.thoiGianKetThuc),
