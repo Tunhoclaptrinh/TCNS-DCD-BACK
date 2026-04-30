@@ -6,7 +6,8 @@ import auditLogsService from '@modules/audit-logs/services/audit-logs.service';
 import ApiError from '@utils/api-error';
 import type { AnyRecord, Identifier } from '@app-types/common';
 
-const RSVP_VALUES = new Set(['pending', 'accepted', 'declined', 'present', 'late', 'absent']);
+const RSVP_VALUES = new Set(['pending', 'accepted', 'declined']);
+const ATTENDANCE_VALUES = new Set(['none', 'present', 'late', 'absent']);
 const STATUS_VALUES = new Set(['scheduled', 'completed', 'cancelled']);
 
 function toNum(value: unknown) {
@@ -60,6 +61,11 @@ class MeetingService extends BaseService {
   normalizeRsvp(value: unknown, fallback = 'pending') {
     const status = String(value || fallback).toLowerCase();
     return RSVP_VALUES.has(status) ? status : fallback;
+  }
+
+  normalizeAttendance(value: unknown, fallback = 'none') {
+    const status = String(value || fallback).toLowerCase();
+    return ATTENDANCE_VALUES.has(status) ? status : fallback;
   }
 
   async resolveParticipantIds(participantIds: unknown, actorId: number) {
@@ -120,12 +126,15 @@ class MeetingService extends BaseService {
 
     return ids.map((userId) => {
       const current = byUser.get(userId) || {};
-      const status = this.normalizeRsvp(current.status, 'pending');
+      const rsvpStatus = this.normalizeRsvp(current.rsvpStatus || current.status, 'pending');
+      const attendanceStatus = this.normalizeAttendance(current.attendanceStatus, 'none');
+
       return {
         userId,
-        status,
+        rsvpStatus,
+        attendanceStatus,
         reason: toStr(current.reason),
-        respondedAt: current.respondedAt || (status === 'pending' ? null : now),
+        respondedAt: current.respondedAt || (rsvpStatus === 'pending' ? null : now),
       };
     });
   }
@@ -292,16 +301,13 @@ class MeetingService extends BaseService {
 
         // Priority 1: Direct attendanceUpdates map
         if (updates[cid]) {
-          c.status = this.normalizeRsvp(updates[cid], 'pending');
-          c.respondedAt = c.respondedAt || new Date().toISOString();
+          c.attendanceStatus = this.normalizeAttendance(updates[cid], 'none');
         }
         // Priority 2: presentIds/absentIds (from minutes modal)
         else if (presentSet.has(cid)) {
-          c.status = 'present';
-          c.respondedAt = c.respondedAt || new Date().toISOString();
+          c.attendanceStatus = 'present';
         } else if (absentSet.has(cid)) {
-          c.status = 'absent';
-          c.respondedAt = c.respondedAt || new Date().toISOString();
+          c.attendanceStatus = 'absent';
         }
       });
     }
@@ -374,13 +380,13 @@ class MeetingService extends BaseService {
     const participantIds = normalizeIds(meeting.participantIds);
     if (!participantIds.includes(userId)) participantIds.push(userId);
 
-    const status = this.normalizeRsvp(payload.status || payload.response, '');
-    if (!status || status === 'pending') {
-      throw ApiError.badRequest("status phải là 'accepted' hoặc 'declined'");
+    const rsvpStatus = this.normalizeRsvp(payload.rsvpStatus || payload.status || payload.response, '');
+    if (!rsvpStatus || rsvpStatus === 'pending') {
+      throw ApiError.badRequest("rsvpStatus phải là 'accepted' hoặc 'declined'");
     }
 
     const reason = toStr(payload.reason);
-    if (status === 'declined' && !reason) {
+    if (rsvpStatus === 'declined' && !reason) {
       throw ApiError.badRequest('Vui lòng nhập lý do khi từ chối tham gia');
     }
 
@@ -389,7 +395,7 @@ class MeetingService extends BaseService {
       participantIds,
       meeting.confirmations,
       Number(meeting.createdBy) || userId,
-    ).map((item) => (item.userId === userId ? { ...item, status, reason, respondedAt: now } : item));
+    ).map((item) => (item.userId === userId ? { ...item, rsvpStatus, reason, respondedAt: now } : item));
 
     const a = { updatedBy: userId, updatedAt: now };
     const updated = await this.repository.update(meetingId, { participantIds, confirmations, ...a });
@@ -399,11 +405,11 @@ class MeetingService extends BaseService {
     if (creatorId && creatorId !== userId) {
       await notificationService.notifyUser(creatorId, {
         title: 'Cập nhật RSVP họp',
-        message: `${user.name || user.email || `#${userId}`} đã ${status === 'accepted' ? 'tham gia' : 'từ chối'} cuộc họp "${meeting.title}".`,
+        message: `${user.name || user.email || `#${userId}`} đã ${rsvpStatus === 'accepted' ? 'tham gia' : 'từ chối'} cuộc họp "${meeting.title}".`,
         category: 'system',
         type: 'system',
         refId: meeting.id,
-        metadata: { meetingId: meeting.id, userId, status, reason },
+        metadata: { meetingId: meeting.id, userId, rsvpStatus, reason },
       });
     }
 
@@ -413,12 +419,12 @@ class MeetingService extends BaseService {
   async markAttendance(payload: AnyRecord = {}, actor: AnyRecord = {}) {
     const meetingId = toId(payload.meetingId);
     const userId = toNum(payload.userId);
-    const status = toStr(payload.status);
+    const attendanceStatus = toStr(payload.attendanceStatus || payload.status);
     const reason = toStr(payload.reason);
 
     if (!meetingId) throw ApiError.badRequest('meetingId là bắt buộc');
     if (!userId) throw ApiError.badRequest('userId là bắt buộc');
-    if (!status) throw ApiError.badRequest('status là bắt buộc');
+    if (!attendanceStatus) throw ApiError.badRequest('attendanceStatus là bắt buộc');
 
     const meeting = await this.repository.findById(meetingId);
     if (!meeting) throw ApiError.notFound('Không tìm thấy lịch họp');
@@ -433,7 +439,7 @@ class MeetingService extends BaseService {
       participantIds,
       meeting.confirmations,
       Number(meeting.createdBy) || userId,
-    ).map((c) => (String(c.userId) === String(userId) ? { ...c, status, reason, respondedAt: now } : c));
+    ).map((c) => (String(c.userId) === String(userId) ? { ...c, attendanceStatus, reason } : c));
 
     const updated = await this.repository.update(meetingId, {
       participantIds,

@@ -52,7 +52,25 @@ export default defineSchema({
   },
   confirmations: {
     type: 'array',
-    description: 'Danh sách phản hồi RSVP của các thành viên.',
+    description: 'Danh sách phản hồi chi tiết của các thành viên.',
+    items: {
+      type: 'object',
+      properties: {
+        userId: { type: 'number', required: true },
+        rsvpStatus: {
+          type: 'enum',
+          enum: ['pending', 'accepted', 'declined'],
+          default: 'pending',
+        },
+        attendanceStatus: {
+          type: 'enum',
+          enum: ['none', 'present', 'late', 'absent'],
+          default: 'none',
+        },
+        reason: { type: 'string', required: false },
+        respondedAt: { type: 'date', required: false },
+      },
+    },
     required: false,
     default: [],
   },
