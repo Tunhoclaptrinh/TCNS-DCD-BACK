@@ -181,6 +181,38 @@ const TAG_METADATA: Record<string, { name: string; description: string }> = {
     name: 'Đăng ký cộng điểm',
     description: 'Quản lý chi tiết các bản đăng ký cộng điểm của thành viên.',
   },
+  generations: {
+    name: 'Khóa',
+    description: 'Quản lý khóa/thế hệ thành viên và khóa hiện tại.',
+  },
+  roles: {
+    name: 'Vai trò',
+    description: 'Quản lý vai trò và tập quyền của hệ thống.',
+  },
+  permissions: {
+    name: 'Quyền',
+    description: 'Quản lý danh mục permission dùng trong RBAC.',
+  },
+  semesters: {
+    name: 'Học kỳ',
+    description: 'Quản lý học kỳ và học kỳ hiện tại.',
+  },
+};
+
+const ENTITY_SCHEMA_KEYS: Record<string, string> = {
+  users: 'users',
+  files: 'files',
+  notifications: 'notifications',
+  duty: 'duty_slots',
+  'reward-penalties': 'reward_penalties',
+  meetings: 'meetings',
+  'bonus-campaigns': 'bonus_campaigns',
+  'audit-logs': 'audit_logs',
+  'bonus-registrations': 'bonus_registrations',
+  generations: 'generations',
+  roles: 'roles',
+  permissions: 'permissions',
+  semesters: 'semesters',
 };
 
 const EXTRA_SCHEMAS: AnyRecord = {
@@ -1225,7 +1257,10 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
 
   'GET /audit-logs': {
     summary: 'Danh sách nhật ký hệ thống',
+    description:
+      'Tra cứu audit log. Có thể lọc theo `userId`, `action`, `module`, `resourceId`, `status`, hoặc khoảng thời gian bằng `createdAt_gte` và `createdAt_lte`. Mặc định API populate quan hệ `user`.',
     protected: true,
+    permission: 'system:manage',
   },
 
   'GET /bonus-registrations': {
@@ -1276,17 +1311,135 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
       },
     },
   },
-};
 
-const LIST_ROUTE_KEYS = new Set([
-  'GET /users',
-  'GET /files',
-  'GET /notifications',
-  'GET /reward-penalties',
-  'GET /duty/swaps',
-  'GET /meetings',
-  'GET /bonus-campaigns',
-]);
+  'GET /generations': {
+    summary: 'Danh sách khóa',
+    protected: true,
+    permission: 'generations:manage',
+  },
+  'GET /generations/{id}': {
+    summary: 'Chi tiết khóa',
+    protected: true,
+    permission: 'generations:manage',
+  },
+  'POST /generations': {
+    summary: 'Tạo khóa',
+    protected: true,
+    permission: 'generations:manage',
+    requestBody: buildSchemaRefBody('Generations'),
+  },
+  'PUT /generations/{id}': {
+    summary: 'Cập nhật khóa',
+    protected: true,
+    permission: 'generations:manage',
+    requestBody: buildSchemaRefBody('Generations', false),
+  },
+  'DELETE /generations/{id}': {
+    summary: 'Xóa khóa',
+    protected: true,
+    permission: 'generations:manage',
+  },
+  'PATCH /generations/{id}/set-current': {
+    summary: 'Đặt khóa hiện tại',
+    protected: true,
+    permission: 'generations:manage',
+  },
+
+  'GET /roles': {
+    summary: 'Danh sách vai trò',
+    protected: true,
+    permission: 'system:manage_roles',
+  },
+  'GET /roles/{id}': {
+    summary: 'Chi tiết vai trò',
+    protected: true,
+    permission: 'system:manage_roles',
+  },
+  'POST /roles': {
+    summary: 'Tạo vai trò',
+    protected: true,
+    permission: 'system:manage_roles',
+    requestBody: buildSchemaRefBody('Roles'),
+  },
+  'PUT /roles/{id}': {
+    summary: 'Cập nhật vai trò',
+    protected: true,
+    permission: 'system:manage_roles',
+    requestBody: buildSchemaRefBody('Roles', false),
+  },
+  'PATCH /roles/{id}': {
+    summary: 'Cập nhật một phần vai trò',
+    protected: true,
+    permission: 'system:manage_roles',
+    requestBody: buildSchemaRefBody('Roles', false),
+  },
+  'DELETE /roles/{id}': {
+    summary: 'Xóa vai trò',
+    protected: true,
+    permission: 'system:manage_roles',
+  },
+
+  'GET /permissions': {
+    summary: 'Danh sách quyền',
+    protected: true,
+    permission: 'system:manage_roles',
+  },
+  'GET /permissions/{id}': {
+    summary: 'Chi tiết quyền',
+    protected: true,
+    permission: 'system:manage_roles',
+  },
+  'POST /permissions': {
+    summary: 'Tạo quyền',
+    protected: true,
+    permission: 'system:manage_roles',
+    requestBody: buildSchemaRefBody('Permissions'),
+  },
+  'PUT /permissions/{id}': {
+    summary: 'Cập nhật quyền',
+    protected: true,
+    permission: 'system:manage_roles',
+    requestBody: buildSchemaRefBody('Permissions', false),
+  },
+  'DELETE /permissions/{id}': {
+    summary: 'Xóa quyền',
+    protected: true,
+    permission: 'system:manage_roles',
+  },
+
+  'GET /semesters': {
+    summary: 'Danh sách học kỳ',
+    protected: true,
+    permission: 'settings:view',
+  },
+  'GET /semesters/{id}': {
+    summary: 'Chi tiết học kỳ',
+    protected: true,
+    permission: 'settings:view',
+  },
+  'POST /semesters': {
+    summary: 'Tạo học kỳ',
+    protected: true,
+    permission: 'settings:manage',
+    requestBody: buildSchemaRefBody('Semesters'),
+  },
+  'PUT /semesters/{id}': {
+    summary: 'Cập nhật học kỳ',
+    protected: true,
+    permission: 'settings:manage',
+    requestBody: buildSchemaRefBody('Semesters', false),
+  },
+  'DELETE /semesters/{id}': {
+    summary: 'Xóa học kỳ',
+    protected: true,
+    permission: 'settings:manage',
+  },
+  'PATCH /semesters/{id}/set-current': {
+    summary: 'Đặt học kỳ hiện tại',
+    protected: true,
+    permission: 'settings:manage',
+  },
+};
 
 const SUMMARY_MAP: Array<[RegExp, string, (entity: string) => string]> = [
   [/^\/$/, 'get', (entity) => `Danh sách ${entity}`],
@@ -1368,15 +1521,117 @@ function buildPathParameters(openApiPath: string) {
   });
 }
 
-function buildDefaultListParameters(routeKey: string) {
-  if (!LIST_ROUTE_KEYS.has(routeKey)) return [];
+function getEntitySchema(basePath: string) {
+  const schemaKey = ENTITY_SCHEMA_KEYS[basePath];
+  return schemaKey ? (schemas[schemaKey] as SchemaDefinition | undefined) : undefined;
+}
+
+function getFieldDescription(field: string, rule: SchemaRule) {
+  return rule.label || rule.description || field;
+}
+
+function buildFilterParameters(basePath: string) {
+  const schema = getEntitySchema(basePath);
+  if (!schema) return [];
+
+  const params: AnyRecord[] = [];
+  for (const [field, rule] of Object.entries(schema) as Array<[string, SchemaRule]>) {
+    if (rule.hidden) continue;
+
+    params.push({
+      name: field,
+      in: 'query',
+      required: false,
+      schema: ruleToProperty(rule),
+      description: `Lọc chính xác theo ${getFieldDescription(field, rule)}.`,
+    });
+
+    if (rule.type === 'date' || rule.type === 'number') {
+      params.push(
+        {
+          name: `${field}_gte`,
+          in: 'query',
+          required: false,
+          schema: ruleToProperty(rule),
+          description: `Lọc ${getFieldDescription(field, rule)} lớn hơn hoặc bằng giá trị này.`,
+        },
+        {
+          name: `${field}_lte`,
+          in: 'query',
+          required: false,
+          schema: ruleToProperty(rule),
+          description: `Lọc ${getFieldDescription(field, rule)} nhỏ hơn hoặc bằng giá trị này.`,
+        },
+      );
+    }
+  }
+
+  return params;
+}
+
+function isDefaultListRoute(method: string, openApiPath: string) {
+  if (method !== 'get') return false;
+
+  const pathParts = openApiPath.split('/').filter(Boolean);
+  if (pathParts.some((part) => part.startsWith('{'))) return false;
+
+  return pathParts.length === 1 || ['swaps', 'leave-requests', 'templates', 'assignment'].includes(pathParts.at(-1));
+}
+
+function buildDefaultListParameters(method: string, openApiPath: string, basePath: string) {
+  if (!isDefaultListRoute(method, openApiPath)) return [];
 
   return [
-    { name: '_page', in: 'query', schema: { type: 'integer', default: 1 }, description: 'Trang hiện tại.' },
-    { name: '_limit', in: 'query', schema: { type: 'integer', default: 10 }, description: 'Số bản ghi mỗi trang.' },
-    { name: '_sort', in: 'query', schema: { type: 'string' }, description: 'Field sắp xếp.' },
-    { name: '_order', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] }, description: 'Thứ tự sắp xếp.' },
-    { name: 'q', in: 'query', schema: { type: 'string' }, description: 'Từ khóa tìm kiếm.' },
+    {
+      name: '_page',
+      in: 'query',
+      schema: { type: 'integer', default: 1, minimum: 1 },
+      description: 'Trang hiện tại. Alias: `page`.',
+    },
+    {
+      name: '_limit',
+      in: 'query',
+      schema: { type: 'integer', default: 10, minimum: 1, maximum: 1000 },
+      description: 'Số bản ghi mỗi trang. Alias: `limit`.',
+    },
+    {
+      name: '_sort',
+      in: 'query',
+      schema: { type: 'string', example: 'createdAt' },
+      description: 'Field sắp xếp. Có thể truyền nhiều field, cách nhau bằng dấu phẩy. Alias: `sort`.',
+    },
+    {
+      name: '_order',
+      in: 'query',
+      schema: { type: 'string', enum: ['asc', 'desc'], default: 'asc' },
+      description: 'Thứ tự sắp xếp. Alias: `order`.',
+    },
+    {
+      name: 'q',
+      in: 'query',
+      schema: { type: 'string' },
+      description: 'Từ khóa tìm kiếm tự do. Alias: `_q`.',
+    },
+    {
+      name: 'ids',
+      in: 'query',
+      schema: { type: 'string', example: '1,2,3' },
+      description: 'Lọc nhanh theo danh sách ID, cách nhau bằng dấu phẩy.',
+    },
+    {
+      name: '_embed',
+      in: 'query',
+      schema: { type: 'string', example: 'user' },
+      description:
+        'Populate quan hệ theo tên field. Có thể truyền nhiều field, cách nhau bằng dấu phẩy. Alias: `embed`.',
+    },
+    {
+      name: '_expand',
+      in: 'query',
+      schema: { type: 'string', example: 'user' },
+      description: 'Alias của `_embed`, dùng để populate quan hệ.',
+    },
+    ...buildFilterParameters(basePath),
   ];
 }
 
@@ -1456,7 +1711,7 @@ function buildSwaggerPaths(includeInternal: boolean) {
     const parameters = mergeParameters(
       buildPathParameters(openApiPath),
       doc.parameters || [],
-      buildDefaultListParameters(routeKey),
+      buildDefaultListParameters(method, openApiPath, basePath),
     );
 
     if (parameters.length > 0) {
