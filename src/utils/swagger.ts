@@ -199,22 +199,6 @@ const TAG_METADATA: Record<string, { name: string; description: string }> = {
   },
 };
 
-const ENTITY_SCHEMA_KEYS: Record<string, string> = {
-  users: 'users',
-  files: 'files',
-  notifications: 'notifications',
-  duty: 'duty_slots',
-  'reward-penalties': 'reward_penalties',
-  meetings: 'meetings',
-  'bonus-campaigns': 'bonus_campaigns',
-  'audit-logs': 'audit_logs',
-  'bonus-registrations': 'bonus_registrations',
-  generations: 'generations',
-  roles: 'roles',
-  permissions: 'permissions',
-  semesters: 'semesters',
-};
-
 const EXTRA_SCHEMAS: AnyRecord = {
   AuthLoginRequest: buildObjectSchema(
     {
@@ -1441,6 +1425,17 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
   },
 };
 
+const LIST_ROUTE_KEYS = new Set([
+  'GET /users',
+  'GET /files',
+  'GET /notifications',
+  'GET /reward-penalties',
+  'GET /duty/swaps',
+  'GET /meetings',
+  'GET /bonus-campaigns',
+  'GET /audit-logs',
+]);
+
 const SUMMARY_MAP: Array<[RegExp, string, (entity: string) => string]> = [
   [/^\/$/, 'get', (entity) => `Danh sách ${entity}`],
   [/^\/$/, 'post', (entity) => `Tạo ${entity}`],
@@ -1521,65 +1516,8 @@ function buildPathParameters(openApiPath: string) {
   });
 }
 
-function getEntitySchema(basePath: string) {
-  const schemaKey = ENTITY_SCHEMA_KEYS[basePath];
-  return schemaKey ? (schemas[schemaKey] as SchemaDefinition | undefined) : undefined;
-}
-
-function getFieldDescription(field: string, rule: SchemaRule) {
-  return rule.label || rule.description || field;
-}
-
-function buildFilterParameters(basePath: string) {
-  const schema = getEntitySchema(basePath);
-  if (!schema) return [];
-
-  const params: AnyRecord[] = [];
-  for (const [field, rule] of Object.entries(schema) as Array<[string, SchemaRule]>) {
-    if (rule.hidden) continue;
-
-    params.push({
-      name: field,
-      in: 'query',
-      required: false,
-      schema: ruleToProperty(rule),
-      description: `Lọc chính xác theo ${getFieldDescription(field, rule)}.`,
-    });
-
-    if (rule.type === 'date' || rule.type === 'number') {
-      params.push(
-        {
-          name: `${field}_gte`,
-          in: 'query',
-          required: false,
-          schema: ruleToProperty(rule),
-          description: `Lọc ${getFieldDescription(field, rule)} lớn hơn hoặc bằng giá trị này.`,
-        },
-        {
-          name: `${field}_lte`,
-          in: 'query',
-          required: false,
-          schema: ruleToProperty(rule),
-          description: `Lọc ${getFieldDescription(field, rule)} nhỏ hơn hoặc bằng giá trị này.`,
-        },
-      );
-    }
-  }
-
-  return params;
-}
-
-function isDefaultListRoute(method: string, openApiPath: string) {
-  if (method !== 'get') return false;
-
-  const pathParts = openApiPath.split('/').filter(Boolean);
-  if (pathParts.some((part) => part.startsWith('{'))) return false;
-
-  return pathParts.length === 1 || ['swaps', 'leave-requests', 'templates', 'assignment'].includes(pathParts.at(-1));
-}
-
-function buildDefaultListParameters(method: string, openApiPath: string, basePath: string) {
-  if (!isDefaultListRoute(method, openApiPath)) return [];
+function buildDefaultListParameters(routeKey: string) {
+  if (!LIST_ROUTE_KEYS.has(routeKey)) return [];
 
   return [
     {
@@ -1612,26 +1550,6 @@ function buildDefaultListParameters(method: string, openApiPath: string, basePat
       schema: { type: 'string' },
       description: 'Từ khóa tìm kiếm tự do. Alias: `_q`.',
     },
-    {
-      name: 'ids',
-      in: 'query',
-      schema: { type: 'string', example: '1,2,3' },
-      description: 'Lọc nhanh theo danh sách ID, cách nhau bằng dấu phẩy.',
-    },
-    {
-      name: '_embed',
-      in: 'query',
-      schema: { type: 'string', example: 'user' },
-      description:
-        'Populate quan hệ theo tên field. Có thể truyền nhiều field, cách nhau bằng dấu phẩy. Alias: `embed`.',
-    },
-    {
-      name: '_expand',
-      in: 'query',
-      schema: { type: 'string', example: 'user' },
-      description: 'Alias của `_embed`, dùng để populate quan hệ.',
-    },
-    ...buildFilterParameters(basePath),
   ];
 }
 
@@ -1711,7 +1629,7 @@ function buildSwaggerPaths(includeInternal: boolean) {
     const parameters = mergeParameters(
       buildPathParameters(openApiPath),
       doc.parameters || [],
-      buildDefaultListParameters(method, openApiPath, basePath),
+      buildDefaultListParameters(routeKey),
     );
 
     if (parameters.length > 0) {
