@@ -126,6 +126,7 @@ class DutyService extends BaseService {
 
   // ==================== SLOT & SCHEDULE MANAGEMENT ====================
   getWeeklySchedule = (options: any = {}) => dutySlotsService.getWeeklySchedule(options);
+  exportRangeExcel = (options: any = {}) => dutySlotsService.exportRangeExcel(options);
   createActualShift = async (payload: GenericRecord, actorId: Identifier) => {
     const data = await dutySlotsService.createActualShift(payload, actorId);
 

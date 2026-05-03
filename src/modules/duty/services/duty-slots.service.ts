@@ -1,4 +1,5 @@
 import dutySlotsRepository from '@modules/duty/repositories/duty-slots.repository';
+import ExcelJS from 'exceljs';
 import dutyDaysRepository from '@modules/duty/repositories/duty-days.repository';
 import dutyKipsRepository from '@modules/duty/repositories/duty-kips.repository';
 import dutyShiftsRepository from '@modules/duty/repositories/duty-shifts.repository';
@@ -147,6 +148,7 @@ class DutySlotsService {
         violations: violations.filter((v: any) => normalizeId(v.slotId) === normalizeId(slot.id)),
         leaveRequests: leaveRequests.filter((r: any) => normalizeId(r.slotId) === normalizeId(slot.id)),
         swapRequests: swapRequests.filter((r: any) => normalizeId(r.fromSlotId) === normalizeId(slot.id)),
+        isSpecialEvent: !!(shift?.isSpecialEvent || kip?.isSpecialEvent),
       };
     });
 
@@ -157,6 +159,104 @@ class DutySlotsService {
         .sort((a: any, b: any) => (a.startTime || '').localeCompare(b.startTime || '')),
     }));
 
+    // Calculate user quota if userId is provided
+    let userMetadata: any = null;
+    const userId = options.userId;
+    if (userId) {
+      const fullUser = await usersRepository.findById(userId);
+      if (fullUser) {
+        const settings = await dutySettingsService.getSettings();
+        const limitMode = settings.kipLimitMode || 'quota';
+        let weeklyQuota = Number(settings.weeklyKipLimit) || 0;
+
+        if (limitMode === 'quota') {
+          const defaultQuota = Number(settings.defaultQuota) || 2.5;
+          const quotaRules = settings.quotaRules || [];
+          const pos = String(fullUser.position || '').toLowerCase();
+          const uDept = String(fullUser.department?.name || fullUser.department || '').trim();
+
+          const getRoleGroup = (user: any) => {
+            const role = String(user.role || '').toLowerCase();
+            const position = String(user.position || '').toLowerCase();
+
+            // Collaborators
+            if (role === 'ctv' || position === 'ctv') return 'ctv';
+
+            // Official members (admin, manager, leader, member or any other active role)
+            return 'member_official';
+          };
+          const roleGroup = getRoleGroup(fullUser);
+
+          const findMatchingRule = () => {
+            // Priority:
+            // 1. Specific User (MSV)
+            const userRule = quotaRules.find(
+              (r: any) => r.type === 'user' && String(r.target) === String(fullUser.studentId || userId),
+            );
+            if (userRule) return userRule;
+
+            // 2. Role based rules
+            const roleMatch = (r: any) => {
+              if (r.type === 'dt') return pos === 'dt';
+              if (r.type === 'tb') return pos === 'tb';
+              if (r.type === 'pb') return pos === 'pb';
+              if (r.type === 'ctv') return roleGroup === 'ctv';
+              if (r.type === 'member_all') return roleGroup === 'member_official';
+              return false;
+            };
+
+            // 2a. Role + Specific Dept
+            const roleDeptRule = quotaRules.find(
+              (r: any) => roleMatch(r) && r.target !== 'all' && String(r.target) === uDept,
+            );
+            if (roleDeptRule) return roleDeptRule;
+
+            // 2b. Role + All Depts
+            const roleAllRule = quotaRules.find((r: any) => roleMatch(r) && r.target === 'all');
+            if (roleAllRule) return roleAllRule;
+
+            return null;
+          };
+
+          const rule = findMatchingRule();
+          weeklyQuota = rule ? Number(rule.quota) : 0;
+          const cycle = rule?.cycle || 'week';
+          let registeredKips = 0;
+
+          if (cycle === 'month') {
+            const startOfMonth = dayjs(options.startDate).startOf('month').toISOString();
+            const endOfMonth = dayjs(options.startDate).endOf('month').toISOString();
+
+            const allSlotsInMonth = await dutySlotsRepository.findMany({
+              shiftDate_gte: startOfMonth,
+              shiftDate_lte: endOfMonth,
+            });
+
+            const userSlotsInMonth = allSlotsInMonth.filter((s: any) =>
+              normalizeIdList(s.assignedUserIds || []).includes(userId),
+            );
+
+            const userKipIds = userSlotsInMonth.map((s: any) => s.kipId).filter(Boolean);
+            const userKips = kips.filter((k: any) => userKipIds.includes(normalizeId(k.id)));
+            registeredKips = userKips.reduce((acc: number, k: any) => acc + (Number(k.coefficient) || 1), 0);
+          } else {
+            const userSlotsInWeek = slots.filter((s: any) => normalizeIdList(s.assignedUserIds || []).includes(userId));
+            const userKipIds = userSlotsInWeek.map((s: any) => s.kipId).filter(Boolean);
+            const userKips = kips.filter((k: any) => userKipIds.includes(normalizeId(k.id)));
+            registeredKips = userKips.reduce((acc: number, k: any) => acc + (Number(k.coefficient) || 1), 0);
+          }
+
+          userMetadata = {
+            weeklyQuota: settings.weeklyLimitEnabled ? weeklyQuota : 0,
+            registeredKips,
+            limitMode,
+            cycle,
+            weeklyLimitEnabled: settings.weeklyLimitEnabled !== false,
+          };
+        }
+      }
+    }
+
     return {
       success: true,
       data: {
@@ -164,6 +264,7 @@ class DutySlotsService {
         days,
         assignments,
         templates: templateData,
+        userMetadata,
       },
       weekStart,
       weekEnd,
@@ -180,6 +281,7 @@ class DutySlotsService {
       name: payload.name,
       startTime: payload.startTime,
       endTime: payload.endTime,
+      isSpecialEvent: !!payload.isSpecialEvent,
       status: 'open',
       createdBy: normalizeId(actorId),
       note: payload.note || '',
@@ -435,27 +537,100 @@ class DutySlotsService {
     if (hasConflict) throw ApiError.badRequest('Bạn đã có lịch trực khác vào thời gian này.');
 
     const settings = await dutySettingsService.getSettings();
-    const weeklyLimit = settings.weeklyKipLimit;
-    if (weeklyLimit && Number(weeklyLimit) > 0) {
-      const allSlotsInWeek = await dutySlotsRepository.findMany({ weekStart: new Date(slot.weekStart).toISOString() });
-      const userSlotsInWeek = allSlotsInWeek.filter((s: any) =>
-        normalizeIdList(s.assignedUserIds || []).includes(userId),
-      );
+    const limitMode = settings.kipLimitMode || 'quota';
+    let weeklyLimit = Number(settings.weeklyKipLimit) || 0;
 
-      // Fetch kips for these slots to get coefficients
-      const userKipIds = userSlotsInWeek.map((s: any) => s.kipId).filter(Boolean);
-      const userKips = await dutyKipsRepository.findMany({ id_in: userKipIds });
+    const fullUser = typeof user === 'object' ? user : await usersRepository.findById(userId);
+    if (!fullUser) throw ApiError.notFound('Người dùng không tồn tại');
 
-      // Add the current kip to the calculation
+    let rule: any = null;
+
+    // If quota mode, calculate limit based on user rules
+    if (limitMode === 'quota') {
+      const defaultQuota = 0; // No more default quota, fallback to 0
+      const quotaRules = settings.quotaRules || [];
+      const pos = String(fullUser.position || '').toLowerCase();
+      const uDept = String(fullUser.department?.name || fullUser.department || '').trim();
+
+      const getRoleGroup = (u: any) => {
+        const role = String(u.role || '').toLowerCase();
+        const position = String(u.position || '').toLowerCase();
+        if (role === 'ctv' || position === 'ctv') return 'ctv';
+        return 'member_official';
+      };
+      const roleGroup = getRoleGroup(fullUser);
+
+      const findMatchingRule = () => {
+        // Priority logic (matches getSlots)
+        const userRule = quotaRules.find(
+          (r: any) => r.type === 'user' && String(r.target) === String(fullUser.studentId || userId),
+        );
+        if (userRule) return userRule;
+
+        const roleMatch = (r: any) => {
+          if (r.type === 'dt') return pos === 'dt';
+          if (r.type === 'tb') return pos === 'tb';
+          if (r.type === 'pb') return pos === 'pb';
+          if (r.type === 'ctv') return roleGroup === 'ctv';
+          if (r.type === 'member_all') return roleGroup === 'member_official';
+          return false;
+        };
+
+        const roleDeptRule = quotaRules.find(
+          (r: any) => roleMatch(r) && r.target !== 'all' && String(r.target) === uDept,
+        );
+        if (roleDeptRule) return roleDeptRule;
+
+        const roleAllRule = quotaRules.find((r: any) => roleMatch(r) && r.target === 'all');
+        if (roleAllRule) return roleAllRule;
+
+        return null;
+      };
+
+      rule = findMatchingRule();
+      weeklyLimit = rule ? Number(rule.quota) : defaultQuota;
+    }
+
+    if (settings.weeklyLimitEnabled && (weeklyLimit > 0 || limitMode === 'quota')) {
+      const cycle = rule?.cycle || 'week';
+      let currentTotal = 0;
+
+      if (cycle === 'month') {
+        const startOfMonth = dayjs(slot.shiftDate).startOf('month').toISOString();
+        const endOfMonth = dayjs(slot.shiftDate).endOf('month').toISOString();
+
+        const allSlotsInMonth = await dutySlotsRepository.findMany({
+          shiftDate_gte: startOfMonth,
+          shiftDate_lte: endOfMonth,
+        });
+
+        const userSlotsInMonth = allSlotsInMonth.filter((s: any) =>
+          normalizeIdList(s.assignedUserIds || []).includes(userId),
+        );
+
+        const userKipIds = userSlotsInMonth.map((s: any) => s.kipId).filter(Boolean);
+        const userKips = await dutyKipsRepository.findMany({ id_in: userKipIds });
+        currentTotal = userKips.reduce((acc: number, k: any) => acc + (Number(k.coefficient) || 1), 0);
+      } else {
+        const allSlotsInWeek = await dutySlotsRepository.findMany({
+          weekStart: new Date(slot.weekStart).toISOString(),
+        });
+        const userSlotsInWeek = allSlotsInWeek.filter((s: any) =>
+          normalizeIdList(s.assignedUserIds || []).includes(userId),
+        );
+
+        const userKipIds = userSlotsInWeek.map((s: any) => s.kipId).filter(Boolean);
+        const userKips = await dutyKipsRepository.findMany({ id_in: userKipIds });
+        currentTotal = userKips.reduce((acc: number, k: any) => acc + (Number(k.coefficient) || 1), 0);
+      }
+
       const currentKip = await dutyKipsRepository.findById(slot.kipId);
+      const totalAfterJoin = currentTotal + (Number(currentKip?.coefficient) || 1);
 
-      const totalCoefficient =
-        userKips.reduce((acc: number, k: any) => acc + (Number(k.coefficient) || 1), 0) +
-        (Number(currentKip?.coefficient) || 1);
-
-      if (totalCoefficient > Number(settings.weeklyKipLimit)) {
+      if (totalAfterJoin > weeklyLimit) {
+        const cycleLabel = cycle === 'month' ? 'tháng' : 'tuần';
         throw ApiError.badRequest(
-          `Bạn đã đạt giới hạn đăng ký trong tuần (${settings.weeklyKipLimit} kíp). Hiện tại: ${totalCoefficient - (Number(currentKip?.coefficient) || 1)} kíp. kíp này tính ${currentKip?.coefficient} kíp.`,
+          `Bạn đã đạt giới hạn đăng ký trong ${cycleLabel} (${weeklyLimit} kíp). Hiện tại: ${currentTotal} kíp. Kíp này tính ${currentKip?.coefficient} kíp.`,
         );
       }
     }
@@ -1102,6 +1277,261 @@ class DutySlotsService {
       upcomingCount: slots.filter((s: any) => dayjs(s.shiftDate).isAfter(dayjs())).length,
       recentLogs: await dutyLogsService.getUserLogs(id, 5),
     };
+  }
+
+  async exportRangeExcel(options: any = {}) {
+    const startDate = dayjs(options.startDate || options.weekStart || dayjs().startOf('isoWeek' as any)).startOf('day');
+    const endDate = dayjs(options.endDate || dayjs(startDate).add(6, 'day')).endOf('day');
+    const mode = options.mode || 'only_duty';
+    const includeDays = options.includeDays || [1, 2, 3, 4, 5, 6, 0]; // Default to all days if not provided
+
+    const slots = await dutySlotsRepository.findMany({
+      shiftDate: {
+        $gte: startDate.toISOString(),
+        $lte: endDate.toISOString(),
+      },
+    });
+
+    // Fetch meetings if needed
+    let meetings: any[] = [];
+    if (mode === 'all' || mode === 'with_meetings') {
+      const meetingModule = await import('@modules/meetings/services/meeting.service');
+      const mRes = await meetingModule.default.findAll({
+        filter: {
+          meetingAt: {
+            $gte: startDate.toISOString(),
+            $lte: endDate.toISOString(),
+          },
+        },
+      });
+      if (mRes.success) meetings = mRes.data;
+    }
+
+    const workbook = new ExcelJS.Workbook();
+
+    // Group days by week for multi-week export
+    const allDays: dayjs.Dayjs[] = [];
+    let curr = dayjs(startDate);
+    while (curr.isSameOrBefore(endDate, 'day')) {
+      if (includeDays.includes(curr.day())) {
+        allDays.push(curr);
+      }
+      curr = curr.add(1, 'day');
+    }
+
+    if (allDays.length === 0) throw new ApiError(400, 'Không có ngày nào để xuất');
+
+    // Split into chunks of 7 days (weeks) for the template look
+    const chunks: dayjs.Dayjs[][] = [];
+    for (let i = 0; i < allDays.length; i += 7) {
+      chunks.push(allDays.slice(i, i + 7));
+    }
+
+    // Fetch templates once to maintain order
+    const { templates } = (await this.getWeeklySchedule({ weekStart: startDate.format('YYYY-MM-DD') })).data;
+
+    // Styles
+    const headerStyle: Partial<ExcelJS.Style> = {
+      font: { bold: true, size: 14, color: { argb: 'FF000000' } },
+      alignment: { horizontal: 'center', vertical: 'middle' },
+      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6E0B4' } }, // Light green
+    };
+
+    const dayHeaderStyle: Partial<ExcelJS.Style> = {
+      font: { bold: true, size: 11 },
+      alignment: { horizontal: 'center', vertical: 'middle' },
+      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } },
+      border: {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' },
+      },
+    };
+
+    const kipLabelStyle: Partial<ExcelJS.Style> = {
+      font: { bold: true, size: 10 },
+      alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
+      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } },
+      border: {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' },
+      },
+    };
+
+    const cellStyle: Partial<ExcelJS.Style> = {
+      font: { size: 10 },
+      alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
+      border: {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' },
+      },
+    };
+
+    const meetingCellStyle: Partial<ExcelJS.Style> = {
+      font: { size: 10, italic: true, color: { argb: 'FFFF0000' } },
+      alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
+      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } }, // Light yellow
+      border: {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' },
+      },
+    };
+
+    const kipPalettes = [
+      'FFE0F2FE', // Blue
+      'FFFEF3C7', // Yellow
+      'FFDCFCE7', // Green
+      'FFF3E8FF', // Purple
+      'FFFFEDD5', // Orange
+      'FFFCE7F3', // Pink
+      'FFF1F5F9', // Slate
+    ];
+
+    for (let cIdx = 0; cIdx < chunks.length; cIdx++) {
+      const weekDays = chunks[cIdx];
+      const sheetName = chunks.length > 1 ? `Trang ${cIdx + 1}` : 'Lịch trực';
+      const worksheet = workbook.addWorksheet(sheetName);
+      const numCols = weekDays.length;
+
+      worksheet.getColumn(1).width = 25;
+      for (let i = 2; i <= numCols + 1; i++) worksheet.getColumn(i).width = 20;
+
+      const rangeStr = `${weekDays[0].format('DD/MM')} - ${weekDays[numCols - 1].format('DD/MM')}`;
+      const titleRow = worksheet.addRow([`LỊCH TRỰC TV DCD (${rangeStr})`]);
+      worksheet.mergeCells(1, 1, 1, numCols + 1);
+      titleRow.getCell(1).style = headerStyle;
+      titleRow.height = 30;
+
+      const dayHeaderRow = worksheet.addRow(['', ...weekDays.map((d) => d.format('dddd (DD/MM)'))]);
+      dayHeaderRow.eachCell((cell, colNumber) => {
+        cell.style = dayHeaderStyle;
+        if (colNumber > 1) {
+          const d = weekDays[colNumber - 2];
+          const isWeekend = d.day() === 0 || d.day() === 6;
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isWeekend ? 'FFE2EFDA' : 'FFF8D7DA' } };
+        }
+      });
+      dayHeaderRow.height = 25;
+
+      const scheduleMap: Record<number, Record<string, string[]>> = {};
+      for (let i = 0; i < numCols; i++) scheduleMap[i] = {};
+
+      slots.forEach((slot: any) => {
+        const slotDate = dayjs(slot.shiftDate);
+        const dayIdx = weekDays.findIndex((d) => d.isSame(slotDate, 'day'));
+        if (dayIdx === -1) return;
+        const label = slot.shiftLabel;
+        if (!scheduleMap[dayIdx][label]) scheduleMap[dayIdx][label] = [];
+        (slot.assignedUsers || []).forEach((u: any) => scheduleMap[dayIdx][label].push(u.name));
+      });
+
+      const dayMeetings: Record<number, any[]> = {};
+      for (let i = 0; i < numCols; i++) dayMeetings[i] = [];
+      meetings.forEach((m: any) => {
+        const mDate = dayjs(m.meetingAt);
+        const dayIdx = weekDays.findIndex((d) => d.isSame(mDate, 'day'));
+        if (dayIdx === -1) return;
+        dayMeetings[dayIdx].push(m);
+      });
+
+      const periodKipLabels = Array.from(
+        new Set(
+          slots
+            .filter((s) => weekDays.some((d) => d.isSame(dayjs(s.shiftDate), 'day')))
+            .map((s: any) => s.shiftLabel as string),
+        ),
+      ).sort();
+      const orderedKips: { label: string; details: string }[] = [];
+      templates.forEach((s: any) => {
+        s.kips.forEach((k: any) => {
+          const label = `${s.name} - ${k.name}`;
+          const details = `(${k.startTime} - ${k.endTime})\n<${k.coefficient} kíp>`;
+          orderedKips.push({ label, details });
+        });
+      });
+      periodKipLabels.forEach((label) => {
+        if (!orderedKips.find((ok) => ok.label === label)) orderedKips.push({ label, details: '' });
+      });
+
+      let currentRow = 3;
+      let kipColorIdx = 0;
+      for (const kipInfo of orderedKips) {
+        const label = kipInfo.label;
+        const details = kipInfo.details;
+        const kipBgColor = kipPalettes[kipColorIdx % kipPalettes.length];
+
+        let maxPeople = 1;
+        for (let i = 0; i < numCols; i++)
+          if ((scheduleMap[i][label]?.length || 0) > maxPeople) maxPeople = scheduleMap[i][label].length;
+
+        const startKipRow = currentRow;
+        for (let r = 0; r < maxPeople; r++) {
+          const rowData = [r === 0 ? `${label}\n${details}` : ''];
+          for (let i = 0; i < numCols; i++) rowData.push(scheduleMap[i][label]?.[r] || '');
+
+          const isSubRowEven = r % 2 === 0;
+          const cellBgColor = isSubRowEven ? 'FFFFFFFF' : 'FFF9FAFB';
+          const row = worksheet.addRow(rowData);
+          row.eachCell((cell, colNumber) => {
+            if (colNumber > 1) {
+              cell.style = cellStyle;
+              const d = weekDays[colNumber - 2];
+              const isWeekend = d.day() === 0 || d.day() === 6;
+              if (isWeekend)
+                cell.fill = {
+                  type: 'pattern',
+                  pattern: 'solid',
+                  fgColor: { argb: isSubRowEven ? 'FFF2F2F2' : 'FFEAEAEA' },
+                };
+              else cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: cellBgColor } };
+            } else {
+              cell.style = kipLabelStyle;
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: kipBgColor } };
+            }
+          });
+          currentRow++;
+        }
+        if (maxPeople > 1) worksheet.mergeCells(startKipRow, 1, currentRow - 1, 1);
+        kipColorIdx++;
+      }
+
+      if (meetings.some((m) => weekDays.some((d) => d.isSame(dayjs(m.meetingAt), 'day')))) {
+        worksheet.addRow([]);
+        currentRow++;
+        const mTitleRow = worksheet.addRow(['LỊCH HỌP / SỰ KIỆN']);
+        worksheet.mergeCells(currentRow, 1, currentRow, numCols + 1);
+        mTitleRow.getCell(1).style = {
+          ...headerStyle,
+          fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE599' } },
+        };
+        currentRow++;
+
+        let maxMs = 0;
+        for (let i = 0; i < numCols; i++) if (dayMeetings[i].length > maxMs) maxMs = dayMeetings[i].length;
+        for (let r = 0; r < maxMs; r++) {
+          const rowData = [''];
+          for (let i = 0; i < numCols; i++) {
+            const m = dayMeetings[i][r];
+            rowData.push(m ? `${dayjs(m.meetingAt).format('HH:mm')}: ${m.title}` : '');
+          }
+          const row = worksheet.addRow(rowData);
+          row.eachCell((cell, colNumber) => {
+            if (colNumber > 1) cell.style = meetingCellStyle;
+          });
+          currentRow++;
+        }
+      }
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return buffer;
   }
 }
 
