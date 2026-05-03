@@ -11,6 +11,7 @@ class DutyController extends BaseController {
     const data = await dutyService.getWeeklySchedule({
       ...req.parsedQuery,
       weekStart: req.query.weekStart || req.query.week_start,
+      userId: req.user?.id,
     });
     this.ok(res, data);
   });

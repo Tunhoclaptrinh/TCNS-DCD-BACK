@@ -55,12 +55,15 @@ class DutyStatsService {
 
     // 2. Filter users based on criteria
     // Helper to determine role group
-    const getRoleGroup = (position: string) => {
-      const pos = String(position || '').toLowerCase();
-      // Grouping: tb=Trưởng ban, pb=Phó ban, tv=Thành viên, tvb=Thành viên ban, dt=Đội trưởng
-      if (['tb', 'pb', 'tv', 'tvb', 'dt'].includes(pos)) return 'member_all';
-      if (pos === 'ctv') return 'ctv';
-      return 'other';
+    const getRoleGroup = (u: any) => {
+      const role = String(u.role || '').toLowerCase();
+      const position = String(u.position || '').toLowerCase();
+
+      // Collaborators
+      if (role === 'ctv' || position === 'ctv') return 'ctv';
+
+      // Official members
+      return 'member_official';
     };
 
     const activeGenerationIds =
@@ -110,7 +113,7 @@ class DutyStatsService {
       const userId = normalizeId(user.id);
       const start = dayjs(startDate);
       const end = dayjs(endDate);
-      const roleGroup = getRoleGroup(user.position);
+      const roleGroup = getRoleGroup(user);
       const deptValue = user.department?.name || user.department;
       const uDept = String(deptValue || '').trim();
 
@@ -127,41 +130,23 @@ class DutyStatsService {
         );
         if (userRule) return userRule;
 
-        // 2. Specific Position + Dept Rule
-        const posDeptRule = quotaRules.find(
+        // 2. Position Rule
+        const posRule = quotaRules.find(
           (r: any) =>
-            r.type === pos &&
-            r.target === uDept &&
+            r.type === 'position' &&
+            String(r.target) === pos &&
             (!r.startDate || !r.endDate || (dayjs(r.startDate).isBefore(end) && dayjs(r.endDate).isAfter(start))),
         );
-        if (posDeptRule) return posDeptRule;
+        if (posRule) return posRule;
 
-        // 3. Specific Position (All Depts) Rule
-        const posAllRule = quotaRules.find(
+        // 3. Role Group Rule
+        const rgRule = quotaRules.find(
           (r: any) =>
-            r.type === pos &&
-            r.target === 'all' &&
+            r.type === 'role_group' &&
+            r.target === roleGroup &&
             (!r.startDate || !r.endDate || (dayjs(r.startDate).isBefore(end) && dayjs(r.endDate).isAfter(start))),
         );
-        if (posAllRule) return posAllRule;
-
-        // 4. Role Group + Dept Rule
-        const deptRule = quotaRules.find(
-          (r: any) =>
-            r.type === roleGroup &&
-            r.target === uDept &&
-            (!r.startDate || !r.endDate || (dayjs(r.startDate).isBefore(end) && dayjs(r.endDate).isAfter(start))),
-        );
-        if (deptRule) return deptRule;
-
-        // 5. Role Group (All Depts) Rule
-        const roleRule = quotaRules.find(
-          (r: any) =>
-            r.type === roleGroup &&
-            r.target === 'all' &&
-            (!r.startDate || !r.endDate || (dayjs(r.startDate).isBefore(end) && dayjs(r.endDate).isAfter(start))),
-        );
-        if (roleRule) return roleRule;
+        if (rgRule) return rgRule;
 
         return null;
       };

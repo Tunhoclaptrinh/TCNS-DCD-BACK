@@ -340,7 +340,9 @@ class DutyGenerationService {
       if (slots.length > 0) {
         const ids = slots.map((s) => s.id);
         await Promise.all([
-          dutySwapRequestsRepository.deleteMany({ dutySlotId: { $in: ids } }),
+          dutySwapRequestsRepository.deleteMany({
+            $or: [{ fromSlotId: { $in: ids } }, { toSlotId: { $in: ids } }],
+          }),
           dutyLeaveRequestsRepository.deleteMany({ slotId: { $in: ids } }),
           dutySlotsRepository.deleteMany({ kipId: kip.id }),
         ]);
@@ -351,7 +353,9 @@ class DutyGenerationService {
     if (orphans.length > 0) {
       const ids = orphans.map((s) => s.id);
       await Promise.all([
-        dutySwapRequestsRepository.deleteMany({ dutySlotId: { $in: ids } }),
+        dutySwapRequestsRepository.deleteMany({
+          $or: [{ fromSlotId: { $in: ids } }, { toSlotId: { $in: ids } }],
+        }),
         dutyLeaveRequestsRepository.deleteMany({ slotId: { $in: ids } }),
         dutySlotsRepository.deleteMany({ shiftId: shift.id }),
       ]);

@@ -29,6 +29,24 @@ export default defineSchema({
     required: false,
     description: 'Tên thế hệ hiện tại (Legacy)',
   },
+  weeklyLimitEnabled: {
+    type: 'boolean',
+    required: false,
+    default: true,
+    description: 'Bật/Tắt tính năng giới hạn kíp trực theo tuần',
+  },
+  kipLimitMode: {
+    type: 'string',
+    required: false,
+    default: 'quota',
+    description: 'Chế độ giới hạn: quota (định mức) hoặc manual (cố định)',
+  },
+  allowedIpRanges: {
+    type: 'array',
+    required: false,
+    default: [],
+    description: 'Danh sách dải IP được phép điểm danh',
+  },
 
   // New Stats & Quota Fields
   defaultQuota: {

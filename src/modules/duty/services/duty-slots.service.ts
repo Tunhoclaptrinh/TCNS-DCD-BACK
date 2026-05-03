@@ -147,6 +147,7 @@ class DutySlotsService {
         violations: violations.filter((v: any) => normalizeId(v.slotId) === normalizeId(slot.id)),
         leaveRequests: leaveRequests.filter((r: any) => normalizeId(r.slotId) === normalizeId(slot.id)),
         swapRequests: swapRequests.filter((r: any) => normalizeId(r.fromSlotId) === normalizeId(slot.id)),
+        isSpecialEvent: !!(shift?.isSpecialEvent || kip?.isSpecialEvent),
       };
     });
 
@@ -157,6 +158,104 @@ class DutySlotsService {
         .sort((a: any, b: any) => (a.startTime || '').localeCompare(b.startTime || '')),
     }));
 
+    // Calculate user quota if userId is provided
+    let userMetadata: any = null;
+    const userId = options.userId;
+    if (userId) {
+      const fullUser = await usersRepository.findById(userId);
+      if (fullUser) {
+        const settings = await dutySettingsService.getSettings();
+        const limitMode = settings.kipLimitMode || 'quota';
+        let weeklyQuota = Number(settings.weeklyKipLimit) || 0;
+
+        if (limitMode === 'quota') {
+          const defaultQuota = Number(settings.defaultQuota) || 2.5;
+          const quotaRules = settings.quotaRules || [];
+          const pos = String(fullUser.position || '').toLowerCase();
+          const uDept = String(fullUser.department?.name || fullUser.department || '').trim();
+
+          const getRoleGroup = (user: any) => {
+            const role = String(user.role || '').toLowerCase();
+            const position = String(user.position || '').toLowerCase();
+
+            // Collaborators
+            if (role === 'ctv' || position === 'ctv') return 'ctv';
+
+            // Official members (admin, manager, leader, member or any other active role)
+            return 'member_official';
+          };
+          const roleGroup = getRoleGroup(fullUser);
+
+          const findMatchingRule = () => {
+            // Priority:
+            // 1. Specific User (MSV)
+            const userRule = quotaRules.find(
+              (r: any) => r.type === 'user' && String(r.target) === String(fullUser.studentId || userId),
+            );
+            if (userRule) return userRule;
+
+            // 2. Role based rules
+            const roleMatch = (r: any) => {
+              if (r.type === 'dt') return pos === 'dt';
+              if (r.type === 'tb') return pos === 'tb';
+              if (r.type === 'pb') return pos === 'pb';
+              if (r.type === 'ctv') return roleGroup === 'ctv';
+              if (r.type === 'member_all') return roleGroup === 'member_official';
+              return false;
+            };
+
+            // 2a. Role + Specific Dept
+            const roleDeptRule = quotaRules.find(
+              (r: any) => roleMatch(r) && r.target !== 'all' && String(r.target) === uDept,
+            );
+            if (roleDeptRule) return roleDeptRule;
+
+            // 2b. Role + All Depts
+            const roleAllRule = quotaRules.find((r: any) => roleMatch(r) && r.target === 'all');
+            if (roleAllRule) return roleAllRule;
+
+            return null;
+          };
+
+          const rule = findMatchingRule();
+          weeklyQuota = rule ? Number(rule.quota) : 0;
+          const cycle = rule?.cycle || 'week';
+          let registeredKips = 0;
+
+          if (cycle === 'month') {
+            const startOfMonth = dayjs(options.startDate).startOf('month').toISOString();
+            const endOfMonth = dayjs(options.startDate).endOf('month').toISOString();
+
+            const allSlotsInMonth = await dutySlotsRepository.findMany({
+              shiftDate_gte: startOfMonth,
+              shiftDate_lte: endOfMonth,
+            });
+
+            const userSlotsInMonth = allSlotsInMonth.filter((s: any) =>
+              normalizeIdList(s.assignedUserIds || []).includes(userId),
+            );
+
+            const userKipIds = userSlotsInMonth.map((s: any) => s.kipId).filter(Boolean);
+            const userKips = kips.filter((k: any) => userKipIds.includes(normalizeId(k.id)));
+            registeredKips = userKips.reduce((acc: number, k: any) => acc + (Number(k.coefficient) || 1), 0);
+          } else {
+            const userSlotsInWeek = slots.filter((s: any) => normalizeIdList(s.assignedUserIds || []).includes(userId));
+            const userKipIds = userSlotsInWeek.map((s: any) => s.kipId).filter(Boolean);
+            const userKips = kips.filter((k: any) => userKipIds.includes(normalizeId(k.id)));
+            registeredKips = userKips.reduce((acc: number, k: any) => acc + (Number(k.coefficient) || 1), 0);
+          }
+
+          userMetadata = {
+            weeklyQuota: settings.weeklyLimitEnabled ? weeklyQuota : 0,
+            registeredKips,
+            limitMode,
+            cycle,
+            weeklyLimitEnabled: settings.weeklyLimitEnabled !== false,
+          };
+        }
+      }
+    }
+
     return {
       success: true,
       data: {
@@ -164,6 +263,7 @@ class DutySlotsService {
         days,
         assignments,
         templates: templateData,
+        userMetadata,
       },
       weekStart,
       weekEnd,
@@ -180,6 +280,7 @@ class DutySlotsService {
       name: payload.name,
       startTime: payload.startTime,
       endTime: payload.endTime,
+      isSpecialEvent: !!payload.isSpecialEvent,
       status: 'open',
       createdBy: normalizeId(actorId),
       note: payload.note || '',
@@ -435,27 +536,100 @@ class DutySlotsService {
     if (hasConflict) throw ApiError.badRequest('Bạn đã có lịch trực khác vào thời gian này.');
 
     const settings = await dutySettingsService.getSettings();
-    const weeklyLimit = settings.weeklyKipLimit;
-    if (weeklyLimit && Number(weeklyLimit) > 0) {
-      const allSlotsInWeek = await dutySlotsRepository.findMany({ weekStart: new Date(slot.weekStart).toISOString() });
-      const userSlotsInWeek = allSlotsInWeek.filter((s: any) =>
-        normalizeIdList(s.assignedUserIds || []).includes(userId),
-      );
+    const limitMode = settings.kipLimitMode || 'quota';
+    let weeklyLimit = Number(settings.weeklyKipLimit) || 0;
 
-      // Fetch kips for these slots to get coefficients
-      const userKipIds = userSlotsInWeek.map((s: any) => s.kipId).filter(Boolean);
-      const userKips = await dutyKipsRepository.findMany({ id_in: userKipIds });
+    const fullUser = typeof user === 'object' ? user : await usersRepository.findById(userId);
+    if (!fullUser) throw ApiError.notFound('Người dùng không tồn tại');
 
-      // Add the current kip to the calculation
+    let rule: any = null;
+
+    // If quota mode, calculate limit based on user rules
+    if (limitMode === 'quota') {
+      const defaultQuota = 0; // No more default quota, fallback to 0
+      const quotaRules = settings.quotaRules || [];
+      const pos = String(fullUser.position || '').toLowerCase();
+      const uDept = String(fullUser.department?.name || fullUser.department || '').trim();
+
+      const getRoleGroup = (u: any) => {
+        const role = String(u.role || '').toLowerCase();
+        const position = String(u.position || '').toLowerCase();
+        if (role === 'ctv' || position === 'ctv') return 'ctv';
+        return 'member_official';
+      };
+      const roleGroup = getRoleGroup(fullUser);
+
+      const findMatchingRule = () => {
+        // Priority logic (matches getSlots)
+        const userRule = quotaRules.find(
+          (r: any) => r.type === 'user' && String(r.target) === String(fullUser.studentId || userId),
+        );
+        if (userRule) return userRule;
+
+        const roleMatch = (r: any) => {
+          if (r.type === 'dt') return pos === 'dt';
+          if (r.type === 'tb') return pos === 'tb';
+          if (r.type === 'pb') return pos === 'pb';
+          if (r.type === 'ctv') return roleGroup === 'ctv';
+          if (r.type === 'member_all') return roleGroup === 'member_official';
+          return false;
+        };
+
+        const roleDeptRule = quotaRules.find(
+          (r: any) => roleMatch(r) && r.target !== 'all' && String(r.target) === uDept,
+        );
+        if (roleDeptRule) return roleDeptRule;
+
+        const roleAllRule = quotaRules.find((r: any) => roleMatch(r) && r.target === 'all');
+        if (roleAllRule) return roleAllRule;
+
+        return null;
+      };
+
+      rule = findMatchingRule();
+      weeklyLimit = rule ? Number(rule.quota) : defaultQuota;
+    }
+
+    if (settings.weeklyLimitEnabled && (weeklyLimit > 0 || limitMode === 'quota')) {
+      const cycle = rule?.cycle || 'week';
+      let currentTotal = 0;
+
+      if (cycle === 'month') {
+        const startOfMonth = dayjs(slot.shiftDate).startOf('month').toISOString();
+        const endOfMonth = dayjs(slot.shiftDate).endOf('month').toISOString();
+
+        const allSlotsInMonth = await dutySlotsRepository.findMany({
+          shiftDate_gte: startOfMonth,
+          shiftDate_lte: endOfMonth,
+        });
+
+        const userSlotsInMonth = allSlotsInMonth.filter((s: any) =>
+          normalizeIdList(s.assignedUserIds || []).includes(userId),
+        );
+
+        const userKipIds = userSlotsInMonth.map((s: any) => s.kipId).filter(Boolean);
+        const userKips = await dutyKipsRepository.findMany({ id_in: userKipIds });
+        currentTotal = userKips.reduce((acc: number, k: any) => acc + (Number(k.coefficient) || 1), 0);
+      } else {
+        const allSlotsInWeek = await dutySlotsRepository.findMany({
+          weekStart: new Date(slot.weekStart).toISOString(),
+        });
+        const userSlotsInWeek = allSlotsInWeek.filter((s: any) =>
+          normalizeIdList(s.assignedUserIds || []).includes(userId),
+        );
+
+        const userKipIds = userSlotsInWeek.map((s: any) => s.kipId).filter(Boolean);
+        const userKips = await dutyKipsRepository.findMany({ id_in: userKipIds });
+        currentTotal = userKips.reduce((acc: number, k: any) => acc + (Number(k.coefficient) || 1), 0);
+      }
+
       const currentKip = await dutyKipsRepository.findById(slot.kipId);
+      const totalAfterJoin = currentTotal + (Number(currentKip?.coefficient) || 1);
 
-      const totalCoefficient =
-        userKips.reduce((acc: number, k: any) => acc + (Number(k.coefficient) || 1), 0) +
-        (Number(currentKip?.coefficient) || 1);
-
-      if (totalCoefficient > Number(settings.weeklyKipLimit)) {
+      if (totalAfterJoin > weeklyLimit) {
+        const cycleLabel = cycle === 'month' ? 'tháng' : 'tuần';
         throw ApiError.badRequest(
-          `Bạn đã đạt giới hạn đăng ký trong tuần (${settings.weeklyKipLimit} kíp). Hiện tại: ${totalCoefficient - (Number(currentKip?.coefficient) || 1)} kíp. kíp này tính ${currentKip?.coefficient} kíp.`,
+          `Bạn đã đạt giới hạn đăng ký trong ${cycleLabel} (${weeklyLimit} kíp). Hiện tại: ${currentTotal} kíp. Kíp này tính ${currentKip?.coefficient} kíp.`,
         );
       }
     }
