@@ -1,6 +1,7 @@
 import dutyService from '@modules/duty/services/duty.service';
 import BaseController from '@shared/common/base-controller';
 import type { AnyRecord, Identifier } from '@app-types/common';
+import dayjs from 'dayjs';
 
 class DutyController extends BaseController {
   getCurrentUser(req) {
@@ -331,6 +332,32 @@ class DutyController extends BaseController {
   getUserRemarks = this.handle(async (req, res) => {
     const data = await dutyService.getUserRemarks(req.params.id);
     this.ok(res, data);
+  });
+
+  exportWeeklyExcel = this.handle(async (req, res) => {
+    const { weekStart, mode, startDate, endDate, includeDays, date } = req.query;
+
+    // Parse includeDays if it's a string (from query params)
+    let parsedIncludes = [];
+    if (typeof includeDays === 'string') parsedIncludes = includeDays.split(',').map(Number);
+    else if (Array.isArray(includeDays)) parsedIncludes = includeDays.map(Number);
+
+    const buffer = await dutyService.exportRangeExcel({
+      weekStart,
+      mode,
+      startDate,
+      endDate,
+      includeDays: parsedIncludes,
+      date,
+    });
+
+    const label = startDate ? dayjs(startDate as string).format('DDMM') : dayjs(weekStart as string).format('WW');
+    const fileName = `Lich_Truc_${label}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);
+
+    res.send(buffer);
   });
 }
 
