@@ -1,7 +1,12 @@
+import BaseService from '@shared/common/base-service';
 import dutyLogsRepository from '@modules/duty/repositories/duty-logs.repository';
-import { Identifier, normalizeId } from './duty-utils';
+import { Identifier, GenericRecord, normalizeId } from './duty-utils';
 
-class DutyLogsService {
+class DutyLogsService extends BaseService {
+  constructor() {
+    super('duty_logs', dutyLogsRepository);
+  }
+
   async log(
     type: string,
     action: string,
@@ -11,24 +16,35 @@ class DutyLogsService {
     slotId?: Identifier,
     requestId?: Identifier,
   ) {
-    return await dutyLogsRepository.create({
+    return await this.create({
       type,
       action,
-      slotId: slotId ? normalizeId(slotId) : 0,
-      requestId: requestId ? normalizeId(requestId) : undefined,
-      userId: userId ? normalizeId(userId) : normalizeId(performerId),
-      performerId: normalizeId(performerId),
       details,
-      createdAt: new Date(),
+      performerId,
+      userId: userId || performerId,
+      slotId: slotId || 0,
+      requestId,
     });
+  }
+
+  async beforeCreate(data: GenericRecord) {
+    const base = await super.beforeCreate(data);
+    return {
+      ...base,
+      slotId: data.slotId ? normalizeId(data.slotId) : 0,
+      requestId: data.requestId ? normalizeId(data.requestId) : undefined,
+      userId: normalizeId(data.userId || data.targetUserId || data.performerId),
+      performerId: normalizeId(data.performerId),
+    };
   }
 
   async getUserLogs(userId: Identifier, limit = 10) {
     const id = normalizeId(userId);
-    return await dutyLogsRepository.findMany({
-      userId: id,
-      _limit: limit,
-      _sort: 'createdAt:DESC',
+    return await this.findAll({
+      filter: { userId: id },
+      limit,
+      sort: 'createdAt',
+      order: 'desc',
     });
   }
 }

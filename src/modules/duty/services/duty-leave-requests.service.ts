@@ -1,15 +1,22 @@
+import BaseService from '@shared/common/base-service';
 import dutyLeaveRequestsRepository from '@modules/duty/repositories/duty-leave-requests.repository';
 import dutySlotsRepository from '@modules/duty/repositories/duty-slots.repository';
-import usersRepository from '@modules/users/repositories/users.repository';
 import notificationService from '@modules/notifications/services/notification.service';
 import ApiError from '@utils/api-error';
 import { Identifier, GenericRecord, normalizeId, normalizeIdList } from './duty-utils';
 import dutyLogsService from './duty-logs.service';
 import dutySlotsService from './duty-slots.service';
 
-class DutyLeaveRequestsService {
+class DutyLeaveRequestsService extends BaseService {
+  constructor() {
+    super('duty_leave_requests', dutyLeaveRequestsRepository);
+  }
+
+  /**
+   * Request leave (compatibility alias)
+   */
   async requestLeave(slotId: Identifier, userId: Identifier, reason: string) {
-    return await dutyLeaveRequestsRepository.create({
+    return await this.create({
       slotId: normalizeId(slotId),
       userId: normalizeId(userId),
       reason,
@@ -17,55 +24,78 @@ class DutyLeaveRequestsService {
     });
   }
 
+  async beforeCreate(data: GenericRecord) {
+    const base = await super.beforeCreate(data);
+    return {
+      ...base,
+      userId: normalizeId(data.userId),
+      slotId: normalizeId(data.slotId),
+      status: data.status || 'pending',
+    };
+  }
+
+  async beforeUpdate(id: Identifier, data: GenericRecord) {
+    const base = await super.beforeUpdate(id, data);
+    return {
+      ...base,
+      userId: data.userId ? normalizeId(data.userId) : undefined,
+      slotId: data.slotId ? normalizeId(data.slotId) : undefined,
+    };
+  }
+
+  /**
+   * Create leave manual (compatibility alias)
+   */
   async createLeaveManual(data: GenericRecord, performerId: Identifier) {
-    const { userId, slotId, reason, status = 'pending', rejectionReason = '' } = data;
-    const request = await dutyLeaveRequestsRepository.create({
-      userId: normalizeId(userId),
-      slotId: normalizeId(slotId),
-      reason: reason || 'Admin tạo thủ công',
-      status,
-      rejectionReason,
+    const status = data.status || 'pending';
+    const request = await this.create({
+      ...data,
+      reason: data.reason || 'Admin tạo thủ công',
       approvedBy: status === 'approved' ? normalizeId(performerId) : undefined,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
     });
 
     if (status === 'approved') {
-      await this.resolveLeaveRequest(request.id, 'approved', performerId, rejectionReason);
+      await this.resolveLeaveRequest(request.id, 'approved', performerId, data.rejectionReason || '');
     }
     return request;
   }
 
+  /**
+   * Update leave request (compatibility alias)
+   */
   async updateLeaveRequest(id: Identifier, data: GenericRecord, performerId: Identifier) {
     const old = await dutyLeaveRequestsRepository.findById(id);
     if (!old) throw ApiError.notFound('Mục không tồn tại');
-    const updated = await dutyLeaveRequestsRepository.update(id, { ...data, updatedAt: new Date().toISOString() });
+
+    const updated = await this.update(id, data);
+
     if (data.status === 'approved' && old.status !== 'approved') {
       await this.resolveLeaveRequest(id, 'approved', performerId, data.rejectionReason || '');
     }
     return updated;
   }
 
-  async deleteLeaveRequest(id: Identifier) {
-    return await dutyLeaveRequestsRepository.delete(id);
-  }
-
+  /**
+   * Get leave requests with slot labels
+   */
   async getLeaveRequests(options: GenericRecord = {}) {
-    const result = await dutyLeaveRequestsRepository.findAllAdvanced({
+    const result = await this.findAll({
+      expand: 'user,slot,approver',
+      sort: 'createdAt',
+      order: 'desc',
       ...options,
-      expand: options.expand || 'user,slot,approver',
-      sort: options.sort || 'createdAt',
-      order: options.order || 'desc',
     });
 
     // Enrich slots with labels
-    await Promise.all(
-      result.data.map(async (req: any) => {
-        if (req.slot) {
-          req.slot.shiftLabel = await dutySlotsService.getSlotLabel(req.slot);
-        }
-      }),
-    );
+    if (result.data) {
+      await Promise.all(
+        result.data.map(async (req: any) => {
+          if (req.slot) {
+            req.slot.shiftLabel = await dutySlotsService.getSlotLabel(req.slot);
+          }
+        }),
+      );
+    }
 
     return result;
   }
@@ -80,11 +110,10 @@ class DutyLeaveRequestsService {
     if (!request) throw ApiError.notFound('Đơn xin nghỉ không tồn tại');
 
     const now = new Date().toISOString();
-    const updated = await dutyLeaveRequestsRepository.update(requestId, {
+    const updated = await this.update(requestId, {
       status,
       approvedBy: normalizeId(approverId),
       rejectionReason,
-      updatedAt: now,
     });
 
     if (status === 'approved') {

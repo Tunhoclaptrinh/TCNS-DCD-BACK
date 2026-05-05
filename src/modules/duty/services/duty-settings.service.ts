@@ -1,7 +1,12 @@
+import BaseService from '@shared/common/base-service';
 import dutySettingsRepository from '@modules/duty/repositories/duty-settings.repository';
 import { GenericRecord } from './duty-utils';
 
-class DutySettingsService {
+class DutySettingsService extends BaseService {
+  constructor() {
+    super('duty_settings', dutySettingsRepository);
+  }
+
   async getSettings() {
     const settings = await dutySettingsRepository.getGlobalSettings();
     const defaults = {
@@ -27,7 +32,30 @@ class DutySettingsService {
     return { ...defaults, ...plainSettings };
   }
 
+  /**
+   * Alias for compatibility
+   */
   async updateSettings(data: GenericRecord) {
+    const settings = await dutySettingsRepository.getGlobalSettings();
+    if (!settings) {
+      return await this.create(data);
+    }
+    return await this.update(settings.id, data);
+  }
+
+  async beforeCreate(data: GenericRecord) {
+    const payload = await this.processSettingsPayload(data);
+    return {
+      ...payload,
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  async beforeUpdate(id: any, data: GenericRecord) {
+    return await this.processSettingsPayload(data, id);
+  }
+
+  private async processSettingsPayload(data: GenericRecord, _id?: any) {
     const settings = await dutySettingsRepository.getGlobalSettings();
     const payload = {
       weeklyLimitEnabled: data.hasOwnProperty('weeklyLimitEnabled')
@@ -57,17 +85,7 @@ class DutySettingsService {
           : [],
       updatedAt: new Date().toISOString(),
     };
-
-    console.log('[DutySettings] Saving settings with payload:', JSON.stringify(payload, null, 2));
-
-    if (!settings) {
-      const created = await dutySettingsRepository.create(payload);
-      console.log('[DutySettings] Created new settings document');
-      return created;
-    }
-    const updated = await dutySettingsRepository.update(settings.id, payload);
-    console.log('[DutySettings] Updated existing settings document');
-    return updated;
+    return payload;
   }
 }
 

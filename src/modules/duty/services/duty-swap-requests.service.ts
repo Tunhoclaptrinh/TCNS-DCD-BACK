@@ -1,3 +1,4 @@
+import BaseService from '@shared/common/base-service';
 import dutySwapRequestsRepository from '@modules/duty/repositories/duty-swap-requests.repository';
 import dutySlotsRepository from '@modules/duty/repositories/duty-slots.repository';
 import usersRepository from '@modules/users/repositories/users.repository';
@@ -7,7 +8,14 @@ import { Identifier, GenericRecord, normalizeId, normalizeIdList } from './duty-
 import dutyLogsService from './duty-logs.service';
 import dutySlotsService from './duty-slots.service';
 
-class DutySwapRequestsService {
+class DutySwapRequestsService extends BaseService {
+  constructor() {
+    super('duty_swap_requests', dutySwapRequestsRepository);
+  }
+
+  /**
+   * Alias for compatibility
+   */
   async requestSwap(payload: GenericRecord, requesterUser: GenericRecord) {
     const toSlotId = normalizeId(payload.toSlotId || payload.dutySlotId || payload.slotId);
     const fromSlotId = normalizeId(payload.fromSlotId);
@@ -20,15 +28,13 @@ class DutySwapRequestsService {
     const fromSlot = await dutySlotsRepository.findById(fromSlotId);
     if (!fromSlot) throw ApiError.notFound('Kíp trực nguồn không tồn tại');
 
-    const created = await dutySwapRequestsRepository.create({
+    const created = await this.create({
       fromSlotId,
       toSlotId,
       requesterId: normalizeId(requesterUser.id),
       targetUserId: targetUserId,
       reason,
       status: 'pending',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
     });
 
     const toSlotLabel = await dutySlotsService.getSlotLabel(toSlot);
@@ -66,6 +72,29 @@ class DutySwapRequestsService {
     );
 
     return created;
+  }
+
+  async beforeCreate(data: GenericRecord) {
+    const base = await super.beforeCreate(data);
+    return {
+      ...base,
+      fromSlotId: data.fromSlotId ? normalizeId(data.fromSlotId) : null,
+      toSlotId: normalizeId(data.toSlotId),
+      requesterId: normalizeId(data.requesterId),
+      targetUserId: data.targetUserId ? normalizeId(data.targetUserId) : null,
+      status: data.status || 'pending',
+    };
+  }
+
+  async beforeUpdate(id: Identifier, data: GenericRecord) {
+    const base = await super.beforeUpdate(id, data);
+    return {
+      ...base,
+      fromSlotId: data.fromSlotId ? normalizeId(data.fromSlotId) : undefined,
+      toSlotId: data.toSlotId ? normalizeId(data.toSlotId) : undefined,
+      requesterId: data.requesterId ? normalizeId(data.requesterId) : undefined,
+      targetUserId: data.targetUserId ? normalizeId(data.targetUserId) : undefined,
+    };
   }
 
   async decideSwap(requestId: Identifier, payload: GenericRecord = {}, approver: any) {
@@ -205,52 +234,52 @@ class DutySwapRequestsService {
       );
     }
 
-    return await dutySwapRequestsRepository.update(requestId, {
+    return await this.update(requestId, {
       status,
       approvedBy: approverId,
       decisionNote: payload.reason || payload.decisionNote || '',
-      updatedAt: new Date().toISOString(),
     });
   }
 
+  /**
+   * Create swap manual (compatibility alias)
+   */
   async createSwapManual(data: GenericRecord, performerId: Identifier) {
-    const { requesterId, fromSlotId, toSlotId, status = 'pending', reason = '' } = data;
-    const request = await dutySwapRequestsRepository.create({
-      requesterId: normalizeId(requesterId),
-      fromSlotId: normalizeId(fromSlotId) || null,
-      toSlotId: normalizeId(toSlotId),
-      status,
-      reason,
+    const status = data.status || 'pending';
+    const request = await this.create({
+      ...data,
+      fromSlotId: normalizeId(data.fromSlotId) || null,
+      toSlotId: normalizeId(data.toSlotId),
       approvedBy: status === 'approved' ? normalizeId(performerId) : undefined,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
     });
 
     if (status === 'approved') {
-      await this.decideSwap(request.id, { decision: 'approved', reason }, performerId);
+      await this.decideSwap(request.id, { decision: 'approved', reason: data.reason || '' }, performerId);
     }
     return request;
   }
 
+  /**
+   * Update swap request (compatibility alias)
+   */
   async updateSwapRequest(id: Identifier, data: GenericRecord, performerId: Identifier) {
     const old = await dutySwapRequestsRepository.findById(id);
     if (!old) throw ApiError.notFound('Mục không tồn tại');
-    const updated = await dutySwapRequestsRepository.update(id, { ...data, updatedAt: new Date().toISOString() });
+    const updated = await this.update(id, data);
     if (data.status === 'approved' && old.status !== 'approved') {
       await this.decideSwap(id, { decision: 'approved', reason: data.reason || '' }, performerId);
     }
     return updated;
   }
 
-  async deleteSwapRequest(id: Identifier) {
-    return await dutySwapRequestsRepository.delete(id);
-  }
-
+  /**
+   * Alias for compatibility
+   */
   async getSwapRequests(user: GenericRecord, options: GenericRecord = {}) {
     const userId = normalizeId(user.id);
     const isApprover = ['admin', 'staff'].includes(user.role);
 
-    const result = await dutySwapRequestsRepository.findAllAdvanced({
+    const result = await this.findAll({
       ...options,
       expand: options.expand || 'requester,targetUser,approver,fromSlot,toSlot',
       sort: options.sort || 'createdAt',
@@ -262,7 +291,7 @@ class DutySwapRequestsService {
 
     // Enrich slots with labels
     await Promise.all(
-      result.data.map(async (req: any) => {
+      (result.data || []).map(async (req: any) => {
         if (req.fromSlot) {
           req.fromSlot.shiftLabel = await dutySlotsService.getSlotLabel(req.fromSlot);
         }
