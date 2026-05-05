@@ -95,3 +95,70 @@ export function isIpAllowed(ip: string, allowedRanges: string | string[]): boole
     return false;
   });
 }
+
+/**
+ * Find the most relevant quota rule for a user within a set of rules.
+ * Priority: Specific User (MSV) > Role + Dept > Role Global > Default
+ */
+export function findMatchingQuotaRule(user: any, rules: any[], options: { startDate?: string; endDate?: string } = {}) {
+  if (!user || !rules || !Array.isArray(rules)) return null;
+
+  const { startDate, endDate } = options;
+  const start = startDate ? dayjs(startDate) : null;
+  const end = endDate ? dayjs(endDate) : null;
+
+  const userId = normalizeId(user.id);
+  const studentId = user.studentId;
+  const pos = String(user.position || '').toLowerCase();
+  const role = String(user.role || '').toLowerCase();
+  const uDept = String(user.department?.name || user.department || '').trim();
+
+  const isRuleActive = (r: any) => {
+    if (!start || !end || !r.startDate || !r.endDate) return true;
+    return dayjs(r.startDate).isBefore(end) && dayjs(r.endDate).isAfter(start);
+  };
+
+  // 1. Specific User Rule (Highest Priority)
+  const userRule = rules.find(
+    (r: any) =>
+      r.type === 'user' &&
+      String(r.target).toLowerCase() === String(studentId || userId).toLowerCase() &&
+      isRuleActive(r),
+  );
+  if (userRule) return userRule;
+
+  const roleMatch = (r: any) => {
+    const type = r.type;
+    const target = String(r.target || '').toLowerCase();
+    if (type === 'dt') return pos === 'dt' || pos.includes('đội trưởng');
+    if (type === 'tb') return pos === 'tb' || pos.includes('trưởng ban');
+    if (type === 'pb') return pos === 'pb' || pos.includes('phó ban');
+    if (type === 'ctv') return role === 'ctv' || pos === 'ctv';
+    if (type === 'member_all')
+      return (
+        role === 'member' || role === 'user' || (!pos.includes('trưởng') && !pos.includes('đội') && role !== 'ctv')
+      );
+    if (type === 'position') return target === pos;
+    if (type === 'role_group') return target === role;
+    return false;
+  };
+
+  // 2. Role + Dept Match
+  const roleDeptRule = rules.find(
+    (r: any) =>
+      roleMatch(r) &&
+      r.target !== 'all' &&
+      r.target !== undefined &&
+      String(r.target).toLowerCase() === uDept.toLowerCase() &&
+      isRuleActive(r),
+  );
+  if (roleDeptRule) return roleDeptRule;
+
+  // 3. Role Global Match
+  const roleAllRule = rules.find(
+    (r: any) => roleMatch(r) && (r.target === 'all' || r.target === undefined) && isRuleActive(r),
+  );
+  if (roleAllRule) return roleAllRule;
+
+  return null;
+}
