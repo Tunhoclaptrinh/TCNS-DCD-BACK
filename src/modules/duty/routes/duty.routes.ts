@@ -15,6 +15,11 @@ router.get('/stats/export', requirePermission('duty:manage'), dutyController.exp
 router.post('/stats/notify-absentees', requirePermission('duty:manage'), dutyController.notifyAbsentees);
 router.get('/remarks/user/:id', requirePermission('duty:manage'), dutyController.getUserRemarks);
 
+// Snapshots
+router.get('/snapshots', requirePermission('duty:manage'), dutyController.getSnapshots);
+router.post('/snapshots', requirePermission('duty:manage'), dutyController.createSnapshot);
+router.delete('/snapshots/:id', requirePermission('duty:manage'), dutyController.deleteSnapshot);
+
 // Slots
 router.post('/slots', requirePermission('duty:manage'), dutyController.createSlot);
 router.post('/shifts', requirePermission('duty:manage'), dutyController.createActualShift);

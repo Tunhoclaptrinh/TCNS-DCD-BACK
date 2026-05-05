@@ -359,6 +359,25 @@ class DutyController extends BaseController {
 
     res.send(buffer);
   });
+
+  // Snapshots
+  getSnapshots = this.handle(async (_req, res) => {
+    const { dutySnapshotsService } = require('../services/duty-snapshots.service');
+    const data = await dutySnapshotsService.getSnapshots();
+    this.ok(res, data);
+  });
+
+  createSnapshot = this.handle(async (req, res) => {
+    const { dutySnapshotsService } = require('../services/duty-snapshots.service');
+    const data = await dutySnapshotsService.createSnapshot(req.body, req.user.id);
+    this.created(res, data);
+  });
+
+  deleteSnapshot = this.handle(async (req, res) => {
+    const { dutySnapshotsService } = require('../services/duty-snapshots.service');
+    await dutySnapshotsService.deleteSnapshot(req.params.id);
+    this.ok(res, { success: true });
+  });
 }
 
 export default new DutyController();
