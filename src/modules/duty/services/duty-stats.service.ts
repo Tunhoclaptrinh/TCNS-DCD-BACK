@@ -7,6 +7,7 @@ import dutySettingsService from './duty-settings.service';
 import dutyKipsRepository from '@modules/duty/repositories/duty-kips.repository';
 import dutyShiftsRepository from '@modules/duty/repositories/duty-shifts.repository';
 import generationsRepository from '@modules/generations/repositories/generations.repository';
+import dutyPeriodConfigsService from './duty-period-configs.service';
 import { normalizeId, normalizeIdList } from './duty-utils';
 import dayjs from 'dayjs';
 import * as xlsx from 'xlsx';
@@ -19,11 +20,18 @@ class DutyStatsService {
     const filter = options.filter || options;
     const { startDate, endDate, departmentId, generationId } = filter;
 
+    const periodConfig = await dutyPeriodConfigsService.getConfig(startDate, endDate);
     const settings = await dutySettingsService.getSettings();
-    const defaultQuota = Number(settings.defaultQuota) || 2.5;
-    const kipPrice = Number(settings.kipPrice) || 0;
-    const penaltyRate = Number(settings.violationPenaltyRate) || 0;
-    const quotaRules = settings.quotaRules || [];
+
+    // Prioritize period-specific config strictly. If uninitialized, fallback to baseline 0 or 2.5
+    const defaultQuota =
+      periodConfig.defaultQuota !== undefined && periodConfig.defaultQuota !== null
+        ? Number(periodConfig.defaultQuota)
+        : 0;
+    const kipPrice = Number(periodConfig.kipPrice) || 0;
+    const penaltyRate = Number(periodConfig.violationPenaltyRate) || 0;
+    const quotaRules = periodConfig.quotaRules || [];
+    const isPeriodInitialized = !!periodConfig.isInitialized;
 
     const slotFilter: any = {};
     if (startDate && endDate) {
@@ -267,6 +275,8 @@ class DutyStatsService {
           numWeeks,
         },
         meta: {
+          isPeriodInitialized,
+          periodText: `${dayjs(startDate).format('DD/MM')} - ${dayjs(endDate).format('DD/MM/YYYY')}`,
           slots: slots.map((s) => ({
             id: s.id,
             date: s.shiftDate,

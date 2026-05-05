@@ -28,6 +28,7 @@ import dutySettingsService from './duty-settings.service';
 import dutyLogsService from './duty-logs.service';
 import dutyViolationsRepository from '@modules/duty/repositories/duty-violations.repository';
 import rewardPenaltyService from '@modules/reward-penalties/services/reward-penalty.service';
+import dutyPeriodConfigsService from './duty-period-configs.service';
 import { PENALTY_RULES } from '@modules/reward-penalties/constants/penalty-rules';
 
 class DutySlotsService {
@@ -166,12 +167,17 @@ class DutySlotsService {
       const fullUser = await usersRepository.findById(userId);
       if (fullUser) {
         const settings = await dutySettingsService.getSettings();
+        const periodConfig = await dutyPeriodConfigsService.getConfig(ws.toISOString(), we.toISOString());
+
         const limitMode = settings.kipLimitMode || 'quota';
         let weeklyQuota = Number(settings.weeklyKipLimit) || 0;
 
         if (limitMode === 'quota') {
-          const defaultQuota = Number(settings.defaultQuota) || 2.5;
-          const quotaRules = settings.quotaRules || [];
+          const defaultQuota =
+            periodConfig.defaultQuota !== undefined && periodConfig.defaultQuota !== null
+              ? Number(periodConfig.defaultQuota)
+              : 0;
+          const quotaRules = periodConfig.quotaRules || [];
           const pos = String(fullUser.position || '').toLowerCase();
           const uDept = String(fullUser.department?.name || fullUser.department || '').trim();
 
@@ -219,7 +225,7 @@ class DutySlotsService {
           };
 
           const rule = findMatchingRule();
-          weeklyQuota = rule ? Number(rule.quota) : 0;
+          weeklyQuota = rule ? Number(rule.quota) : defaultQuota;
           const cycle = rule?.cycle || 'week';
           let registeredKips = 0;
 
@@ -547,8 +553,9 @@ class DutySlotsService {
 
     // If quota mode, calculate limit based on user rules
     if (limitMode === 'quota') {
-      const defaultQuota = 0; // No more default quota, fallback to 0
-      const quotaRules = settings.quotaRules || [];
+      const periodConfig = await dutyPeriodConfigsService.getConfig(slot.shiftDate, slot.shiftDate);
+      const defaultQuota = 0;
+      const quotaRules = periodConfig.quotaRules || settings.quotaRules || [];
       const pos = String(fullUser.position || '').toLowerCase();
       const uDept = String(fullUser.department?.name || fullUser.department || '').trim();
 

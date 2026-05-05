@@ -92,4 +92,8 @@ router.delete('/assignment/:id', requirePermission('duty:manage'), dutyControlle
 router.get('/settings', requirePermission('duty:view'), dutyController.getSettings);
 router.put('/settings', requirePermission('duty:manage'), dutyController.updateSettings);
 
+// Period Config
+router.get('/period-config', requirePermission('duty:view'), dutyController.getPeriodConfig);
+router.put('/period-config', requirePermission('duty:manage'), dutyController.updatePeriodConfig);
+
 export default router;

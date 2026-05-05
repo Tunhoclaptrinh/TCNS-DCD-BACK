@@ -13,6 +13,7 @@ import dutyTemplateAssignmentsService from './duty-template-assignments.service'
 import dutyGenerationService from './duty-generation.service';
 import dutyStatsService from './duty-stats.service';
 import dutyLogsService from './duty-logs.service';
+import dutyPeriodConfigsService from './duty-period-configs.service';
 import auditLogsService from '@modules/audit-logs/services/audit-logs.service';
 import ApiError from '@utils/api-error';
 import db from '@database/mongo-database.adapter';
@@ -108,6 +109,10 @@ class DutyService extends BaseService {
   // ==================== SETTINGS MANAGEMENT ====================
   getSettings = () => dutySettingsService.getSettings();
   updateSettings = (data: GenericRecord) => dutySettingsService.updateSettings(data);
+
+  // ==================== PERIOD CONFIG MANAGEMENT ====================
+  getPeriodConfig = (startDate: string, endDate: string) => dutyPeriodConfigsService.getConfig(startDate, endDate);
+  updatePeriodConfig = (data: GenericRecord) => dutyPeriodConfigsService.updateConfig(data);
 
   // ==================== TEMPLATE MANAGEMENT ====================
   getTemplates = () => dutyTemplatesService.getTemplates();

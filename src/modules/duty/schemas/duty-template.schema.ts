@@ -90,4 +90,19 @@ export default defineSchema({
     required: false,
     default: {},
   },
+  defaultQuota: {
+    type: 'number',
+    required: false,
+    description: 'Định mức kíp mặc định (áp dụng cho group)',
+  },
+  kipPrice: {
+    type: 'number',
+    required: false,
+    description: 'Đơn giá kíp (áp dụng cho group)',
+  },
+  quotaRules: {
+    type: 'array',
+    required: false,
+    description: 'Danh sách quy tắc định mức chi tiết (áp dụng cho group)',
+  },
 });

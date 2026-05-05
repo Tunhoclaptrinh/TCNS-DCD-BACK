@@ -308,6 +308,18 @@ class DutyController extends BaseController {
     this.ok(res, data);
   });
 
+  // Period Config
+  getPeriodConfig = this.handle(async (req, res) => {
+    const { startDate, endDate } = req.query;
+    const data = await dutyService.getPeriodConfig(startDate as string, endDate as string);
+    this.ok(res, data);
+  });
+
+  updatePeriodConfig = this.handle(async (req, res) => {
+    const data = await dutyService.updatePeriodConfig(req.body);
+    this.ok(res, data);
+  });
+
   getStats = this.handle(async (_req, res) => {
     const data = await dutyService.getStats();
     this.ok(res, data);
