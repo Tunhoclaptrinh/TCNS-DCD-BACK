@@ -105,4 +105,9 @@ export default defineSchema({
     required: false,
     description: 'Danh sách quy tắc định mức chi tiết (áp dụng cho group)',
   },
+  violationPenaltyRate: {
+    type: 'number',
+    required: false,
+    description: 'Hệ số phạt vi phạm (áp dụng cho group)',
+  },
 });

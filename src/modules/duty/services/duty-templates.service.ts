@@ -14,6 +14,10 @@ class DutyTemplatesService {
       type: 'group',
       isDefault: !!data.isDefault,
       description: data.description || '',
+      defaultQuota: data.defaultQuota,
+      kipPrice: data.kipPrice,
+      violationPenaltyRate: data.violationPenaltyRate,
+      quotaRules: data.quotaRules,
     });
     if (data.isDefault) {
       const all = await dutyTemplatesRepository.findGroups();
@@ -31,6 +35,10 @@ class DutyTemplatesService {
       name: data.name,
       isDefault: !!data.isDefault,
       description: data.description || '',
+      defaultQuota: data.defaultQuota,
+      kipPrice: data.kipPrice,
+      violationPenaltyRate: data.violationPenaltyRate,
+      quotaRules: data.quotaRules,
     });
     if (data.isDefault) {
       const all = await dutyTemplatesRepository.findGroups();
