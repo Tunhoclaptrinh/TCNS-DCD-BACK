@@ -116,10 +116,6 @@ class DutyStatsService {
         matchedRule?.quota !== undefined && matchedRule?.quota !== null ? Number(matchedRule.quota) : defaultQuota;
       const userKipPrice =
         matchedRule?.kipPrice !== undefined && matchedRule?.kipPrice !== null ? Number(matchedRule.kipPrice) : kipPrice;
-      const userPenaltyRate =
-        matchedRule?.violationPenaltyRate !== undefined && matchedRule?.violationPenaltyRate !== null
-          ? Number(matchedRule.violationPenaltyRate)
-          : penaltyRate;
 
       const cycle = matchedRule?.cycle || 'week';
 
@@ -177,8 +173,7 @@ class DutyStatsService {
       const isWarning = totalKips < userQuota;
 
       const totalEarnings = totalKips * userKipPrice;
-      const totalPenaltyAmount = totalPenaltyCoeff * userPenaltyRate;
-      const finalAmount = Math.max(0, totalEarnings - totalPenaltyAmount);
+      const finalAmount = totalEarnings;
 
       return {
         userId,
@@ -195,7 +190,6 @@ class DutyStatsService {
         deficiency,
         isWarning,
         totalEarnings,
-        totalPenaltyAmount,
         finalAmount,
         leaveCount: userLeaves.length,
         swapCount: userSwaps.length,

@@ -44,12 +44,6 @@ export default defineSchema({
     default: 0,
     description: 'Đơn giá mỗi kíp trực (VNĐ)',
   },
-  violationPenaltyRate: {
-    type: 'number',
-    required: false,
-    default: 0,
-    description: 'Hệ số phạt vi phạm mặc định',
-  },
   quotaRules: {
     type: 'array',
     required: false,
