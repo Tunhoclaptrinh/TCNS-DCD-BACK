@@ -7,7 +7,8 @@ import dutySettingsService from './duty-settings.service';
 import dutyKipsRepository from '@modules/duty/repositories/duty-kips.repository';
 import dutyShiftsRepository from '@modules/duty/repositories/duty-shifts.repository';
 import generationsRepository from '@modules/generations/repositories/generations.repository';
-import { normalizeId, normalizeIdList } from './duty-utils';
+import dutyPeriodConfigsService from './duty-period-configs.service';
+import { normalizeId, normalizeIdList, findMatchingQuotaRule } from './duty-utils';
 import dayjs from 'dayjs';
 import * as xlsx from 'xlsx';
 import path from 'path';
@@ -19,11 +20,18 @@ class DutyStatsService {
     const filter = options.filter || options;
     const { startDate, endDate, departmentId, generationId } = filter;
 
+    const periodConfig = await dutyPeriodConfigsService.getConfig(startDate, endDate);
     const settings = await dutySettingsService.getSettings();
-    const defaultQuota = Number(settings.defaultQuota) || 2.5;
-    const kipPrice = Number(settings.kipPrice) || 0;
-    const penaltyRate = Number(settings.violationPenaltyRate) || 0;
-    const quotaRules = settings.quotaRules || [];
+
+    // Prioritize period-specific config strictly. If uninitialized, fallback to baseline 0 or 2.5
+    const defaultQuota =
+      periodConfig.defaultQuota !== undefined && periodConfig.defaultQuota !== null
+        ? Number(periodConfig.defaultQuota)
+        : 0;
+    const kipPrice = Number(periodConfig.kipPrice) || 0;
+    const penaltyRate = Number(periodConfig.violationPenaltyRate) || 0;
+    const quotaRules = periodConfig.quotaRules || [];
+    const isPeriodInitialized = !!periodConfig.isInitialized;
 
     const slotFilter: any = {};
     if (startDate && endDate) {
@@ -54,17 +62,6 @@ class DutyStatsService {
     const kipMap = new Map(allKips.map((k: any) => [normalizeId(k.id), k]));
 
     // 2. Filter users based on criteria
-    // Helper to determine role group
-    const getRoleGroup = (u: any) => {
-      const role = String(u.role || '').toLowerCase();
-      const position = String(u.position || '').toLowerCase();
-
-      // Collaborators
-      if (role === 'ctv' || position === 'ctv') return 'ctv';
-
-      // Official members
-      return 'member_official';
-    };
 
     const activeGenerationIds =
       generationId === 'active'
@@ -113,55 +110,26 @@ class DutyStatsService {
       const userId = normalizeId(user.id);
       const start = dayjs(startDate);
       const end = dayjs(endDate);
-      const roleGroup = getRoleGroup(user);
-      const deptValue = user.department?.name || user.department;
-      const uDept = String(deptValue || '').trim();
-
       // Priority: 1. Specific User -> 2. Dept + Role Group -> 3. Role Group (All Depts) -> 4. Default
-      const findMatchingRule = () => {
-        const pos = String(user.position || '').toLowerCase();
+      const matchedRule = findMatchingQuotaRule(user, quotaRules, { startDate, endDate });
+      const userQuotaBase =
+        matchedRule?.quota !== undefined && matchedRule?.quota !== null ? Number(matchedRule.quota) : defaultQuota;
+      const userKipPrice =
+        matchedRule?.kipPrice !== undefined && matchedRule?.kipPrice !== null ? Number(matchedRule.kipPrice) : kipPrice;
+      const userPenaltyRate =
+        matchedRule?.violationPenaltyRate !== undefined && matchedRule?.violationPenaltyRate !== null
+          ? Number(matchedRule.violationPenaltyRate)
+          : penaltyRate;
 
-        // 1. Specific User Rule (Highest Priority)
-        const userRule = quotaRules.find(
-          (r: any) =>
-            r.type === 'user' &&
-            String(r.target) === String(user.studentId || userId) &&
-            (!r.startDate || !r.endDate || (dayjs(r.startDate).isBefore(end) && dayjs(r.endDate).isAfter(start))),
-        );
-        if (userRule) return userRule;
-
-        // 2. Position Rule
-        const posRule = quotaRules.find(
-          (r: any) =>
-            r.type === 'position' &&
-            String(r.target) === pos &&
-            (!r.startDate || !r.endDate || (dayjs(r.startDate).isBefore(end) && dayjs(r.endDate).isAfter(start))),
-        );
-        if (posRule) return posRule;
-
-        // 3. Role Group Rule
-        const rgRule = quotaRules.find(
-          (r: any) =>
-            r.type === 'role_group' &&
-            r.target === roleGroup &&
-            (!r.startDate || !r.endDate || (dayjs(r.startDate).isBefore(end) && dayjs(r.endDate).isAfter(start))),
-        );
-        if (rgRule) return rgRule;
-
-        return null;
-      };
-
-      const matchedRule = findMatchingRule();
-      const baseQuota = matchedRule ? Number(matchedRule.quota) : defaultQuota;
       const cycle = matchedRule?.cycle || 'week';
 
-      let userQuota = baseQuota;
-      const diffDays = end.diff(start, 'day') + 1;
+      let userQuota = userQuotaBase;
+      const diffDays = dayjs(endDate).diff(dayjs(startDate), 'day') + 1;
 
       if (cycle === 'week') {
-        userQuota = (baseQuota * diffDays) / 7;
+        userQuota = (userQuotaBase * diffDays) / 7;
       } else if (cycle === 'month') {
-        userQuota = (baseQuota * diffDays) / 30;
+        userQuota = (userQuotaBase * diffDays) / 30;
       }
 
       userQuota = Math.round(userQuota * 10) / 10;
@@ -208,8 +176,8 @@ class DutyStatsService {
       const deficiency = Math.max(0, userQuota - totalKips);
       const isWarning = totalKips < userQuota;
 
-      const totalEarnings = totalKips * kipPrice;
-      const totalPenaltyAmount = totalPenaltyCoeff * penaltyRate;
+      const totalEarnings = totalKips * userKipPrice;
+      const totalPenaltyAmount = totalPenaltyCoeff * userPenaltyRate;
       const finalAmount = Math.max(0, totalEarnings - totalPenaltyAmount);
 
       return {
@@ -267,6 +235,8 @@ class DutyStatsService {
           numWeeks,
         },
         meta: {
+          isPeriodInitialized,
+          periodText: `${dayjs(startDate).format('DD/MM')} - ${dayjs(endDate).format('DD/MM/YYYY')}`,
           slots: slots.map((s) => ({
             id: s.id,
             date: s.shiftDate,

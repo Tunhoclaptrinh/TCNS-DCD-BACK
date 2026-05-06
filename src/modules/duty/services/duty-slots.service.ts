@@ -23,11 +23,13 @@ import {
   getWeekEndISO,
   isTimeInShiftRange,
   isIpAllowed,
+  findMatchingQuotaRule,
 } from './duty-utils';
 import dutySettingsService from './duty-settings.service';
 import dutyLogsService from './duty-logs.service';
 import dutyViolationsRepository from '@modules/duty/repositories/duty-violations.repository';
 import rewardPenaltyService from '@modules/reward-penalties/services/reward-penalty.service';
+import dutyPeriodConfigsService from './duty-period-configs.service';
 import { PENALTY_RULES } from '@modules/reward-penalties/constants/penalty-rules';
 
 class DutySlotsService {
@@ -166,12 +168,17 @@ class DutySlotsService {
       const fullUser = await usersRepository.findById(userId);
       if (fullUser) {
         const settings = await dutySettingsService.getSettings();
+        const periodConfig = await dutyPeriodConfigsService.getConfig(ws.toISOString(), we.toISOString());
+
         const limitMode = settings.kipLimitMode || 'quota';
         let weeklyQuota = Number(settings.weeklyKipLimit) || 0;
 
         if (limitMode === 'quota') {
-          const defaultQuota = Number(settings.defaultQuota) || 2.5;
-          const quotaRules = settings.quotaRules || [];
+          const defaultQuota =
+            periodConfig.defaultQuota !== undefined && periodConfig.defaultQuota !== null
+              ? Number(periodConfig.defaultQuota)
+              : 0;
+          const quotaRules = periodConfig.quotaRules || [];
           const pos = String(fullUser.position || '').toLowerCase();
           const uDept = String(fullUser.department?.name || fullUser.department || '').trim();
 
@@ -187,39 +194,11 @@ class DutySlotsService {
           };
           const roleGroup = getRoleGroup(fullUser);
 
-          const findMatchingRule = () => {
-            // Priority:
-            // 1. Specific User (MSV)
-            const userRule = quotaRules.find(
-              (r: any) => r.type === 'user' && String(r.target) === String(fullUser.studentId || userId),
-            );
-            if (userRule) return userRule;
-
-            // 2. Role based rules
-            const roleMatch = (r: any) => {
-              if (r.type === 'dt') return pos === 'dt';
-              if (r.type === 'tb') return pos === 'tb';
-              if (r.type === 'pb') return pos === 'pb';
-              if (r.type === 'ctv') return roleGroup === 'ctv';
-              if (r.type === 'member_all') return roleGroup === 'member_official';
-              return false;
-            };
-
-            // 2a. Role + Specific Dept
-            const roleDeptRule = quotaRules.find(
-              (r: any) => roleMatch(r) && r.target !== 'all' && String(r.target) === uDept,
-            );
-            if (roleDeptRule) return roleDeptRule;
-
-            // 2b. Role + All Depts
-            const roleAllRule = quotaRules.find((r: any) => roleMatch(r) && r.target === 'all');
-            if (roleAllRule) return roleAllRule;
-
-            return null;
-          };
-
-          const rule = findMatchingRule();
-          weeklyQuota = rule ? Number(rule.quota) : 0;
+          const rule = findMatchingQuotaRule(fullUser, quotaRules, {
+            startDate: ws.toISOString(),
+            endDate: we.toISOString(),
+          });
+          weeklyQuota = rule ? Number(rule.quota) : defaultQuota;
           const cycle = rule?.cycle || 'week';
           let registeredKips = 0;
 
@@ -547,8 +526,9 @@ class DutySlotsService {
 
     // If quota mode, calculate limit based on user rules
     if (limitMode === 'quota') {
-      const defaultQuota = 0; // No more default quota, fallback to 0
-      const quotaRules = settings.quotaRules || [];
+      const periodConfig = await dutyPeriodConfigsService.getConfig(slot.shiftDate, slot.shiftDate);
+      const defaultQuota = 0;
+      const quotaRules = periodConfig.quotaRules || settings.quotaRules || [];
       const pos = String(fullUser.position || '').toLowerCase();
       const uDept = String(fullUser.department?.name || fullUser.department || '').trim();
 
@@ -560,34 +540,7 @@ class DutySlotsService {
       };
       const roleGroup = getRoleGroup(fullUser);
 
-      const findMatchingRule = () => {
-        // Priority logic (matches getSlots)
-        const userRule = quotaRules.find(
-          (r: any) => r.type === 'user' && String(r.target) === String(fullUser.studentId || userId),
-        );
-        if (userRule) return userRule;
-
-        const roleMatch = (r: any) => {
-          if (r.type === 'dt') return pos === 'dt';
-          if (r.type === 'tb') return pos === 'tb';
-          if (r.type === 'pb') return pos === 'pb';
-          if (r.type === 'ctv') return roleGroup === 'ctv';
-          if (r.type === 'member_all') return roleGroup === 'member_official';
-          return false;
-        };
-
-        const roleDeptRule = quotaRules.find(
-          (r: any) => roleMatch(r) && r.target !== 'all' && String(r.target) === uDept,
-        );
-        if (roleDeptRule) return roleDeptRule;
-
-        const roleAllRule = quotaRules.find((r: any) => roleMatch(r) && r.target === 'all');
-        if (roleAllRule) return roleAllRule;
-
-        return null;
-      };
-
-      rule = findMatchingRule();
+      rule = findMatchingQuotaRule(fullUser, quotaRules, { startDate: slot.shiftDate, endDate: slot.shiftDate });
       weeklyLimit = rule ? Number(rule.quota) : defaultQuota;
     }
 
@@ -1021,7 +974,47 @@ class DutySlotsService {
     });
 
     const coeff = Number(coefficient) || 1;
-    const penaltyAmount = coeff * 5000;
+
+    // Fetch configuration to determine dynamic penalty
+    const periodConfig = await dutyPeriodConfigsService.getConfig(slot.shiftDate, slot.shiftDate);
+    const user = await usersRepository.findById(userId);
+    const pos = String(user?.position || '').toLowerCase();
+    const role = String(user?.role || '').toLowerCase();
+    const uDept = String(user?.department?.name || user?.department || '').trim();
+
+    const rule = findMatchingQuotaRule(user, periodConfig.quotaRules || [], {
+      startDate: slot.shiftDate,
+      endDate: slot.shiftDate,
+    });
+    const settings = await dutySettingsService.getSettings();
+
+    // Map violation type to config field
+    const typeLower = String(type).toLowerCase();
+    let specificPenaltyAmount = null;
+
+    const pConfig = periodConfig as any;
+    if (typeLower.includes('vắng') && typeLower.includes('không phép')) {
+      specificPenaltyAmount =
+        rule?.penaltyAbsentNoPermission ?? pConfig.penaltyAbsentNoPermission ?? settings.penaltyAbsentNoPermission;
+    } else if (typeLower.includes('đi muộn') || typeLower.includes('muộn')) {
+      specificPenaltyAmount = rule?.penaltyLate ?? pConfig.penaltyLate ?? settings.penaltyLate;
+    } else if (typeLower.includes('báo muộn')) {
+      specificPenaltyAmount =
+        rule?.penaltyAbsentWithPermissionLate ??
+        pConfig.penaltyAbsentWithPermissionLate ??
+        settings.penaltyAbsentWithPermissionLate;
+    }
+
+    const penaltyRate =
+      rule?.violationPenaltyRate ?? pConfig.violationPenaltyRate ?? (Number(settings.violationPenaltyRate) || 0);
+    const kipPrice = rule?.kipPrice ?? pConfig.kipPrice ?? (Number(settings.kipPrice) || 0);
+
+    // Calculation logic: If specific amount exists, use it * coeff. Else use kipPrice * penaltyRate * coeff.
+    const penaltyAmount =
+      specificPenaltyAmount !== null && specificPenaltyAmount !== undefined
+        ? Number(specificPenaltyAmount) * coeff
+        : kipPrice * penaltyRate * coeff;
+
     const reason = `Vi phạm kíp trực: ${type} (Hệ số x${coeff})`;
 
     let violation;
@@ -1105,39 +1098,6 @@ class DutySlotsService {
       userId,
       slotId,
     );
-
-    // --- AUTOMATIC PENALTY CREATION ---
-    const dateStr = dayjs(slot.shiftDate).format('YYYY-MM-DD');
-    const label = await this.getSlotLabel(slot);
-    const settings = await dutySettingsService.getSettings();
-
-    let baseAmount = 0;
-    let penaltyReason = '';
-
-    if (type.toLowerCase().includes('vắng') && type.toLowerCase().includes('không phép')) {
-      baseAmount = settings.penaltyAbsentNoPermission || 50000;
-      penaltyReason = 'Vắng trực không phép';
-    } else if (type.toLowerCase().includes('vắng') && type.toLowerCase().includes('có phép')) {
-      baseAmount = settings.penaltyAbsentWithPermissionLate || 20000;
-      penaltyReason = 'Vắng trực báo muộn';
-    } else if (type.toLowerCase().includes('muộn')) {
-      baseAmount = settings.penaltyLate || 10000;
-      penaltyReason = 'Đi trực muộn';
-    }
-
-    if (baseAmount > 0) {
-      await rewardPenaltyService.createEntry(
-        {
-          userId,
-          type: 'penalty',
-          amount: baseAmount * (Number(coefficient) || 1),
-          reason: `${penaltyReason} (${label} ngày ${dateStr})`,
-          eventDate: slot.shiftDate,
-          note: `Tự động ghi nhận từ báo cáo vi phạm. Ghi chú gốc: ${note || 'Không có'}`,
-        },
-        performerId,
-      );
-    }
 
     return violation;
   }

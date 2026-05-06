@@ -13,6 +13,7 @@ import dutyTemplateAssignmentsService from './duty-template-assignments.service'
 import dutyGenerationService from './duty-generation.service';
 import dutyStatsService from './duty-stats.service';
 import dutyLogsService from './duty-logs.service';
+import dutyPeriodConfigsService from './duty-period-configs.service';
 import auditLogsService from '@modules/audit-logs/services/audit-logs.service';
 import ApiError from '@utils/api-error';
 import db from '@database/mongo-database.adapter';
@@ -109,11 +110,15 @@ class DutyService extends BaseService {
   getSettings = () => dutySettingsService.getSettings();
   updateSettings = (data: GenericRecord) => dutySettingsService.updateSettings(data);
 
+  // ==================== PERIOD CONFIG MANAGEMENT ====================
+  getPeriodConfig = (startDate: string, endDate: string) => dutyPeriodConfigsService.getConfig(startDate, endDate);
+  updatePeriodConfig = (data: GenericRecord) => dutyPeriodConfigsService.updateConfig(data);
+
   // ==================== TEMPLATE MANAGEMENT ====================
   getTemplates = () => dutyTemplatesService.getTemplates();
-  createTemplate = (data: GenericRecord) => dutyTemplatesService.createTemplate(data);
-  updateTemplate = (id: Identifier, data: GenericRecord) => dutyTemplatesService.updateTemplate(id, data);
-  deleteTemplate = (id: Identifier) => dutyTemplatesService.deleteTemplate(id);
+  createTemplate = (data: GenericRecord) => dutyTemplatesService.create(data);
+  updateTemplate = (id: Identifier, data: GenericRecord) => dutyTemplatesService.update(id, data);
+  deleteTemplate = (id: Identifier) => dutyTemplatesService.delete(id);
 
   getShiftTemplates = (templateId?: Identifier | null) => dutyTemplatesService.getShiftTemplates(templateId);
   createShiftTemplate = (data: GenericRecord) => dutyTemplatesService.createShiftTemplate(data);
@@ -362,7 +367,7 @@ class DutyService extends BaseService {
 
     return updated;
   };
-  deleteSwapRequest = (id: Identifier) => dutySwapRequestsService.deleteSwapRequest(id);
+  deleteSwapRequest = (id: Identifier) => dutySwapRequestsService.delete(id);
   getSwapRequests = (user: GenericRecord, options: GenericRecord) =>
     dutySwapRequestsService.getSwapRequests(user, options);
 
@@ -413,7 +418,7 @@ class DutyService extends BaseService {
 
     return updated;
   };
-  deleteLeaveRequest = (id: Identifier) => dutyLeaveRequestsService.deleteLeaveRequest(id);
+  deleteLeaveRequest = (id: Identifier) => dutyLeaveRequestsService.delete(id);
   getLeaveRequests = (options: GenericRecord) => dutyLeaveRequestsService.getLeaveRequests(options);
   resolveLeaveRequest = async (
     requestId: Identifier,
@@ -552,8 +557,8 @@ class DutyService extends BaseService {
 
     return created;
   };
-  updateTemplateAssignment = (id: any, data: any) => dutyTemplateAssignmentsService.updateTemplateAssignment(id, data);
-  deleteTemplateAssignment = (id: any) => dutyTemplateAssignmentsService.deleteTemplateAssignment(id);
+  updateTemplateAssignment = (id: any, data: any) => dutyTemplateAssignmentsService.update(id, data);
+  deleteTemplateAssignment = (id: any) => dutyTemplateAssignmentsService.delete(id);
 
   async getUserRemarks(userId: Identifier) {
     const uid = normalizeId(userId);
@@ -577,7 +582,7 @@ class DutyService extends BaseService {
 
     // 2. Fetch duty logs where this user is the target
     const logsResult = await dutyLogsRepository.findAllAdvanced({
-      filter: { targetUserId: uid },
+      filter: { userId: uid },
       limit: 50,
       sort: 'createdAt',
       order: 'desc',
@@ -603,7 +608,7 @@ class DutyService extends BaseService {
                 : log.action === 'attendance'
                   ? 'Điểm danh'
                   : 'Nhật ký hệ thống',
-      content: log.description,
+      content: log.details,
       type: log.type || 'info',
       category: log.module,
       performer: actorMap.get(normalizeId(log.performerId)),

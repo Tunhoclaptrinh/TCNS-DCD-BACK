@@ -1,54 +1,77 @@
+import BaseService from '@shared/common/base-service';
 import dutyTemplatesRepository from '@modules/duty/repositories/duty-templates.repository';
 import ApiError from '@utils/api-error';
 import { Identifier, GenericRecord, normalizeId } from './duty-utils';
 
-class DutyTemplatesService {
+class DutyTemplatesService extends BaseService {
+  constructor() {
+    super('duty_templates', dutyTemplatesRepository);
+  }
+
+  /**
+   * Get all template groups, sorted by name
+   */
   async getTemplates() {
     const all = await dutyTemplatesRepository.findGroups();
     return all.sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '', 'vi'));
   }
 
-  async createTemplate(data: GenericRecord) {
-    const template = await dutyTemplatesRepository.create({
-      name: data.name,
-      type: 'group',
-      isDefault: !!data.isDefault,
-      description: data.description || '',
-    });
-    if (data.isDefault) {
-      const all = await dutyTemplatesRepository.findGroups();
-      for (const t of all) {
-        if (normalizeId(t.id) !== normalizeId(template.id) && t.isDefault) {
-          await dutyTemplatesRepository.update(t.id, { isDefault: false });
-        }
-      }
-    }
-    return template;
+  /**
+   * Override create/update hooks to handle group-specific logic
+   */
+  async beforeCreate(data: GenericRecord) {
+    const base = await super.beforeCreate(data);
+    const type = data.type || 'group';
+    const rawParentId = data.parentId || data.templateId || data.shiftId || data.templateShiftId;
+
+    return {
+      ...base,
+      type,
+      isDefault: data.isDefault !== undefined ? !!data.isDefault : type === 'group' ? false : undefined,
+      parentId: rawParentId ? normalizeId(rawParentId) : undefined,
+    };
   }
 
-  async updateTemplate(id: Identifier, data: GenericRecord) {
-    const updated = await dutyTemplatesRepository.update(id, {
-      name: data.name,
-      isDefault: !!data.isDefault,
-      description: data.description || '',
-    });
-    if (data.isDefault) {
-      const all = await dutyTemplatesRepository.findGroups();
-      for (const t of all) {
-        if (normalizeId(t.id) !== normalizeId(id) && t.isDefault) {
-          await dutyTemplatesRepository.update(t.id, { isDefault: false });
-        }
-      }
+  async afterCreate(template: any) {
+    if (template.isDefault) {
+      await this.handleDefaultGroupExclusivity(template.id);
     }
-    return updated;
+    await super.afterCreate(template);
   }
 
-  async deleteTemplate(id: Identifier) {
+  async beforeUpdate(id: Identifier, data: GenericRecord) {
+    const base = await super.beforeUpdate(id, data);
+    const rawParentId = data.parentId || data.templateId || data.shiftId || data.templateShiftId;
+    return {
+      ...base,
+      isDefault: data.isDefault !== undefined ? !!data.isDefault : undefined,
+      parentId: rawParentId ? normalizeId(rawParentId) : undefined,
+    };
+  }
+
+  async afterUpdate(updated: any) {
+    if (updated.isDefault) {
+      await this.handleDefaultGroupExclusivity(updated.id);
+    }
+    await super.afterUpdate(updated);
+  }
+
+  private async handleDefaultGroupExclusivity(currentId: Identifier) {
+    const all = await dutyTemplatesRepository.findGroups();
+    for (const t of all) {
+      if (normalizeId(t.id) !== normalizeId(currentId) && t.isDefault) {
+        await dutyTemplatesRepository.update(t.id, { isDefault: false });
+      }
+    }
+  }
+
+  async beforeDelete(id: Identifier) {
+    // Cascade delete shifts and kips
     const shifts = await dutyTemplatesRepository.findShiftsByGroupId(normalizeId(id));
     for (const s of shifts) {
       await this.deleteShiftTemplate(s.id);
     }
-    return await dutyTemplatesRepository.delete(id);
+    await super.beforeDelete(id);
   }
 
   async getShiftTemplates(templateId?: Identifier | null) {
@@ -74,17 +97,10 @@ class DutyTemplatesService {
   }
 
   async createShiftTemplate(data: GenericRecord) {
-    return await dutyTemplatesRepository.create({
+    return await this.create({
+      ...data,
       type: 'shift',
-      parentId: data.templateId ? normalizeId(data.templateId) : null,
-      name: data.name,
-      startTime: data.startTime,
-      endTime: data.endTime,
-      description: data.description || '',
-      isSpecialEvent: !!data.isSpecialEvent,
-      daysOfWeek: Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : [0, 1, 2, 3, 4, 5, 6],
-      slotStructure: data.slotStructure || [],
-      config: data.config || {},
+      parentId: data.templateId || data.parentId,
     });
   }
 
@@ -109,22 +125,15 @@ class DutyTemplatesService {
       }
     }
 
-    return await dutyTemplatesRepository.update(id, {
-      parentId: data.templateId ? normalizeId(data.templateId) : undefined,
-      name: data.name,
-      startTime: data.startTime,
-      endTime: data.endTime,
-      description: data.description || '',
-      isSpecialEvent: data.isSpecialEvent !== undefined ? !!data.isSpecialEvent : undefined,
-      daysOfWeek: newDays,
-      slotStructure: data.slotStructure,
-      config: data.config,
+    return await this.update(id, {
+      ...data,
+      parentId: data.templateId || data.parentId,
     });
   }
 
   async deleteShiftTemplate(id: Identifier) {
     await dutyTemplatesRepository.deleteByParentId(normalizeId(id));
-    return await dutyTemplatesRepository.delete(id);
+    return await this.delete(id);
   }
 
   async createKipTemplate(data: GenericRecord) {
@@ -141,18 +150,11 @@ class DutyTemplatesService {
       }
     }
 
-    return await dutyTemplatesRepository.create({
+    return await this.create({
+      ...data,
       type: 'kip',
       parentId: shiftId,
-      name: data.name,
-      coefficient: Number(data.coefficient) || 1,
-      capacity: Number(data.capacity) || 1,
-      startTime: data.startTime || null,
-      endTime: data.endTime || null,
       daysOfWeek: kipDays,
-      description: data.description || '',
-      slotStructure: data.slotStructure || [],
-      config: data.config || {},
     });
   }
 
@@ -174,21 +176,14 @@ class DutyTemplatesService {
       }
     }
 
-    return await dutyTemplatesRepository.update(id, {
-      name: data.name,
-      coefficient: Number(data.coefficient) || 1,
-      capacity: Number(data.capacity) || 1,
-      startTime: data.startTime || null,
-      endTime: data.endTime || null,
+    return await this.update(id, {
+      ...data,
       daysOfWeek: kipDays || kip.daysOfWeek,
-      description: data.description || '',
-      slotStructure: data.slotStructure,
-      config: data.config,
     });
   }
 
   async deleteKipTemplate(id: Identifier) {
-    return await dutyTemplatesRepository.delete(id);
+    return await this.delete(id);
   }
 }
 
