@@ -1,4 +1,4 @@
-import db from '@database';
+import db from '@database/mongo-database.adapter';
 import type { AnyRecord, Identifier } from '@app-types/common';
 import type { DatabaseAdapter, FindAllResult, QueryOptions } from '@app-types/database';
 

@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import type { AnyRecord } from '@app-types/common';
 import { logger } from '../utils/logger';
-import { transformError } from './error-transform.middleware';
+import { transformError } from '@utils/error-transform';
 
 type ResponseEnvelope = AnyRecord & {
   success: boolean;

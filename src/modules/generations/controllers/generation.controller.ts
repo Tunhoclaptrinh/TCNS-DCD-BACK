@@ -1,38 +1,33 @@
 import BaseController from '@shared/common/base-controller';
 import generationService from '@modules/generations/services/generation.service';
-import type { Request, Response, NextFunction } from 'express';
 
 class GenerationController extends BaseController {
   constructor() {
     super(generationService);
   }
 
-  create = this.handle(async (req: Request, res: Response) => {
-    const data = await generationService.create(req.body, (req as any).user?.id);
+  create = this.handle(async (req, res) => {
+    const data = await generationService.create(req.body, req.user?.id);
     this.created(res, data);
   });
 
-  update = this.handle(async (req: Request, res: Response) => {
-    const data = await generationService.update(req.params.id, req.body, (req as any).user?.id);
+  update = this.handle(async (req, res) => {
+    const data = await generationService.update(req.params.id, req.body, req.user?.id);
     this.ok(res, data);
   });
 
-  delete = this.handle(async (req: Request, res: Response) => {
-    const data = await generationService.delete(req.params.id, (req as any).user?.id);
+  delete = this.handle(async (req, res) => {
+    const data = await generationService.delete(req.params.id, req.user?.id);
     this.ok(res, data);
   });
 
-  setCurrent = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const data = await generationService.setCurrent(req.params.id, (req as any).user?.id);
-      this.ok(res, {
-        ...data,
-        message: 'Đã đặt làm Khóa hiện tại',
-      });
-    } catch (error) {
-      next(error);
-    }
-  };
+  setCurrent = this.handle(async (req, res) => {
+    const data = await generationService.setCurrent(req.params.id, req.user?.id);
+    this.ok(res, {
+      ...data,
+      message: 'Đã đặt làm Khóa hiện tại',
+    });
+  });
 }
 
 export default new GenerationController();

@@ -12,21 +12,21 @@ export function isEmpty(value: any) {
 export function validateType(field: string, value: any, rule: SchemaRule) {
   switch (rule.type) {
     case 'string':
-      return typeof value !== 'string' ? `${field} must be a string` : null;
+      return typeof value !== 'string' ? `${field} phải là chuỗi` : null;
     case 'number':
-      return isNaN(Number(value)) ? `${field} must be a number` : null;
+      return isNaN(Number(value)) ? `${field} phải là số` : null;
     case 'boolean':
       return typeof value !== 'boolean' && !BOOL_VALUES.has(String(value).toLowerCase())
-        ? `${field} must be true/false`
+        ? `${field} phải là true/false`
         : null;
     case 'email':
-      return !EMAIL_REGEX.test(value) ? `${field} must be a valid email` : null;
+      return !EMAIL_REGEX.test(value) ? `${field} phải là email hợp lệ` : null;
     case 'date':
-      return isNaN(new Date(value).getTime()) ? `${field} must be a valid date` : null;
+      return isNaN(new Date(value).getTime()) ? `${field} phải là ngày hợp lệ` : null;
     case 'enum':
-      return !rule.enum.includes(value) ? `${field} must be one of: ${rule.enum.join(', ')}` : null;
+      return !rule.enum.includes(value) ? `${field} phải là một trong: ${rule.enum.join(', ')}` : null;
     case 'array':
-      return !Array.isArray(value) ? `${field} must be an array` : null;
+      return !Array.isArray(value) ? `${field} phải là một mảng` : null;
     default:
       return null;
   }
@@ -54,11 +54,11 @@ export function convertValue(_field: string, value: any, rule: SchemaRule) {
 }
 
 export function validateFieldConstraints(field: string, value: any, rule: SchemaRule) {
-  if (rule.min !== undefined && Number(value) < rule.min) return `${field} must be >= ${rule.min}`;
-  if (rule.max !== undefined && Number(value) > rule.max) return `${field} must be <= ${rule.max}`;
-  if (rule.minLength && value.length < rule.minLength) return `${field} must be at least ${rule.minLength} characters`;
-  if (rule.maxLength && value.length > rule.maxLength) return `${field} must be at most ${rule.maxLength} characters`;
-  if (rule.enum && !rule.enum.includes(value)) return `${field} must be one of: ${rule.enum.join(', ')}`;
+  if (rule.min !== undefined && Number(value) < rule.min) return `${field} phải lớn hơn hoặc bằng ${rule.min}`;
+  if (rule.max !== undefined && Number(value) > rule.max) return `${field} phải nhỏ hơn hoặc bằng ${rule.max}`;
+  if (rule.minLength && value.length < rule.minLength) return `${field} phải có ít nhất ${rule.minLength} ký tự`;
+  if (rule.maxLength && value.length > rule.maxLength) return `${field} phải có tối đa ${rule.maxLength} ký tự`;
+  if (rule.enum && !rule.enum.includes(value)) return `${field} phải là một trong: ${rule.enum.join(', ')}`;
   return null;
 }
 

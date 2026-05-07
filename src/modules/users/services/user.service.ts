@@ -1,11 +1,12 @@
 import BaseService from '@shared/common/base-service';
-import db from '@database';
+import db from '@database/mongo-database.adapter';
 import usersRepository from '@modules/users/repositories/users.repository';
 import notificationsRepository from '@modules/notifications/repositories/notifications.repository';
 import rewardPenaltiesRepository from '@modules/reward-penalties/repositories/reward-penalties.repository';
 import dutySlotsRepository from '@modules/duty/repositories/duty-slots.repository';
 import dutySwapRequestsRepository from '@modules/duty/repositories/duty-swap-requests.repository';
-import { sanitizeUser, hashPassword } from '@utils/helpers';
+import { hashPassword } from '@utils/auth.utils';
+import { sanitizeUser } from '@utils/user.utils';
 import ApiError from '@utils/api-error';
 import userSchema from '@modules/users/schemas/user.schema';
 import notificationService from '@modules/notifications/services/notification.service';
@@ -316,8 +317,6 @@ class UserService extends BaseService {
       ...transformed,
       isActive: transformed.isActive !== undefined ? transformed.isActive : true,
       status: transformed.status || 'active',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
     };
   }
 
@@ -363,7 +362,6 @@ class UserService extends BaseService {
 
     return {
       ...transformed,
-      updatedAt: new Date().toISOString(),
     };
   }
 
@@ -407,7 +405,6 @@ class UserService extends BaseService {
     const newIsActive = !user.isActive;
     const updateData: AnyRecord = {
       isActive: newIsActive,
-      updatedAt: new Date().toISOString(),
     };
 
     // Unify status: Alumni <=> Inactive
@@ -461,7 +458,6 @@ class UserService extends BaseService {
       promotedAt: now,
       promotedBy: actorId,
       promotionReason: reason || '',
-      updatedAt: now,
     });
 
     await notificationService.notifyUser(user.id, {
@@ -507,7 +503,6 @@ class UserService extends BaseService {
       expelledBy: actorId,
       status: 'dismissed',
       isActive: false,
-      updatedAt: now,
     });
 
     await notificationService.notifyUser(user.id, {
@@ -581,7 +576,6 @@ class UserService extends BaseService {
         await this.repository.update(id, {
           status: 'inactive',
           isActive: false,
-          updatedAt: new Date().toISOString(),
         });
         count++;
       }
@@ -599,7 +593,6 @@ class UserService extends BaseService {
           await this.repository.update(user.id, {
             status: 'inactive',
             isActive: false,
-            updatedAt: new Date().toISOString(),
           });
           count++;
         }

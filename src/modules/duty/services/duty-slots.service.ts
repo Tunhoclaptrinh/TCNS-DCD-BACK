@@ -30,7 +30,6 @@ import dutyLogsService from './duty-logs.service';
 import dutyViolationsRepository from '@modules/duty/repositories/duty-violations.repository';
 import rewardPenaltyService from '@modules/reward-penalties/services/reward-penalty.service';
 import dutyPeriodConfigsService from './duty-period-configs.service';
-import { PENALTY_RULES } from '@modules/reward-penalties/constants/penalty-rules';
 
 class DutySlotsService {
   async findSlotOrThrow(slotId: Identifier) {

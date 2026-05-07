@@ -1,7 +1,8 @@
 import jwt from 'jsonwebtoken';
 import type { NextFunction, Request, Response } from 'express';
-import db from '@database';
+import db from '@database/mongo-database.adapter';
 import type { Identifier } from '@app-types/common';
+import userAccessService from '@modules/users/services/user-access.service';
 
 type AuthTokenPayload = {
   id: Identifier;
@@ -45,10 +46,6 @@ function isTokenOutdated(decoded: AuthTokenPayload, user: AuthenticatedUser) {
 async function findUser(userId: Identifier) {
   return (await db.findById('users', userId)) as AuthenticatedUser | null;
 }
-
-import userAccessService from '@modules/users/services/user-access.service';
-
-// ... (existing helper functions)
 
 // Kiểm tra JWT, nạp thông tin user hiện tại và gắn vào `req.user`.
 export const requireAuth = async (req: Request, res: Response, next: NextFunction) => {

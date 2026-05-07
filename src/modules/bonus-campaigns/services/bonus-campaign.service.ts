@@ -74,8 +74,6 @@ class BonusCampaignService extends BaseService {
       thoiGianBatDau: toIsoDate(payload.thoiGianBatDau),
       thoiGianKetThuc: toIsoDate(payload.thoiGianKetThuc),
       active: payload.active !== undefined ? payload.active : true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
       createdBy: toNumber(actorId),
       updatedBy: toNumber(actorId),
     });
@@ -95,7 +93,6 @@ class BonusCampaignService extends BaseService {
   async updateCampaign(id: Identifier, payload: AnyRecord = {}, actorId: Identifier) {
     const updated = await this.repository.update(toNumber(id), {
       ...payload,
-      updatedAt: new Date().toISOString(),
       updatedBy: toNumber(actorId),
     });
 
@@ -247,7 +244,6 @@ class BonusCampaignService extends BaseService {
     // Cập nhật trạng thái đợt
     await this.repository.update(campaignId, {
       status: 'approved',
-      updatedAt: new Date().toISOString(),
     });
 
     await auditLogsService.log({

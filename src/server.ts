@@ -9,7 +9,7 @@ import { createServer } from 'http';
 import path from 'path';
 import { Server as SocketServer } from 'socket.io';
 
-import { initDatabase } from '@database';
+import { initDatabase } from '@database/mongo-database.adapter';
 import { startOtpCleanupScheduler } from '@modules/auth/services/otp-cleanup.scheduler';
 import { appendPaginationHeaders, parseApiQuery } from './middleware/api-query.middleware';
 import { camelizeBody } from './middleware/normalize-request-body.middleware';

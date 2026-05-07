@@ -84,7 +84,6 @@ class RewardPenaltyService extends BaseService {
     const now = new Date().toISOString();
     const updated = await this.repository.update(entryId, {
       ...nextPayload,
-      updatedAt: now,
     });
 
     await auditLogsService.log({
@@ -141,8 +140,6 @@ class RewardPenaltyService extends BaseService {
       eventDate: toIsoDate(payload.eventDate, now),
       createdBy: normalizeId(actorId),
       note: payload.note || '',
-      createdAt: now,
-      updatedAt: now,
     });
 
     await auditLogsService.log({

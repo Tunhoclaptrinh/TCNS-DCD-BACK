@@ -2,8 +2,8 @@ import * as XLSX from 'xlsx';
 import * as path from 'path';
 import dns from 'dns';
 import dotenv from 'dotenv';
-import { initDatabase } from '@database';
-import db from '@database';
+import { initDatabase } from '@database/mongo-database.adapter';
+import db from '@database/mongo-database.adapter';
 import userService from '@modules/users/services/user.service';
 import { logger } from '@utils/logger';
 
