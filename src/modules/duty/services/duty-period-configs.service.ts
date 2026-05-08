@@ -19,11 +19,11 @@ class DutyPeriodConfigsService extends BaseService {
       };
     }
 
-    // Return empty config for uninitialized periods
+    // Return empty config for uninitialized periods with system defaults
     return {
       startDate: start,
       endDate: end,
-      defaultQuota: 0, // No default quota unless explicitly set
+      defaultQuota: 2.5, // Hardcoded fallback as requested
       kipPrice: 0,
       violationPenaltyRate: 0,
       quotaRules: [],

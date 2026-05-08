@@ -22,14 +22,12 @@ class DutyStatsService {
 
     const periodConfig = await dutyPeriodConfigsService.getConfig(startDate, endDate);
     const settings = await dutySettingsService.getSettings();
-
-    // Prioritize period-specific config strictly. If uninitialized, fallback to baseline 0 or 2.5
+    // Prioritize period-specific config strictly. If uninitialized, fallback to hardcoded 2.5
     const defaultQuota =
       periodConfig.defaultQuota !== undefined && periodConfig.defaultQuota !== null
         ? Number(periodConfig.defaultQuota)
-        : 0;
+        : 2.5;
     const kipPrice = Number(periodConfig.kipPrice) || 0;
-    const penaltyRate = Number(periodConfig.violationPenaltyRate) || 0;
     const quotaRules = periodConfig.quotaRules || [];
     const isPeriodInitialized = !!periodConfig.isInitialized;
 
@@ -70,8 +68,7 @@ class DutyStatsService {
 
     const users = uniqueUsers.filter((u) => {
       // Robustly get department name
-      const deptValue = u.department?.name || u.department;
-      const uDept = String(deptValue || '').trim();
+      const uDept = String(u.department || 'N/A').trim();
 
       if (departmentId && departmentId !== 'undefined' && departmentId !== 'null') {
         if (uDept.toLowerCase() !== String(departmentId).trim().toLowerCase()) {
@@ -173,7 +170,18 @@ class DutyStatsService {
       const isWarning = totalKips < userQuota;
 
       const totalEarnings = totalKips * userKipPrice;
-      const finalAmount = totalEarnings;
+
+      // Calculate fixed penalties from violations
+      let totalPenaltyAmount = 0;
+      userViolations.forEach((v) => {
+        if (v.type === 'absent_no_permission') totalPenaltyAmount += settings.penaltyAbsentNoPermission || 50000;
+        else if (v.type === 'absent_with_permission_late')
+          totalPenaltyAmount += settings.penaltyAbsentWithPermissionLate || 20000;
+        else if (v.type === 'late') totalPenaltyAmount += settings.penaltyLate || 10000;
+      });
+
+      const netEarnings = totalEarnings - totalPenaltyAmount;
+      const finalAmount = netEarnings;
 
       return {
         userId,
@@ -181,7 +189,7 @@ class DutyStatsService {
         firstName: user.firstName,
         lastName: user.lastName,
         studentId: user.studentId,
-        department: user.department?.name || user.department || 'N/A',
+        department: String(user.department || 'Khác').trim(),
         position: user.position,
         totalKips,
         userQuota,
@@ -190,6 +198,8 @@ class DutyStatsService {
         deficiency,
         isWarning,
         totalEarnings,
+        totalPenaltyAmount,
+        netEarnings,
         finalAmount,
         leaveCount: userLeaves.length,
         swapCount: userSwaps.length,
@@ -203,13 +213,33 @@ class DutyStatsService {
       };
     });
 
-    // 5. Generate Summary
+    // 5. Generate Comprehensive Summary for Charts
     const summary = {
       totalKips: stats.reduce((acc, s) => acc + s.totalKips, 0),
       totalViolations: stats.reduce((acc, s) => acc + s.violationCount, 0),
       warningCount: stats.filter((s) => s.isWarning).length,
+      achievedCount: stats.filter((s) => !s.isWarning).length,
+      totalUsers: stats.length,
+      achievementRate:
+        stats.length > 0 ? Math.round((stats.filter((s) => !s.isWarning).length / stats.length) * 100) : 0,
       totalPayout: stats.reduce((acc, s) => acc + s.finalAmount, 0),
       averageAttendanceRate: stats.length > 0 ? stats.reduce((acc, s) => acc + s.attendanceRate, 0) / stats.length : 0,
+
+      // Distributions for Charts
+      departmentDistribution: stats.reduce((acc: any, s) => {
+        const dept = s.department || 'Khác';
+        if (!acc[dept]) acc[dept] = { name: dept, count: 0, kips: 0 };
+        acc[dept].count += 1;
+        acc[dept].kips += s.totalKips;
+        return acc;
+      }, {}),
+
+      positionDistribution: stats.reduce((acc: any, s) => {
+        const pos = s.position || 'Thành viên';
+        acc[pos] = (acc[pos] || 0) + 1;
+        return acc;
+      }, {}),
+
       violationTypes: stats.reduce((acc: any, s) => {
         s.violations.forEach((v) => {
           acc[v.type] = (acc[v.type] || 0) + 1;
@@ -217,6 +247,22 @@ class DutyStatsService {
         return acc;
       }, {}),
     };
+
+    // Check initialization for each week in the range
+    const weekInitStatus: Record<string, boolean> = {};
+    const start = dayjs(startDate);
+    const end = dayjs(endDate);
+    let current = start.clone();
+    while (current.isBefore(end) || current.isSame(end, 'day')) {
+      const weekKey = `${current.year()}-${current.isoWeek()}`;
+      if (!weekInitStatus[weekKey]) {
+        const weekStart = current.startOf('isoWeek').toISOString();
+        const weekEnd = current.endOf('isoWeek').toISOString();
+        const config = await dutyPeriodConfigsService.getConfig(weekStart, weekEnd);
+        weekInitStatus[weekKey] = !!config.isInitialized;
+      }
+      current = current.add(1, 'week');
+    }
 
     return {
       success: true,
@@ -230,6 +276,13 @@ class DutyStatsService {
         },
         meta: {
           isPeriodInitialized,
+          weekInitStatus,
+          totalKips: stats.reduce((acc, u) => acc + (u.totalKips || 0), 0),
+          totalQuota: stats.reduce((acc, u) => acc + (u.userQuota || 0), 0),
+          totalEarnings: stats.reduce((acc, u) => acc + (u.totalEarnings || 0), 0),
+          totalPenalties: stats.reduce((acc, u) => acc + (u.totalPenaltyAmount || 0), 0),
+          totalNetEarnings: stats.reduce((acc, u) => acc + (u.netEarnings || 0), 0),
+          totalViolations: stats.reduce((acc, u) => acc + (u.violationCount || 0), 0),
           periodText: `${dayjs(startDate).format('DD/MM')} - ${dayjs(endDate).format('DD/MM/YYYY')}`,
           slots: slots.map((s) => ({
             id: s.id,

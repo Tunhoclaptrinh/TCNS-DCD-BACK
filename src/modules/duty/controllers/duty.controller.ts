@@ -13,6 +13,8 @@ class DutyController extends BaseController {
       ...req.parsedQuery,
       weekStart: req.query.weekStart || req.query.week_start,
       userId: req.user?.id,
+      userRole: req.user?.role,
+      userPermissions: req.user?.permissions || [],
     });
     this.ok(res, data);
   });
@@ -359,8 +361,11 @@ class DutyController extends BaseController {
       mode,
       startDate,
       endDate,
-      includeDays: parsedIncludes,
+      ...(parsedIncludes.length > 0 ? { includeDays: parsedIncludes } : {}),
       date,
+      userId: req.user?.id,
+      userRole: req.user?.role,
+      userPermissions: req.user?.permissions || [],
     });
 
     const label = startDate ? dayjs(startDate as string).format('DDMM') : dayjs(weekStart as string).format('WW');

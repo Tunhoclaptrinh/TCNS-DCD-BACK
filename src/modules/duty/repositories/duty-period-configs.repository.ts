@@ -6,8 +6,8 @@ class DutyPeriodConfigsRepository extends BaseRepository {
   }
 
   async findByRange(startDate: Date, endDate: Date) {
-    // Find a config that matches this exact range or overlaps
-    // For now, we focus on exact range for week-based logic
+    // Find a config that overlaps with this range.
+    // This ensures that if a month is configured, its weeks are also considered initialized.
     return await this.findOne({
       startDate: { $lte: endDate },
       endDate: { $gte: startDate },

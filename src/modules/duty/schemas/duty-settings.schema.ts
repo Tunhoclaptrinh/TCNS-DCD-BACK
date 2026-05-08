@@ -32,24 +32,6 @@ export default defineSchema({
     default: 'quota',
     description: 'Chế độ giới hạn: cố định hoặc theo định mức (quota)',
   },
-  defaultQuota: {
-    type: 'number',
-    required: false,
-    default: 2.5,
-    description: 'Định mức kíp mặc định hệ thống',
-  },
-  kipPrice: {
-    type: 'number',
-    required: false,
-    default: 0,
-    description: 'Đơn giá mỗi kíp trực (VNĐ)',
-  },
-  quotaRules: {
-    type: 'array',
-    required: false,
-    default: [],
-    description: 'Danh sách quy tắc định mức hệ thống',
-  },
   allowedIpRanges: {
     type: 'array',
     required: false,

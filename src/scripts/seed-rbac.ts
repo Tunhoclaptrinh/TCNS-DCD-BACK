@@ -68,6 +68,7 @@ const PERMISSIONS = [
   { key: 'duty:manage:lock', name: 'Khóa kíp (Lock/Disable slot)', module: 'duty' },
   { key: 'duty:attendance', name: 'Điểm danh (Attendance)', module: 'duty' },
   { key: 'duty:violation:report', name: 'Ghi nhận vi phạm (Violation report)', module: 'duty' },
+  { key: 'duty:view:private', name: 'Xem danh sách nhân sự kíp bị ẩn', module: 'duty' },
 
   // Thưởng phạt
   { key: 'reward:create', name: 'Ghi nhận thưởng / phạt', module: 'reward' },
@@ -154,6 +155,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'duty:approve_swap',
     'duty:attendance',
     'duty:violation:report',
+    'duty:view:private',
     'reward:create',
     'reward:approve',
     'reward:history:all',
@@ -216,6 +218,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'duty:approve_swap',
     'duty:attendance',
     'duty:violation:report',
+    'duty:view:private',
     'reward:create',
     'reward:approve',
     'reward:history:all',
@@ -278,6 +281,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'duty:approve_swap',
     'duty:attendance',
     'duty:violation:report',
+    'duty:view:private',
     'reward:create',
     'reward:approve',
     'reward:history:all',

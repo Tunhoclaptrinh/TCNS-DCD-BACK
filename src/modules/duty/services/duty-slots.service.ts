@@ -76,7 +76,7 @@ class DutySlotsService {
     const ws = dayjs(weekStart);
     const we = dayjs(weekEnd);
 
-    const [days, shifts, kips, slotsResult, users, assignments] = await Promise.all([
+    const [days, shifts, kips, slotsResult, users, assignments, settings] = await Promise.all([
       dutyDaysRepository.findMany({
         date_gte: ws.toISOString(),
         date_lte: we.toISOString(),
@@ -102,6 +102,7 @@ class DutySlotsService {
         startDate_lte: we.toISOString(),
         endDate_gte: ws.toISOString(),
       }),
+      dutySettingsService.getSettings(),
     ]);
 
     const slotIds = slotsResult.data.map((s: any) => normalizeId(s.id));
@@ -114,39 +115,69 @@ class DutySlotsService {
 
     const userMap = new Map(users.map((user) => [normalizeId(user.id), user]));
 
+    const isGlobalPrivacyMode = settings.isPrivacyMode === true;
+    const requesterRole = options.userRole;
+    const requesterId = normalizeId(options.userId);
+    const isAdmin = requesterRole === 'admin' || requesterRole === 'staff';
+
     const slots = slotsResult.data.map((slot: any) => {
       const assignedIds = normalizeIdList(slot.assignedUserIds || []);
       const attendedIds = normalizeIdList(slot.attendedUserIds || []);
       const kip = kips.find((k: any) => normalizeId(k.id) === normalizeId(slot.kipId));
       const shift = shifts.find((s: any) => normalizeId(s.id) === normalizeId(slot.shiftId || kip?.shiftId));
 
+      const slotVisibilityMode = slot.config?.visibilityMode || (isGlobalPrivacyMode ? 'private_mutual' : 'public');
+
+      const filterUserByPrivacy = (user: any, visibilityMode: string) => {
+        if (!user) return null;
+        if (isAdmin) return user;
+        if (normalizeId(user.id) === requesterId) return user;
+
+        const userPermissions = options.userPermissions || [];
+        if (userPermissions.includes('duty:view:private') || userPermissions.includes('*')) return user;
+
+        const uRole = String(user.role || '').toLowerCase();
+        const uPos = String(user.position || '').toLowerCase();
+        const isOfficial = uRole !== 'ctv' && uPos !== 'ctv';
+
+        const reqRoleStr = String(requesterRole || '').toLowerCase();
+        const isReqOfficial = reqRoleStr !== 'ctv';
+
+        let isHidden = false;
+        if (visibilityMode === 'hidden_all') {
+          isHidden = true;
+        } else if (visibilityMode === 'private_mutual') {
+          if (isReqOfficial !== isOfficial) isHidden = true;
+        } else if (visibilityMode === 'protect_members') {
+          if (!isReqOfficial && isOfficial) isHidden = true;
+        }
+
+        if (isHidden) {
+          return {
+            id: user.id,
+            name: 'Thành viên',
+            avatar: null,
+            studentId: '********',
+            position: 'Thành viên',
+          };
+        }
+        return user;
+      };
+
+      const assignedUsers = assignedIds
+        .map((id) => filterUserByPrivacy(userMap.get(id), slotVisibilityMode))
+        .filter(Boolean);
+      const attendedUsers = attendedIds
+        .map((id) => filterUserByPrivacy(userMap.get(id), slotVisibilityMode))
+        .filter(Boolean);
+
       return {
         ...slot,
         shiftLabel: shift && kip ? `${shift.name} - ${kip.name}` : kip?.name || 'Kíp trực',
         startTime: slot.startTime || kip?.startTime || shift?.startTime,
         endTime: slot.endTime || kip?.endTime || shift?.endTime,
-        assignedUsers: assignedIds
-          .map((id) => userMap.get(id))
-          .filter(Boolean)
-          .map((user: any) => ({
-            id: user.id,
-            name: user.name,
-            role: user.role,
-            avatar: user.avatar,
-            position: user.position,
-            studentId: user.studentId,
-          })),
-        attendedUsers: attendedIds
-          .map((id) => userMap.get(id))
-          .filter(Boolean)
-          .map((user: any) => ({
-            id: user.id,
-            name: user.name,
-            role: user.role,
-            avatar: user.avatar,
-            position: user.position,
-            studentId: user.studentId,
-          })),
+        assignedUsers,
+        attendedUsers,
         violations: violations.filter((v: any) => normalizeId(v.slotId) === normalizeId(slot.id)),
         leaveRequests: leaveRequests.filter((r: any) => normalizeId(r.slotId) === normalizeId(slot.id)),
         swapRequests: swapRequests.filter((r: any) => normalizeId(r.fromSlotId) === normalizeId(slot.id)),
@@ -1380,6 +1411,13 @@ class DutySlotsService {
       });
       dayHeaderRow.height = 25;
 
+      const [settings] = await Promise.all([dutySettingsService.getSettings()]);
+
+      const isGlobalPrivacyMode = settings.isPrivacyMode === true;
+      const requesterRole = options.userRole;
+      const requesterId = normalizeId(options.userId);
+      const isAdmin = requesterRole === 'admin' || requesterRole === 'staff';
+
       const scheduleMap: Record<number, Record<string, string[]>> = {};
       for (let i = 0; i < numCols; i++) scheduleMap[i] = {};
 
@@ -1389,7 +1427,36 @@ class DutySlotsService {
         if (dayIdx === -1) return;
         const label = slot.shiftLabel;
         if (!scheduleMap[dayIdx][label]) scheduleMap[dayIdx][label] = [];
-        (slot.assignedUsers || []).forEach((u: any) => scheduleMap[dayIdx][label].push(u.name));
+
+        const slotVisibilityMode = slot.config?.visibilityMode || (isGlobalPrivacyMode ? 'private_mutual' : 'public');
+
+        (slot.assignedUsers || []).forEach((u: any) => {
+          if (!u) return;
+
+          const userPermissions = options.userPermissions || [];
+          const hasOverride = userPermissions.includes('duty:view:private') || userPermissions.includes('*');
+
+          let isHidden = false;
+          if (!isAdmin && normalizeId(u.id) !== requesterId && !hasOverride) {
+            const uRole = String(u.role || '').toLowerCase();
+            const uPos = String(u.position || '').toLowerCase();
+            const isOfficial = uRole !== 'ctv' && uPos !== 'ctv';
+
+            const reqRoleStr = String(requesterRole || '').toLowerCase();
+            const isReqOfficial = reqRoleStr !== 'ctv';
+
+            if (slotVisibilityMode === 'hidden_all') {
+              isHidden = true;
+            } else if (slotVisibilityMode === 'private_mutual') {
+              if (isReqOfficial !== isOfficial) isHidden = true;
+            } else if (slotVisibilityMode === 'protect_members') {
+              if (!isReqOfficial && isOfficial) isHidden = true;
+            }
+          }
+
+          const displayName = isHidden ? 'Thành viên' : u.name || u.studentId || 'N/A';
+          scheduleMap[dayIdx][label].push(displayName);
+        });
       });
 
       const dayMeetings: Record<number, any[]> = {};
@@ -1405,9 +1472,11 @@ class DutySlotsService {
         new Set(
           slots
             .filter((s) => weekDays.some((d) => d.isSame(dayjs(s.shiftDate), 'day')))
-            .map((s: any) => s.shiftLabel as string),
+            .map((s: any) => (s.shiftLabel || 'Ca không tên') as string),
         ),
-      ).sort();
+      )
+        .filter(Boolean)
+        .sort();
       const orderedKips: { label: string; details: string }[] = [];
       templates.forEach((s: any) => {
         s.kips.forEach((k: any) => {
@@ -1423,8 +1492,8 @@ class DutySlotsService {
       let currentRow = 3;
       let kipColorIdx = 0;
       for (const kipInfo of orderedKips) {
-        const label = kipInfo.label;
-        const details = kipInfo.details;
+        const label = kipInfo.label || 'Ca không tên';
+        const details = kipInfo.details || '';
         const kipBgColor = kipPalettes[kipColorIdx % kipPalettes.length];
 
         let maxPeople = 1;
