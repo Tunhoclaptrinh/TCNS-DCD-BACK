@@ -18,6 +18,6 @@ Avoid monolithic agents. Always break down AI tasks into:
 
 ## 3. Workflow Reference
 
-Refer to `docs/ai-workflow/` only when designing **new** core architectures. For implementation, follow the **Prompt Chaining** pattern established in the codebase.
+Refer to `docs` only when designing **new** core architectures. For implementation, follow the **Prompt Chaining** pattern established in the codebase.
 
 **CRITICAL:** Always validate LLM JSON output. No unvalidated actions.

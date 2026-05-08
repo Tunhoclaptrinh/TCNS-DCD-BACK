@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import type { AnyRecord } from '@app-types/common';
+import { logger } from '@utils/logger';
 
 function isProduction() {
   return (process.env.NODE_ENV || 'development') === 'production';
@@ -66,7 +67,7 @@ class OtpDeliveryService {
   async sendEmail(payload: nodemailer.SendMailOptions) {
     if (!this.transporter) {
       if (!isProduction()) {
-        console.log('[OTP MOCK][email]', payload);
+        logger.debug('[OTP MOCK][email]', 'OTP', payload);
         return { delivered: true, mocked: true };
       }
       throw new Error('EMAIL gateway (SMTP) is not configured');
@@ -74,10 +75,10 @@ class OtpDeliveryService {
 
     try {
       const info = await this.transporter.sendMail(payload);
-      console.log('[OTP EMAIL SENT]', info.messageId);
+      logger.info(`OTP email sent: ${info.messageId}`, 'OTP');
       return { delivered: true, mocked: false, messageId: info.messageId };
     } catch (error) {
-      console.error('[OTP EMAIL ERROR]', error);
+      logger.error('OTP email failed', 'OTP', error);
       throw error;
     }
   }

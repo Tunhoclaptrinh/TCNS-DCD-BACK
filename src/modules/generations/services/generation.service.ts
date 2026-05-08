@@ -16,16 +16,6 @@ class GenerationService extends BaseService {
     return generationSchema;
   }
 
-  async beforeCreate(data: AnyRecord) {
-    const transformed = this.transformBySchema(data);
-
-    return {
-      ...transformed,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-  }
-
   async afterCreate(item: AnyRecord) {
     if (item.isCurrent) {
       await this.ensureOnlyOneCurrent(item.id);
@@ -106,7 +96,6 @@ class GenerationService extends BaseService {
       {
         status: 'inactive',
         isActive: false, // Also deactivate account when moving to alumni
-        updatedAt: new Date().toISOString(),
       },
     );
     logger.info(`Automatically moved members of generation ${id} to alumni status and deactivated their accounts`);
@@ -119,7 +108,6 @@ class GenerationService extends BaseService {
       .map((g: any) =>
         this.repository.update(g.id, {
           isCurrent: false,
-          updatedAt: new Date().toISOString(),
         }),
       );
 
@@ -143,7 +131,6 @@ class GenerationService extends BaseService {
 
     const updated = await this.repository.update(id, {
       isCurrent: true,
-      updatedAt: new Date().toISOString(),
     });
 
     await this.ensureOnlyOneCurrent(id);

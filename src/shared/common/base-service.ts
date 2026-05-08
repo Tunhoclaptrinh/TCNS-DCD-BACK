@@ -258,8 +258,6 @@ class BaseService {
     if (!this.getSchema()) return data;
 
     const transformed: AnyRecord = this.transformBySchema(data);
-    transformed.createdAt = new Date().toISOString();
-    transformed.updatedAt = new Date().toISOString();
 
     return transformed;
   }
@@ -350,8 +348,6 @@ class BaseService {
     const transformed = this.transformBySchema(data);
     return {
       ...transformed,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
     };
   }
 
@@ -359,7 +355,6 @@ class BaseService {
     const transformed = this.transformBySchema(data);
     return {
       ...transformed,
-      updatedAt: new Date().toISOString(),
     };
   }
 

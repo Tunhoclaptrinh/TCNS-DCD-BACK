@@ -219,8 +219,6 @@ class MeetingService extends BaseService {
       note: toStr(payload.note),
       createdBy: userId,
       updatedBy: userId,
-      createdAt: now,
-      updatedAt: now,
     });
 
     const receivers = participantIds.filter((id) => id !== userId);
@@ -281,7 +279,6 @@ class MeetingService extends BaseService {
 
     const a = {
       updatedBy: userId,
-      updatedAt: new Date().toISOString(),
     };
 
     const finalConfirmations = this.buildConfirmations(
@@ -377,7 +374,7 @@ class MeetingService extends BaseService {
       const historyEntry = {
         userId,
         action: payload.minutesStatus === 'submitted' ? 'Nộp biên bản' : 'Lưu nháp biên bản',
-        timestamp: a.updatedAt,
+        timestamp: new Date().toISOString(),
         note: payload.minutesStatus === 'submitted' ? 'Cập nhật nội dung chính thức' : 'Chỉnh sửa nội dung nháp',
       };
       (u as any).minutesHistory = [...(found.minutesHistory || []), historyEntry];
@@ -446,7 +443,7 @@ class MeetingService extends BaseService {
       Number(meeting.createdBy) || userId,
     ).map((item) => (item.userId === userId ? { ...item, rsvpStatus, reason, respondedAt: now } : item));
 
-    const a = { updatedBy: userId, updatedAt: now };
+    const a = { updatedBy: userId };
     const updated = await this.repository.update(meetingId, { participantIds, confirmations, ...a });
     if (!updated) throw ApiError.notFound('Không thể ghi nhận RSVP');
 
@@ -494,7 +491,6 @@ class MeetingService extends BaseService {
       participantIds,
       confirmations,
       updatedBy: toNum(actor.id),
-      updatedAt: now,
     });
 
     return await this.populateParticipants(updated);

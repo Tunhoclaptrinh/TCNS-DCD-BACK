@@ -1,7 +1,7 @@
 import dns from 'dns';
-import { initDatabase } from '../database';
 import dotenv from 'dotenv';
 import path from 'path';
+import { initDatabase } from '../database/mongo-database.adapter';
 
 dotenv.config({ path: path.join(__dirname, '../../.env') });
 

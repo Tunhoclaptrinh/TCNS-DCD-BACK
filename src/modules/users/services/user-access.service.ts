@@ -1,6 +1,6 @@
 import ApiError from '@utils/api-error';
 import type { Identifier } from '@app-types/common';
-import db from '@database';
+import db from '@database/mongo-database.adapter';
 
 const CAN_READ_OTHERS_ROLES = new Set(['admin', 'staff', 'researcher']);
 

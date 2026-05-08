@@ -3,7 +3,7 @@ import otpCodesRepository from '@modules/auth/repositories/otp-codes.repository'
 import otpDeliveryService from '@modules/auth/services/otp-delivery.service';
 import usersRepository from '@modules/users/repositories/users.repository';
 import ApiError from '@utils/api-error';
-import { hashPassword } from '@utils/helpers';
+import { hashPassword } from '@utils/auth.utils';
 import type { AnyRecord } from '@app-types/common';
 
 const OTP_EXPIRE_MINUTES = Math.max(1, Number(process.env.OTP_EXPIRE_MINUTES || 10));

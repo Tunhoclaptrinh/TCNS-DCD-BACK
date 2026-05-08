@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import path from 'path';
-import db, { initDatabase } from '@database';
+import db, { initDatabase } from '@database/mongo-database.adapter';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 

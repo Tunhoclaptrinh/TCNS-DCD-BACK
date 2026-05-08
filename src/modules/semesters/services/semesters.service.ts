@@ -13,15 +13,6 @@ class SemestersService extends BaseService {
     return semesterSchema;
   }
 
-  async beforeCreate(data: AnyRecord) {
-    const transformed = this.transformBySchema(data);
-    return {
-      ...transformed,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-  }
-
   async afterCreate(item: AnyRecord) {
     if (item.isCurrent) {
       await this.ensureOnlyOneCurrent(item.id);
@@ -41,7 +32,6 @@ class SemestersService extends BaseService {
       .map((s: any) =>
         this.repository.update(s.id, {
           isCurrent: false,
-          updatedAt: new Date().toISOString(),
         }),
       );
 
@@ -56,7 +46,6 @@ class SemestersService extends BaseService {
 
     const updated = await this.repository.update(id, {
       isCurrent: true,
-      updatedAt: new Date().toISOString(),
     });
 
     await this.ensureOnlyOneCurrent(id);

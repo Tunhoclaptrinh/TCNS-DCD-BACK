@@ -4,8 +4,8 @@ import type { AnyRecord, Identifier } from '@app-types/common';
 import type { DatabaseAdapter, QueryOptions } from '@app-types/database';
 import type { SchemaDefinition, SchemaRule } from '@app-types/schema';
 import { camelizeObjectKeys, splitKeyBySuffix, toCamelCase } from '@utils/case';
-
-const FILTER_SUFFIXES = ['_not_like', '_ilike', '_like', '_gte', '_lte', '_gt', '_lt', '_ne', '_in', '_nin'];
+import { QUERY_OPERATOR_SUFFIXES } from '@utils/query-helpers';
+import { logger } from '@utils/logger';
 
 type RelationConfig = {
   ref: string;
@@ -127,7 +127,7 @@ class MongoConnect implements DatabaseAdapter {
       try {
         await mongoose.connect(process.env.DATABASE_URL);
       } catch (error) {
-        console.error('MongoDB connection error:', error);
+        logger.error('MongoDB connection error', 'DB', error);
         throw error;
       }
     }
@@ -279,7 +279,7 @@ class MongoConnect implements DatabaseAdapter {
       try {
         queryBuilder = queryBuilder.populate(field);
       } catch (e) {
-        console.warn(`Cannot populate ${field}`);
+        logger.warn(`Cannot populate ${field}`, 'DB');
       }
     }
 
@@ -330,11 +330,10 @@ class MongoConnect implements DatabaseAdapter {
   }
 
   private buildMongoQuery(query: AnyRecord) {
-    if (process.env.NODE_ENV === 'development' || true) {
-      console.log(`[MongoAdapter] Building query for:`, JSON.stringify(query));
+    if (process.env.NODE_ENV === 'development') {
+      logger.debug(`Building query for: ${JSON.stringify(query)}`, 'MongoAdapter');
     }
     const mongoQuery: AnyRecord = {};
-    // DO NOT camelizeObjectKeys here, as it breaks suffix detection (_gte, _lte, etc)
     const normalized = query;
 
     for (const [key, val] of Object.entries(normalized)) {
@@ -350,7 +349,7 @@ class MongoConnect implements DatabaseAdapter {
         continue;
       }
 
-      const { field: rawField, suffix } = splitKeyBySuffix(key, FILTER_SUFFIXES);
+      const { field: rawField, suffix } = splitKeyBySuffix(key, QUERY_OPERATOR_SUFFIXES);
       const field = toCamelCase(rawField);
 
       if (suffix === '_gte') {
@@ -363,6 +362,12 @@ class MongoConnect implements DatabaseAdapter {
         mongoQuery[field] = { ...mongoQuery[field], $lt: this.castQueryValue(val) };
       } else if (suffix === '_ne') {
         mongoQuery[field] = { $ne: this.castQueryValue(val) };
+      } else if (suffix === '_like') {
+        mongoQuery[field] = { $regex: String(val) };
+      } else if (suffix === '_ilike') {
+        mongoQuery[field] = { $regex: String(val), $options: 'i' };
+      } else if (suffix === '_not_like') {
+        mongoQuery[field] = { $not: { $regex: String(val), $options: 'i' } };
       } else if (suffix === '_in') {
         const values = Array.isArray(val) ? val : String(val).split(',');
         mongoQuery[field] = { $in: values.map((item) => this.castQueryValue(item)) };
@@ -378,8 +383,8 @@ class MongoConnect implements DatabaseAdapter {
         }
       }
     }
-    if (process.env.NODE_ENV === 'development' || true) {
-      console.log(`[MongoAdapter] Final Mongo Query:`, JSON.stringify(mongoQuery));
+    if (process.env.NODE_ENV === 'development') {
+      logger.debug(`Final Mongo Query: ${JSON.stringify(mongoQuery)}`, 'MongoAdapter');
     }
     return mongoQuery;
   }
@@ -493,7 +498,7 @@ class MongoConnect implements DatabaseAdapter {
         await CounterModel.updateOne({ _id: collection }, { seq: maxVal }, { upsert: true });
       }
     } catch (err) {
-      console.error(`Failed to initialize counter for ${collection}`, err);
+      logger.error(`Failed to initialize counter for ${collection}`, 'DB', err);
     } finally {
       resolveLock();
     }
@@ -526,7 +531,7 @@ class MongoConnect implements DatabaseAdapter {
 
       return (counter as any).seq - reserveCount + 1;
     } catch (error) {
-      console.error(`Auto-increment atomic error for ${collection}:`, error);
+      logger.error(`Auto-increment atomic error for ${collection}`, 'DB', error);
       const lastItem = await Model.findOne().sort({ id: -1 }).select('id').lean();
       return lastItem ? lastItem.id + 1 : 1;
     }

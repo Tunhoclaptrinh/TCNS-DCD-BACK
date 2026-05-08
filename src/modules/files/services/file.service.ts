@@ -158,7 +158,6 @@ class FileService extends BaseService {
     if (existing) {
       const updated = await this.repository.update(existing.id, {
         ...payload,
-        updatedAt: new Date().toISOString(),
       });
 
       await auditLogsService.log({

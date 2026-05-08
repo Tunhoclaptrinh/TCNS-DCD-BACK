@@ -1,9 +1,10 @@
 import jwt from 'jsonwebtoken';
 import passwordResetService from '@modules/auth/services/password-reset.service';
-// import generationsRepository from '@modules/generations/repositories/generations.repository';
+
 import usersRepository from '@modules/users/repositories/users.repository';
 import ApiError from '@utils/api-error';
-import { comparePassword, generateRefreshToken, generateToken, hashPassword, sanitizeUser } from '@utils/helpers';
+import { comparePassword, generateRefreshToken, generateToken, hashPassword } from '@utils/auth.utils';
+import { sanitizeUser } from '@utils/user.utils';
 import type { AnyRecord } from '@app-types/common';
 
 import userAccessService from '@modules/users/services/user-access.service';
@@ -98,7 +99,7 @@ class AuthService {
     if (!user) throw ApiError.unauthorized('Invalid email or password');
     if (!user.isActive) throw ApiError.unauthorized('Account is inactive');
 
-    // Skip password check as requested
+    // ⚠️ WARNING: Password verification is DISABLED. Re-enable before production!
     // const isMatch = await comparePassword(payload.password, user.password);
     // if (!isMatch) throw ApiError.unauthorized('Invalid email or password');
 

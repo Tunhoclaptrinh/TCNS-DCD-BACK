@@ -1,4 +1,4 @@
-import { sanitizeUser } from '@utils/helpers';
+import { sanitizeUser } from '@utils/user.utils';
 import userService from '@modules/users/services/user.service';
 import userAvatarService from '@modules/users/services/user-avatar.service';
 import userAccessService from '@modules/users/services/user-access.service';

@@ -2,6 +2,7 @@ import BaseService from '@shared/common/base-service';
 import auditLogsRepository from '@modules/audit-logs/repositories/audit-logs.repository';
 import auditLogSchema from '@modules/audit-logs/schemas/audit-log.schema';
 import type { AnyRecord } from '@app-types/common';
+import { logger } from '@utils/logger';
 
 type AuditLogPayload = {
   userId: number;
@@ -35,7 +36,7 @@ class AuditLogsService extends BaseService {
     try {
       if (this.queue.length >= MAX_QUEUE_SIZE) {
         this.queue.shift();
-        console.error('Audit log queue is full. Dropped oldest log.');
+        logger.warn('Hàng đợi nhật ký hệ thống đã đầy. Đã loại bỏ nhật ký cũ nhất.', 'AuditLog');
       }
 
       this.queue.push({
@@ -46,7 +47,7 @@ class AuditLogsService extends BaseService {
       this.processQueue();
       return { success: true, queued: true };
     } catch (error) {
-      console.error('Failed to enqueue audit log:', error);
+      logger.error('Lỗi khi thêm nhật ký hệ thống vào hàng đợi', 'AuditLog', error);
       // We don't want to throw error here as it might break the main business logic
     }
   }
@@ -68,7 +69,7 @@ class AuditLogsService extends BaseService {
       try {
         await super.create(item);
       } catch (error) {
-        console.error('Failed to log activity:', error);
+        logger.error('Lỗi khi ghi nhận hoạt động', 'AuditLog', error);
       }
     }
 

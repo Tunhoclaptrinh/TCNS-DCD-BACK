@@ -5,7 +5,7 @@ import utc from 'dayjs/plugin/utc';
 import isoWeek from 'dayjs/plugin/isoWeek';
 import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
-import db, { initDatabase } from '@database';
+import db, { initDatabase } from '@database/mongo-database.adapter';
 
 dayjs.extend(utc);
 dayjs.extend(isoWeek);

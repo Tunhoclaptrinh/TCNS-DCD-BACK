@@ -20,8 +20,6 @@ class BonusRegistrationService extends BaseService {
     const now = new Date().toISOString();
     const created = await this.repository.create({
       ...data,
-      createdAt: now,
-      updatedAt: now,
     });
 
     await auditLogsService.log({
@@ -38,7 +36,6 @@ class BonusRegistrationService extends BaseService {
   async updateRegistration(id: Identifier, data: AnyRecord, actorId?: Identifier) {
     const updated = await this.repository.update(id, {
       ...data,
-      updatedAt: new Date().toISOString(),
     });
 
     if (updated) {
