@@ -557,7 +557,8 @@ class DutySlotsService {
     // If quota mode, calculate limit based on user rules
     if (limitMode === 'quota') {
       const periodConfig = await dutyPeriodConfigsService.getConfig(slot.shiftDate, slot.shiftDate);
-      const defaultQuota = 0;
+      // Fallback: periodConfig.defaultQuota → settings.defaultQuota → 0
+      const defaultQuota = Number(periodConfig.defaultQuota ?? settings.defaultQuota ?? 0);
       const quotaRules = periodConfig.quotaRules || settings.quotaRules || [];
       const pos = String(fullUser.position || '').toLowerCase();
       const uDept = String(fullUser.department?.name || fullUser.department || '').trim();
