@@ -53,7 +53,6 @@ class MongoConnect implements DatabaseAdapter {
       },
       duty_swap_requests: {
         requester: { ref: 'users', localField: 'requesterId', foreignField: 'id', justOne: true },
-        targetUser: { ref: 'users', localField: 'targetUserId', foreignField: 'id', justOne: true },
         approver: { ref: 'users', localField: 'approvedBy', foreignField: 'id', justOne: true },
         fromSlot: { ref: 'duty_slots', localField: 'fromSlotId', foreignField: 'id', justOne: true },
         toSlot: { ref: 'duty_slots', localField: 'toSlotId', foreignField: 'id', justOne: true },

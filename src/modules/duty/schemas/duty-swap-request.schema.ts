@@ -1,4 +1,5 @@
 import { defineSchema } from '@app-types/schema';
+import { baseDutyRequestFields } from './duty-request.base';
 
 export default defineSchema({
   fromSlotId: {
@@ -16,33 +17,11 @@ export default defineSchema({
     required: true,
     foreignKey: 'users',
   },
-  targetUserId: {
-    type: 'number',
-    required: false,
-    foreignKey: 'users',
-    description: 'Người nhận đổi (nếu có)',
-  },
-  reason: {
-    type: 'string',
-    required: true,
-    minLength: 3,
-    maxLength: 500,
-  },
-  status: {
-    type: 'enum',
-    enum: ['pending', 'approved', 'rejected', 'cancelled'],
-    required: false,
-    default: 'pending',
-  },
+  ...baseDutyRequestFields,
   decisionNote: {
     type: 'string',
     required: false,
     maxLength: 500,
-  },
-  approvedBy: {
-    type: 'number',
-    required: false,
-    foreignKey: 'users',
   },
   approvedAt: {
     type: 'date',

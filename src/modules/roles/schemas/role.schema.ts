@@ -25,7 +25,7 @@ export default defineSchema({
   },
   permissions: {
     type: 'array',
-    required: true,
+    required: false,
     default: [],
     description: 'Danh sách các mã quyền hạn',
   },
