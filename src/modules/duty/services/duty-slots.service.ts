@@ -1275,12 +1275,21 @@ class DutySlotsService {
     const mode = options.mode || 'only_duty';
     const includeDays = options.includeDays || [1, 2, 3, 4, 5, 6, 0]; // Default to all days if not provided
 
-    const slots = await dutySlotsRepository.findMany({
-      shiftDate: {
-        $gte: startDate.toISOString(),
-        $lte: endDate.toISOString(),
+    const slotsResult = await dutySlotsRepository.findAllAdvanced({
+      filter: {
+        shiftDate_gte: startDate.toISOString(),
+        shiftDate_lte: endDate.toISOString(),
       },
+      expand: 'assignedUsers,kip,shift',
+      limit: 1000,
     });
+
+    const slots = (slotsResult.data || []).map((slot: any) => ({
+      ...slot,
+      shiftLabel:
+        slot.shiftLabel ||
+        (slot.shift && slot.kip ? `${slot.shift.name} - ${slot.kip.name}` : slot.kip?.name || 'Ca không tên'),
+    }));
 
     // Fetch meetings if needed
     let meetings: any[] = [];
