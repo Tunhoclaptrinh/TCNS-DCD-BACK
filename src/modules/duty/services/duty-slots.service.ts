@@ -597,7 +597,7 @@ class DutySlotsService {
         currentTotal = userKips.reduce((acc: number, k: any) => acc + (Number(k.coefficient) || 1), 0);
       } else {
         const allSlotsInWeek = await dutySlotsRepository.findMany({
-          weekStart: new Date(slot.weekStart).toISOString(),
+          weekStart: getWeekStartISO(slot.weekStart || slot.shiftDate),
         });
         const userSlotsInWeek = allSlotsInWeek.filter((s: any) =>
           normalizeIdList(s.assignedUserIds || []).includes(userId),
