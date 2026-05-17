@@ -1,0 +1,62 @@
+export const userStatusFields = {
+  status: {
+    type: 'enum' as const,
+    enum: ['active', 'inactive', 'dismissed'],
+    required: false,
+    default: 'active',
+    label: 'Trạng thái',
+  },
+  isActive: {
+    type: 'boolean' as const,
+    required: false,
+    default: true,
+    label: 'Đang hoạt động',
+  },
+  expelled: {
+    type: 'boolean' as const,
+    required: false,
+    default: false,
+    label: 'Đã bị khai trừ',
+    hidden: true,
+  },
+  expelledAt: {
+    type: 'date' as const,
+    required: false,
+    label: 'Ngày khai trừ',
+    hidden: true,
+  },
+  expelReason: {
+    type: 'string' as const,
+    required: false,
+    maxLength: 500,
+    label: 'Lý do khai trừ',
+    hidden: true,
+  },
+  expelledBy: {
+    type: 'number' as const,
+    required: false,
+    foreignKey: 'users',
+    label: 'Người thực hiện khai trừ',
+    hidden: true,
+  },
+  promotedAt: {
+    type: 'date' as const,
+    required: false,
+    label: 'Ngày thăng chức',
+    hidden: true,
+  },
+  promotedBy: {
+    type: 'number' as const,
+    required: false,
+    foreignKey: 'users',
+    label: 'Người thực hiện thăng chức',
+    hidden: true,
+  },
+  promotionReason: {
+    type: 'string' as const,
+    required: false,
+    maxLength: 500,
+    label: 'Lý do thăng chức',
+    hidden: true,
+  },
+};
