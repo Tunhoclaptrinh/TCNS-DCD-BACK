@@ -116,7 +116,11 @@ class DutyService extends BaseService {
 
   // ==================== TEMPLATE MANAGEMENT ====================
   getTemplates = () => dutyTemplatesService.getTemplates();
-  createTemplate = (data: GenericRecord) => dutyTemplatesService.create(data);
+  createTemplate = (data: GenericRecord) =>
+    dutyTemplatesService.create({
+      ...data,
+      type: 'group',
+    });
   updateTemplate = (id: Identifier, data: GenericRecord) => dutyTemplatesService.update(id, data);
   deleteTemplate = (id: Identifier) => dutyTemplatesService.delete(id);
 
