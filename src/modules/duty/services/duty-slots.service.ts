@@ -40,6 +40,29 @@ class DutySlotsService {
     return slot;
   }
 
+  private async assertDayNotLocked(slot: any, performer?: any) {
+    const isAdmin = performer && (performer.role === 'admin' || performer.role === 'staff');
+    if (isAdmin) return;
+
+    let dayRecord: any = null;
+    if (slot.dayId) {
+      dayRecord = await dutyDaysRepository.findById(slot.dayId);
+    }
+    if (!dayRecord) {
+      try {
+        const d = new Date(slot.shiftDate);
+        d.setUTCHours(0, 0, 0, 0);
+        dayRecord = await dutyDaysRepository.findByDate(d.toISOString());
+      } catch (e) {
+        dayRecord = null;
+      }
+    }
+
+    if (dayRecord && dayRecord.status === 'locked') {
+      throw ApiError.badRequest('Ngày đã bị khóa');
+    }
+  }
+
   async getSlotLabel(slot: any) {
     if (slot.shiftLabel) return slot.shiftLabel;
     const kip = await dutyKipsRepository.findById(slot.kipId);
@@ -526,10 +549,11 @@ class DutySlotsService {
   async registerToSlot(slotId: Identifier, user: GenericRecord | Identifier) {
     const slot = await dutySlotsRepository.findById(slotId);
     if (!slot) throw ApiError.notFound('Slot not found');
+    const performer = user as any;
+    await this.assertDayNotLocked(slot, performer);
     if (slot.status === 'locked') throw ApiError.badRequest('Locked');
 
     const userId = getActorId(user);
-    const performer = user as any;
     const isAdmin = performer.role === 'admin' || performer.role === 'staff';
 
     const assigned = normalizeIdList(slot.assignedUserIds || []);
@@ -700,6 +724,7 @@ class DutySlotsService {
     if (!slot) throw ApiError.notFound('Kíp trực không tồn tại');
 
     const userId = getActorId(user);
+    await this.assertDayNotLocked(slot, user);
     const assigned = normalizeIdList(slot.assignedUserIds || []);
     if (!assigned.includes(userId)) throw ApiError.badRequest('Bạn không đăng ký kíp trực này');
 
@@ -738,6 +763,7 @@ class DutySlotsService {
     if (!slot) throw ApiError.notFound('Slot not found');
 
     // Leadership check
+    await this.assertDayNotLocked(slot, performer);
     await this.checkLeadership(slot, performer);
 
     const currentAssigned = normalizeIdList(slot.assignedUserIds || []).map(Number);
@@ -817,6 +843,8 @@ class DutySlotsService {
   async selfCheckIn(slotId: Identifier, user: any, ip: string) {
     const slot = await dutySlotsRepository.findById(slotId);
     if (!slot) throw ApiError.notFound('Kíp trực không tồn tại');
+
+    await this.assertDayNotLocked(slot, user);
 
     const userId = getActorId(user);
     const assignedIds = normalizeIdList(slot.assignedUserIds || []);
@@ -921,6 +949,7 @@ class DutySlotsService {
   async leaderMarkAttendance(slotId: Identifier, targetUserId: Identifier, performer: any) {
     const slot = await dutySlotsRepository.findById(slotId);
     if (!slot) throw ApiError.notFound('Kíp không tồn tại');
+    await this.assertDayNotLocked(slot, performer);
 
     const performerId = getActorId(performer);
     const assignedIds = normalizeIdList(slot.assignedUserIds || []);
@@ -996,7 +1025,7 @@ class DutySlotsService {
 
     const slot = await dutySlotsRepository.findById(slotId);
     if (!slot) throw ApiError.notFound('Kíp không tồn tại');
-
+    await this.assertDayNotLocked(slot, performer);
     await this.checkLeadership(slot, performer);
 
     const existingViolation = await dutyViolationsRepository.findOne({

@@ -19,6 +19,7 @@ import ApiError from '@utils/api-error';
 import db from '@database/mongo-database.adapter';
 
 import { Identifier, GenericRecord, normalizeId, normalizeIdList, getActorId } from './duty-utils';
+import dutyDaysRepository from '@modules/duty/repositories/duty-days.repository';
 
 class DutyService extends BaseService {
   constructor() {
@@ -136,6 +137,44 @@ class DutyService extends BaseService {
   // ==================== SLOT & SCHEDULE MANAGEMENT ====================
   getWeeklySchedule = (options: any = {}) => dutySlotsService.getWeeklySchedule(options);
   exportRangeExcel = (options: any = {}) => dutySlotsService.exportRangeExcel(options);
+  setDayStatus = async (date: string, status: 'open' | 'locked', actorId: Identifier) => {
+    if (!date) throw ApiError.badRequest('Date is required');
+    const d = new Date(date);
+    d.setUTCHours(0, 0, 0, 0);
+    const isoDate = d.toISOString();
+
+    let dayRecord = await dutyDaysRepository.findByDate(isoDate);
+    const now = new Date().toISOString();
+    if (!dayRecord) {
+      dayRecord = await dutyDaysRepository.create({
+        date: isoDate,
+        status,
+        createdBy: normalizeId(actorId),
+        createdAt: now,
+        updatedAt: now,
+      });
+    } else {
+      dayRecord = await dutyDaysRepository.update(dayRecord.id, { status, updatedAt: now });
+    }
+
+    await auditLogsService.log({
+      userId: Number(actorId) || 0,
+      action: status === 'locked' ? 'KHÓA NGÀY' : 'MỞ KHÓA NGÀY',
+      module: 'DUTY',
+      description: `${status === 'locked' ? 'Khóa' : 'Mở khóa'} ngày ${isoDate}`,
+      ...(dayRecord?.id !== undefined ? { resourceId: String(dayRecord.id) } : {}),
+    });
+
+    // Cascade to slots and shifts for UI compatibility (so slot.status reflects day lock)
+    try {
+      await db.updateMany('duty_slots', { shiftDate: isoDate }, { status });
+      await db.updateMany('duty_shifts', { date: isoDate }, { status });
+    } catch (err) {
+      console.error('Failed to cascade day status to slots/shifts:', err);
+    }
+
+    return dayRecord;
+  };
   createActualShift = async (payload: GenericRecord, actorId: Identifier) => {
     const data = await dutySlotsService.createActualShift(payload, actorId);
 

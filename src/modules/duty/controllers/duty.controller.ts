@@ -322,6 +322,13 @@ class DutyController extends BaseController {
     this.ok(res, data);
   });
 
+  // Day status (lock/unlock)
+  setDayStatus = this.handle(async (req, res) => {
+    const { date, status } = req.body;
+    const data = await dutyService.setDayStatus(date, status, req.user.id);
+    this.ok(res, data);
+  });
+
   getStats = this.handle(async (_req, res) => {
     const data = await dutyService.getStats();
     this.ok(res, data);

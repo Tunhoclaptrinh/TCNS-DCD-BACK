@@ -96,4 +96,7 @@ router.put('/settings', requirePermission('duty:manage'), dutyController.updateS
 router.get('/period-config', requirePermission('duty:view'), dutyController.getPeriodConfig);
 router.put('/period-config', requirePermission('duty:manage'), dutyController.updatePeriodConfig);
 
+// Days (lock/unlock)
+router.patch('/days', requirePermission('duty:manage'), dutyController.setDayStatus);
+
 export default router;
