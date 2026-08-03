@@ -143,6 +143,14 @@ class UserService extends BaseService {
   }
 
   async create(data: AnyRecord, performer?: AnyRecord | Identifier) {
+    if (data.position && ['dt', 'ctc', 'ctv', 'tv'].includes(data.position as string)) {
+      data.department = null;
+    }
+
+    if (data.position && data.roleIds === undefined) {
+      data.roleIds = getSuggestedRoles(data.position as string, data.department as string);
+    }
+
     const result = await super.create(data);
 
     if (result.success && result.data) {
@@ -160,6 +168,22 @@ class UserService extends BaseService {
   }
 
   async update(id: Identifier, data: AnyRecord, performer?: AnyRecord | Identifier) {
+    const existingUser = (await this.repository.findById(id)) as UserRecord;
+    if (existingUser) {
+      const position = data.position !== undefined ? data.position : existingUser.position;
+      let department = data.department !== undefined ? data.department : existingUser.department;
+
+      if (position && ['dt', 'ctc', 'ctv', 'tv'].includes(position as string)) {
+        data.department = null;
+        department = null;
+      }
+
+      // Tự động đồng bộ quyền nếu có thay đổi chức vụ mà không truyền roleIds
+      if (data.position !== undefined && data.roleIds === undefined) {
+        data.roleIds = getSuggestedRoles(position as string, department as string);
+      }
+    }
+
     const result = await super.update(id, data);
 
     if (result.success && result.data) {
