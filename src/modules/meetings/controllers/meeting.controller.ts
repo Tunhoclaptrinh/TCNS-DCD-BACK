@@ -12,6 +12,11 @@ class MeetingController extends BaseController {
     this.ok(res, data);
   });
 
+  getMeetingStats = this.handle(async (req, res) => {
+    const data = await meetingService.getMeetingStats(req.user, req.parsedQuery);
+    this.ok(res, data);
+  });
+
   createMeeting = this.handle(async (req, res) => {
     const data = await meetingService.createMeeting(req.body, req.user.id);
     this.created(res, data);

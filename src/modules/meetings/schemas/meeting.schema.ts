@@ -34,7 +34,7 @@ export default defineSchema({
   status: {
     type: 'enum',
     description: 'Trạng thái cuộc họp.',
-    enum: ['scheduled', 'completed', 'cancelled'],
+    enum: ['scheduled', 'completed', 'cancelled', 'overdue'],
     required: false,
     default: 'scheduled',
   },

@@ -7,6 +7,7 @@ const router = express.Router();
 
 router.use(requireAuth);
 
+router.get('/stats', requirePermission('duty:view'), meetingController.getMeetingStats);
 router.get('/', requirePermission('duty:view'), meetingController.getMeetings);
 router.get('/:id', requirePermission('duty:view'), meetingController.getMeetingById);
 

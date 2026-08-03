@@ -8,7 +8,7 @@ import type { AnyRecord, Identifier } from '@app-types/common';
 
 const RSVP_VALUES = new Set(['pending', 'accepted', 'declined']);
 const ATTENDANCE_VALUES = new Set(['none', 'present', 'late', 'absent']);
-const STATUS_VALUES = new Set(['scheduled', 'completed', 'cancelled']);
+const STATUS_VALUES = new Set(['scheduled', 'completed', 'cancelled', 'overdue']);
 
 function toNum(value: unknown) {
   const parsed = Number(value);
@@ -168,6 +168,48 @@ class MeetingService extends BaseService {
 
     result.data = await Promise.all((result.data || []).map((m) => this.populateParticipants(m)));
     return result;
+  }
+
+  async getMeetingStats(user: AnyRecord = {}, options: AnyRecord = {}) {
+    const filter: AnyRecord = { ...(options.filter || {}) };
+
+    if (!this.canManage(user)) {
+      const userId = toNum(user.id);
+      if (!userId) throw ApiError.unauthorized('Người dùng không hợp lệ');
+      filter.participantIds = userId;
+    }
+
+    const meetings = await this.repository.findMany(filter);
+
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    let upcoming = 0;
+    let pendingRsvp = 0;
+    let totalMonth = 0;
+    let overdue = 0;
+
+    for (const m of meetings) {
+      if (m.status === 'scheduled') upcoming++;
+      if (m.status === 'overdue') overdue++;
+
+      const mDate = new Date(m.meetingAt);
+      if (mDate.getMonth() === currentMonth && mDate.getFullYear() === currentYear) {
+        totalMonth++;
+      }
+
+      if (m.status === 'scheduled') {
+        const isInvited = m.isAllParticipants || (m.participantIds && m.participantIds.includes(Number(user.id)));
+        const myConfirm = m.confirmations?.find((c: any) => Number(c.userId) === Number(user.id));
+        const rsvpStatus = String(myConfirm?.rsvpStatus || 'pending').toLowerCase();
+        if (isInvited && rsvpStatus === 'pending') {
+          pendingRsvp++;
+        }
+      }
+    }
+
+    return { upcoming, pendingRsvp, totalMonth, overdue };
   }
 
   async getMeetingById(id: Identifier, user: AnyRecord = {}) {
