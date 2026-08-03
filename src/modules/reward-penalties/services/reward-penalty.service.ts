@@ -166,7 +166,8 @@ class RewardPenaltyService extends BaseService {
   }
 
   async getHistory(user: AnyRecord, options: AnyRecord = {}) {
-    const isManager = user.role === 'admin' || user.role === 'staff';
+    const p = Array.isArray(user.permissions) ? user.permissions : [];
+    const isManager = p.includes('*') || p.includes('reward:manage');
     const userId = normalizeId(user.id);
 
     const filter: AnyRecord = { ...(options.filter || {}) };

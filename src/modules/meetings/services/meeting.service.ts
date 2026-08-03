@@ -50,7 +50,7 @@ class MeetingService extends BaseService {
 
   canManage(user: AnyRecord = {}) {
     const p = Array.isArray(user.permissions) ? user.permissions : [];
-    return user.role === 'admin' || p.includes('duty:manage') || p.includes('meeting:create:all');
+    return p.includes('*') || p.includes('duty:manage') || p.includes('meeting:create:all');
   }
 
   normalizeStatus(value: unknown, fallback = 'scheduled') {

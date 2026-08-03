@@ -158,9 +158,9 @@ class DutySlotsService {
         const userPermissions = options.userPermissions || [];
         if (userPermissions.includes('duty:view:private') || userPermissions.includes('*')) return user;
 
-        const uRole = String(user.role || '').toLowerCase();
+        const p = Array.isArray(user.permissions) ? user.permissions : [];
         const uPos = String(user.position || '').toLowerCase();
-        const isOfficial = uRole !== 'ctv' && uPos !== 'ctv';
+        const isOfficial = uPos !== 'ctv';
 
         const reqRoleStr = String(requesterRole || '').toLowerCase();
         const isReqOfficial = reqRoleStr !== 'ctv';
@@ -236,11 +236,11 @@ class DutySlotsService {
           const uDept = String(fullUser.department?.name || fullUser.department || '').trim();
 
           const getRoleGroup = (user: any) => {
-            const role = String(user.role || '').toLowerCase();
+            const p = Array.isArray(user.permissions) ? user.permissions : [];
             const position = String(user.position || '').toLowerCase();
 
             // Collaborators
-            if (role === 'ctv' || position === 'ctv') return 'ctv';
+            if (position === 'ctv') return 'ctv';
 
             // Official members (admin, manager, leader, member or any other active role)
             return 'member_official';
@@ -1478,7 +1478,8 @@ class DutySlotsService {
           if (!isAdmin && normalizeId(u.id) !== requesterId && !hasOverride) {
             const uRole = String(u.role || '').toLowerCase();
             const uPos = String(u.position || '').toLowerCase();
-            const isOfficial = uRole !== 'ctv' && uPos !== 'ctv';
+            const isOfficial =
+              userPermissions.includes('*') || userPermissions.includes('duty:manage') || (true && uPos !== 'ctv');
 
             const reqRoleStr = String(requesterRole || '').toLowerCase();
             const isReqOfficial = reqRoleStr !== 'ctv';

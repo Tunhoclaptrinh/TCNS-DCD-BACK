@@ -110,7 +110,7 @@ export function findMatchingQuotaRule(user: any, rules: any[], options: { startD
   const userId = normalizeId(user.id);
   const studentId = user.studentId;
   const pos = String(user.position || '').toLowerCase();
-  const role = String(user.role || '').toLowerCase();
+  const p = Array.isArray(user.permissions) ? user.permissions : [];
   const uDept = String(user.department?.name || user.department || '').trim();
 
   const isRuleActive = (r: any) => {
@@ -133,13 +133,9 @@ export function findMatchingQuotaRule(user: any, rules: any[], options: { startD
     if (type === 'dt') return pos === 'dt' || pos.includes('đội trưởng');
     if (type === 'tb') return pos === 'tb' || pos.includes('trưởng ban');
     if (type === 'pb') return pos === 'pb' || pos.includes('phó ban');
-    if (type === 'ctv') return role === 'ctv' || pos === 'ctv';
-    if (type === 'member_all')
-      return (
-        role === 'member' || role === 'user' || (!pos.includes('trưởng') && !pos.includes('đội') && role !== 'ctv')
-      );
-    if (type === 'position') return target === pos;
-    if (type === 'role_group') return target === role;
+    if (type === 'ctv') return pos === 'ctv';
+    if (type === 'member_all') return !pos.includes('trưởng') && !pos.includes('đội');
+    if (type === 'role_group') return p.includes('*') || p.includes('duty:manage') ? 'Management' === target : false;
     return false;
   };
 

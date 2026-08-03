@@ -277,7 +277,8 @@ class DutySwapRequestsService extends BaseService {
    */
   async getSwapRequests(user: GenericRecord, options: GenericRecord = {}) {
     const userId = normalizeId(user.id);
-    const isApprover = ['admin', 'staff'].includes(user.role);
+    const p = Array.isArray(user.permissions) ? user.permissions : [];
+    const isApprover = p.includes('*') || p.includes('duty:manage');
 
     const result = await this.findAll({
       ...options,

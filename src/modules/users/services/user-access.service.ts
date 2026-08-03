@@ -29,14 +29,6 @@ class UserAccessService {
     // 1. Get permissions from all roles
     let roleIds = Array.isArray(user.roleIds) ? user.roleIds : [];
 
-    // Backward compatibility: If no roleIds but has legacy role string
-    if (roleIds.length === 0 && user.role) {
-      const legacyRole = await db.findOne('roles', { key: user.role });
-      if (legacyRole) {
-        roleIds = [legacyRole.id];
-      }
-    }
-
     const roles = await db.findMany('roles', { id_in: roleIds });
 
     const permissionSet = new Set<string>();

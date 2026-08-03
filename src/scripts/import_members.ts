@@ -98,7 +98,7 @@ async function run() {
         if (existing) {
           logger.info(`Deleting existing user: ${studentId} / ${email}`);
           // Using permanentDeleteUser with dummy admin info (ID 1)
-          await userService.permanentDeleteUser(existing.id, 1, 'admin');
+          await userService.permanentDeleteUser(existing.id, 1, ['*']);
           deleteCount++;
         }
 

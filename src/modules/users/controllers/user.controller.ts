@@ -114,7 +114,7 @@ class UserController extends BaseController {
   delete = this.handle(async (req, res) => {
     userAccessService.assertNotSelfAction(req.user, req.params.id, 'Không thể tự xóa tài khoản của chính mình');
 
-    const result = await this.service.permanentDeleteUser(req.params.id, req.user.id, req.user.role);
+    const result = await this.service.permanentDeleteUser(req.params.id, req.user.id, req.user.permissions || []);
     this.ok(res, result);
   });
 
@@ -156,21 +156,21 @@ class UserController extends BaseController {
     const targetUser = await this.service.findById(req.params.id);
     userAccessService.assertAuthority(req.user, targetUser);
 
-    const data = await this.service.promoteUser(req.params.id, role, reason, req.user.id, req.user.role);
+    const data = await this.service.promoteUser(req.params.id, role, reason, req.user.id, req.user.permissions || []);
     this.ok(res, data);
   });
 
   expelUser = this.handle(async (req, res) => {
     userAccessService.assertNotSelfAction(req.user, req.params.id, 'Không thể tự khai trừ tài khoản của chính mình');
 
-    const data = await this.service.expelUser(req.params.id, req.body.reason, req.user.id, req.user.role);
+    const data = await this.service.expelUser(req.params.id, req.body.reason, req.user.id, req.user.permissions || []);
     this.ok(res, data);
   });
 
   permanentDeleteUser = this.handle(async (req, res) => {
     userAccessService.assertNotSelfAction(req.user, req.params.id, 'Không thể tự xóa tài khoản của chính mình');
 
-    const data = await this.service.permanentDeleteUser(req.params.id, req.user.id, req.user.role);
+    const data = await this.service.permanentDeleteUser(req.params.id, req.user.id, req.user.permissions || []);
     this.ok(res, data);
   });
 

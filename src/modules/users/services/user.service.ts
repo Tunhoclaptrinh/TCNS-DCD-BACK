@@ -96,10 +96,6 @@ function processUserStats(item: UserStatItem, user: any, weekAgo: Date) {
 
   if (user.createdAt && new Date(user.createdAt) >= weekAgo) item.recentSignups++;
 
-  if (user.role) {
-    item.byRole[user.role] = (item.byRole[user.role] || 0) + 1;
-  }
-
   if (user.position) {
     item.byPosition[user.position] = (item.byPosition[user.position] || 0) + 1;
   }
@@ -456,7 +452,7 @@ class UserService extends BaseService {
     role: string,
     reason: string | null | undefined,
     actorId: Identifier,
-    actorRole: string,
+    actorPermissions: string[],
   ) {
     const allowedRoles = ['customer', 'staff', 'admin'];
     if (!allowedRoles.includes(role)) {
@@ -467,13 +463,9 @@ class UserService extends BaseService {
     if (user.expelled) throw ApiError.badRequest('Không thể thăng quyền người dùng đã bị khai trừ');
     if (Number(actorId) === Number(user.id)) throw ApiError.badRequest('Không thể tự thay đổi vai trò của chính mình');
 
-    if (actorRole !== 'admin') {
-      if (role === 'admin') {
-        throw ApiError.forbidden('Chỉ admin mới có thể gán vai trò admin');
-      }
-      if (user.role === 'admin') {
-        throw ApiError.forbidden('Chỉ admin mới có thể thay đổi vai trò của admin');
-      }
+    const isActorAdmin = actorPermissions.includes('*');
+    if (!isActorAdmin) {
+      throw ApiError.forbidden('Chỉ admin mới có quyền này');
     }
 
     const now = new Date().toISOString();
@@ -506,12 +498,19 @@ class UserService extends BaseService {
     return sanitizeUser(updated);
   }
 
-  async expelUser(userId: Identifier, reason: string | null | undefined, actorId: Identifier, actorRole: string) {
+  async expelUser(
+    userId: Identifier,
+    reason: string | null | undefined,
+    actorId: Identifier,
+    actorPermissions: string[],
+  ) {
     const user = await this.findUserOrThrow(userId);
     if (Number(actorId) === Number(user.id))
       throw ApiError.badRequest('Không thể tự khai trừ tài khoản của chính mình');
 
-    if (actorRole !== 'admin' && user.role === 'admin') {
+    const isActorAdmin = actorPermissions.includes('*');
+    const isTargetAdmin = Array.isArray((user as any).permissions) && (user as any).permissions.includes('*');
+    if (!isActorAdmin && isTargetAdmin) {
       throw ApiError.forbidden('Chỉ admin mới có thể khai trừ tài khoản admin');
     }
 
@@ -550,11 +549,13 @@ class UserService extends BaseService {
     return sanitizeUser(updated);
   }
 
-  async permanentDeleteUser(userId: Identifier, actorId: Identifier, actorRole: string) {
+  async permanentDeleteUser(userId: Identifier, actorId: Identifier, actorPermissions: string[]) {
     const user = await this.findUserOrThrow(userId);
     if (Number(actorId) === Number(user.id)) throw ApiError.badRequest('Không thể tự xóa tài khoản của chính mình');
 
-    if (actorRole !== 'admin' && user.role === 'admin') {
+    const isActorAdmin = actorPermissions.includes('*');
+    const isTargetAdmin = Array.isArray((user as any).permissions) && (user as any).permissions.includes('*');
+    if (!isActorAdmin && isTargetAdmin) {
       throw ApiError.forbidden('Chỉ admin mới có thể xóa tài khoản admin');
     }
 

@@ -54,7 +54,7 @@ export const requirePermission = (permission: string) => {
     }
 
     const userPermissions: string[] = user.permissions || [];
-    const isAdmin = userPermissions.includes('*') || user.role === 'admin';
+    const isAdmin = userPermissions.includes('*');
     const userGenerationId = user.generationId;
 
     // 1. Logic Thế hệ cũ (Archive): Tự động giới hạn quyền nếu không phải Admin

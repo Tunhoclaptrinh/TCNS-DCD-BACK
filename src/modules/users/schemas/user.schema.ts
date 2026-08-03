@@ -27,13 +27,6 @@ export default defineSchema({
       }
     },
   },
-  role: {
-    type: 'enum',
-    enum: ['admin', 'staff', 'customer', 'curator'],
-    required: false,
-    default: 'customer',
-    label: 'Vai trò (Legacy)',
-  },
   roleIds: {
     type: 'array',
     required: false,

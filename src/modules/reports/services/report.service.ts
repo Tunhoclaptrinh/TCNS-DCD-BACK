@@ -33,11 +33,6 @@ class ReportService {
     const activeUsers = users.filter((u) => u.isActive).length;
     const expelledUsers = users.filter((u) => u.expelled).length;
 
-    const usersByRole: AnyRecord = {};
-    for (const user of users) {
-      usersByRole[user.role || 'unknown'] = (usersByRole[user.role || 'unknown'] || 0) + 1;
-    }
-
     let totalCapacity = 0;
     let totalAssigned = 0;
     for (const slot of dutySlots) {
@@ -75,7 +70,6 @@ class ReportService {
         activeUsers,
         inactiveUsers: totalUsers - activeUsers,
         expelledUsers,
-        usersByRole,
       },
       duty: {
         totalSlots: dutySlots.length,
