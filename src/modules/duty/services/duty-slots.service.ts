@@ -596,7 +596,9 @@ class DutySlotsService {
       const roleGroup = getRoleGroup(fullUser);
 
       rule = findMatchingQuotaRule(fullUser, quotaRules, { startDate: slot.shiftDate, endDate: slot.shiftDate });
-      weeklyLimit = rule ? Number(rule.quota) : defaultQuota;
+      // Yêu cầu: Không cho đăng ký dư, giới hạn đúng bằng định mức tối thiểu
+      const baseQuota = rule ? Number(rule.quota) : defaultQuota;
+      weeklyLimit = baseQuota > 0 ? baseQuota : 0;
     }
 
     if (settings.weeklyLimitEnabled && (weeklyLimit > 0 || limitMode === 'quota')) {
@@ -620,8 +622,11 @@ class DutySlotsService {
         const userKips = await dutyKipsRepository.findMany({ id_in: userKipIds });
         currentTotal = userKips.reduce((acc: number, k: any) => acc + (Number(k.coefficient) || 1), 0);
       } else {
+        const startOfWeek = dayjs(slot.shiftDate).startOf('isoWeek').toISOString();
+        const endOfWeek = dayjs(slot.shiftDate).endOf('isoWeek').toISOString();
         const allSlotsInWeek = await dutySlotsRepository.findMany({
-          weekStart: getWeekStartISO(slot.weekStart || slot.shiftDate),
+          shiftDate_gte: startOfWeek,
+          shiftDate_lte: endOfWeek,
         });
         const userSlotsInWeek = allSlotsInWeek.filter((s: any) =>
           normalizeIdList(s.assignedUserIds || []).includes(userId),
