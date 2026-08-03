@@ -88,8 +88,8 @@ function processUserStats(item: UserStatItem, user: any, weekAgo: Date) {
     item.dismissed++;
   }
 
-  // Management stats: dt, ctc, tb, pb
-  const isManagement = ['ctc', 'dt', 'tb', 'pb'].includes(user.position);
+  // Management stats: dt, tb, pb
+  const isManagement = ['dt', 'tb', 'pb'].includes(user.position);
   if (isManagement) {
     item.management++;
   }
@@ -139,7 +139,7 @@ class UserService extends BaseService {
   }
 
   async create(data: AnyRecord, performer?: AnyRecord | Identifier) {
-    if (data.position && ['dt', 'ctc', 'ctv', 'tv'].includes(data.position as string)) {
+    if (data.position && ['dt', 'ctv', 'tv'].includes(data.position as string)) {
       data.department = null;
     }
 
@@ -169,7 +169,7 @@ class UserService extends BaseService {
       const position = data.position !== undefined ? data.position : existingUser.position;
       let department = data.department !== undefined ? data.department : existingUser.department;
 
-      if (position && ['dt', 'ctc', 'ctv', 'tv'].includes(position as string)) {
+      if (position && ['dt', 'ctv', 'tv'].includes(position as string)) {
         data.department = null;
         department = null;
       }

@@ -28,7 +28,6 @@ export const getSuggestedRoles = (position: string, department?: string): number
 
   switch (position) {
     case 'dt':
-    case 'ctc':
       return [ROLE_MAP.ADMIN];
 
     case 'tb':

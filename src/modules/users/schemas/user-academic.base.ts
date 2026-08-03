@@ -11,7 +11,7 @@ export const userAcademicFields = {
   },
   position: {
     type: 'enum' as const,
-    enum: ['ctv', 'tv', 'tvb', 'pb', 'tb', 'ctc', 'dt'],
+    enum: ['ctv', 'tv', 'tvb', 'pb', 'tb', 'dt'],
     required: false,
     label: 'Chức vụ',
   },

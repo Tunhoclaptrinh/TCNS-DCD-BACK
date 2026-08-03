@@ -10,7 +10,6 @@ const POSITION_LEVELS: Record<string, number> = {
   tvb: 2, // Thành viên ban
   pb: 3, // Phó ban
   tb: 4, // Trưởng ban
-  ctc: 5, // Chủ tịch
   dt: 6, // Đội trưởng
 };
 

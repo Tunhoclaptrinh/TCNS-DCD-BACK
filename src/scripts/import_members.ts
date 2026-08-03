@@ -21,8 +21,8 @@ const POSITION_MAP: Record<string, string> = {
   'Phó Ban': 'pb',
   'Thành viên': 'tv',
   'Cộng tác viên': 'ctv',
-  'Chủ tịch': 'ctc',
-  'Chủ nhiệm': 'ctc',
+  'Chủ tịch': 'dt',
+  'Chủ nhiệm': 'dt',
   'Đội trưởng': 'dt',
 };
 
