@@ -28,9 +28,9 @@ class GenerationService extends BaseService {
     }
 
     // Auto-sync alumni if isActive changed to false
-    if (item.isActive === false) {
-      await this.syncUsersToAlumni(item.id);
-    }
+    // if (item.isActive === false) {
+    //   await this.syncUsersToAlumni(item.id);
+    // }
   }
 
   getAuditUserId(performer?: AnyRecord | Identifier) {
