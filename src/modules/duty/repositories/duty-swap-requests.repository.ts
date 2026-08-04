@@ -6,11 +6,10 @@ class DutySwapRequestsRepository extends BaseRepository {
     super('duty_swap_requests');
   }
 
-  async findPendingBySlotAndParticipants(dutySlotId: Identifier, requesterId: Identifier, targetUserId: Identifier) {
+  async findPendingBySlotAndParticipants(dutySlotId: Identifier, requesterId: Identifier) {
     return await this.findOne({
       dutySlotId,
       requesterId,
-      targetUserId,
       status: 'pending',
     });
   }

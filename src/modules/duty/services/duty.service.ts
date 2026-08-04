@@ -713,7 +713,6 @@ class DutyService extends BaseService {
     [...leaveRequests, ...swapRequests].forEach((r: any) => {
       if (r.userId) userIds.add(normalizeId(r.userId) as number);
       if (r.requesterId) userIds.add(normalizeId(r.requesterId) as number);
-      if (r.targetUserId) userIds.add(normalizeId(r.targetUserId) as number);
       if (r.approvedBy) userIds.add(normalizeId(r.approvedBy) as number);
     });
 
@@ -725,7 +724,6 @@ class DutyService extends BaseService {
     const enrich = (r: any) => ({
       ...r,
       user: userMap.get(String(r.userId || r.requesterId)),
-      targetUser: r.targetUserId ? userMap.get(String(r.targetUserId)) : null,
       approver: r.approvedBy ? userMap.get(String(r.approvedBy)) : null,
     });
 

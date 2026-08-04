@@ -19,7 +19,6 @@ class DutySwapRequestsService extends BaseService {
   async requestSwap(payload: GenericRecord, requesterUser: GenericRecord) {
     const toSlotId = normalizeId(payload.toSlotId || payload.dutySlotId || payload.slotId);
     const fromSlotId = normalizeId(payload.fromSlotId);
-    const targetUserId = payload.targetUserId ? normalizeId(payload.targetUserId) : null;
     const reason = payload.reason || '';
 
     const toSlot = await dutySlotsRepository.findById(toSlotId);
@@ -32,7 +31,6 @@ class DutySwapRequestsService extends BaseService {
       fromSlotId,
       toSlotId,
       requesterId: normalizeId(requesterUser.id),
-      targetUserId: targetUserId,
       reason,
       status: 'pending',
     });
@@ -40,25 +38,15 @@ class DutySwapRequestsService extends BaseService {
     const toSlotLabel = await dutySlotsService.getSlotLabel(toSlot);
     const fromSlotLabel = await dutySlotsService.getSlotLabel(fromSlot);
 
-    if (targetUserId) {
-      await notificationService.notifyUser(targetUserId, {
-        title: 'Yêu cầu đổi ca trực',
-        message: `${requesterUser.name} muốn đổi ca với bạn: từ ${fromSlotLabel} sang ${toSlotLabel}`,
-        category: 'swap',
-        type: 'swap',
+    const admins = await usersRepository.findMany({ role: 'admin' });
+    for (const admin of admins) {
+      await notificationService.notifyUser(admin.id as number, {
+        title: 'Yêu cầu chuyển ca trực',
+        message: `${requesterUser.name} xin chuyển: từ ${fromSlotLabel} sang ${toSlotLabel}`,
+        category: 'approval',
+        type: 'approval',
         refId: created.id,
       });
-    } else {
-      const admins = await usersRepository.findMany({ role: 'admin' });
-      for (const admin of admins) {
-        await notificationService.notifyUser(admin.id as number, {
-          title: 'Yêu cầu chuyển ca trực',
-          message: `${requesterUser.name} xin chuyển: từ ${fromSlotLabel} sang ${toSlotLabel}`,
-          category: 'approval',
-          type: 'approval',
-          refId: created.id,
-        });
-      }
     }
 
     await dutyLogsService.log(
@@ -81,7 +69,6 @@ class DutySwapRequestsService extends BaseService {
       fromSlotId: data.fromSlotId ? normalizeId(data.fromSlotId) : null,
       toSlotId: normalizeId(data.toSlotId),
       requesterId: normalizeId(data.requesterId),
-      targetUserId: data.targetUserId ? normalizeId(data.targetUserId) : null,
       status: data.status || 'pending',
     };
   }
@@ -93,7 +80,6 @@ class DutySwapRequestsService extends BaseService {
       fromSlotId: data.fromSlotId ? normalizeId(data.fromSlotId) : undefined,
       toSlotId: data.toSlotId ? normalizeId(data.toSlotId) : undefined,
       requesterId: data.requesterId ? normalizeId(data.requesterId) : undefined,
-      targetUserId: data.targetUserId ? normalizeId(data.targetUserId) : undefined,
     };
   }
 
@@ -107,10 +93,9 @@ class DutySwapRequestsService extends BaseService {
       typeof approver === 'object' && approver.role ? approver : await usersRepository.findById(approverId);
     if (!approverObj) throw ApiError.notFound('Người duyệt không tồn tại');
 
-    const isTargetUser = normalizeId(req.targetUserId) === approverId;
     const isAdminOrStaff = ['admin', 'staff'].includes(approverObj.role as string);
 
-    if (!isTargetUser && !isAdminOrStaff) throw ApiError.forbidden('Bạn không có quyền xử lý yêu cầu này');
+    if (!isAdminOrStaff) throw ApiError.forbidden('Bạn không có quyền xử lý yêu cầu này');
 
     if (status === 'approved') {
       const targetSlot = await dutySlotsRepository.findById(req.toSlotId);
@@ -282,12 +267,10 @@ class DutySwapRequestsService extends BaseService {
 
     const result = await this.findAll({
       ...options,
-      expand: options.expand || 'requester,targetUser,approver,fromSlot,toSlot',
+      expand: options.expand || 'requester,approver,fromSlot,toSlot',
       sort: options.sort || 'createdAt',
       order: options.order || 'desc',
-      filter: isApprover
-        ? options.filter
-        : { ...options.filter, $or: [{ requesterId: userId }, { targetUserId: userId }] },
+      filter: isApprover ? options.filter : { ...options.filter, requesterId: userId },
     });
 
     // Enrich slots with labels
