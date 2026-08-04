@@ -14,6 +14,7 @@ import notificationService from '@modules/notifications/services/notification.se
 import auditLogsService from '@modules/audit-logs/services/audit-logs.service';
 import { getSuggestedRoles } from '../utils/user-mapping.utils';
 import type { AnyRecord, Identifier } from '@app-types/common';
+import type { QueryOptions } from '@app-types/database';
 
 function generateAvatarUrl(name: string) {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
@@ -123,6 +124,49 @@ function getAssignedUserIds(slot: { assignedUserIds?: Identifier[] }): Identifie
 class UserService extends BaseService {
   constructor() {
     super('users', usersRepository);
+  }
+
+  async prepareExportData(options: QueryOptions = {}) {
+    const result = await super.prepareExportData({ ...options, includeRelations: true });
+    let data = Array.isArray(result) ? result : [];
+
+    const generations = await generationsRepository.findAll();
+    const genMap = new Map(generations.map((g) => [Number(g.id), g.name]));
+
+    return data.map((item: any) => {
+      const exportItem = { ...item };
+      delete exportItem.password;
+
+      // ─── Generation name (join) ───
+      const genName = item.generationId ? genMap.get(Number(item.generationId)) : null;
+      const displayGen = genName || item.generation_name || item.generationId;
+      if (displayGen) {
+        exportItem.generationId = displayGen;
+        exportItem.generation_name = displayGen;
+      }
+
+      // ─── Role names (join) ───
+      if (exportItem.roles_names) {
+        exportItem.roleIds = Array.isArray(exportItem.roles_names)
+          ? exportItem.roles_names.join(', ')
+          : exportItem.roles_names;
+      }
+
+      // ─── Date formatting: dd/mm/yyyy ───
+      if (exportItem.dob) {
+        try {
+          const date = new Date(exportItem.dob);
+          if (!isNaN(date.getTime())) {
+            const d = String(date.getDate()).padStart(2, '0');
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const y = date.getFullYear();
+            exportItem.dob = `${d}/${m}/${y}`;
+          }
+        } catch (e) {}
+      }
+
+      return exportItem;
+    });
   }
 
   normalizeUserId(userId: Identifier) {
@@ -623,78 +667,6 @@ class UserService extends BaseService {
     if (lowerField === 'cccd') return '001202000001';
 
     return super.generateMockData(field, rules);
-  }
-
-  async prepareExportData(options: any = {}) {
-    const data = await super.prepareExportData(options);
-
-    return data.map((item: any) => {
-      const exportItem = { ...item };
-
-      delete exportItem.password;
-
-      const exportType = options.exportType || 'readable';
-
-      if (exportType === 'readable') {
-        // ─── Gender ───
-        if (exportItem.gender === 'male') exportItem.gender = 'Nam';
-        else if (exportItem.gender === 'female') exportItem.gender = 'Nữ';
-        else if (exportItem.gender === 'other') exportItem.gender = 'Khác';
-
-        // ─── Status ───
-        if (exportItem.status === 'active') exportItem.status = 'Đang hoạt động';
-        else if (exportItem.status === 'inactive') exportItem.status = 'Đã nghỉ';
-        else if (exportItem.status === 'dismissed') exportItem.status = 'Khai trừ';
-
-        // ─── Position ───
-        const POSITION_LABEL: Record<string, string> = {
-          ctv: 'Cộng tác viên',
-          tv: 'Thành viên',
-          tvb: 'Thành viên ban',
-          pb: 'Phó ban',
-          tb: 'Trưởng ban',
-          dt: 'Đội trưởng',
-        };
-        if (exportItem.position && POSITION_LABEL[exportItem.position]) {
-          exportItem.position = POSITION_LABEL[exportItem.position];
-        }
-
-        // ─── All boolean fields → Có / Không ───
-        const BOOL_FIELDS = ['isActive', 'isAlumni', 'expelled'];
-        for (const f of BOOL_FIELDS) {
-          if (exportItem[f] !== undefined) {
-            exportItem[f] = exportItem[f] ? 'Có' : 'Không';
-          }
-        }
-
-        // ─── Generation name (join) ───
-        if (exportItem.generation_name) {
-          exportItem.generationId = exportItem.generation_name;
-        }
-
-        // ─── Role names (join) ───
-        if (exportItem.roles_names) {
-          exportItem.roleIds = Array.isArray(exportItem.roles_names)
-            ? exportItem.roles_names.join(', ')
-            : exportItem.roles_names;
-        }
-      }
-
-      // ─── Date formatting: always dd/mm/yyyy (explicit, locale-independent) ───
-      if (exportItem.dob) {
-        try {
-          const date = new Date(exportItem.dob);
-          if (!isNaN(date.getTime())) {
-            const d = String(date.getDate()).padStart(2, '0');
-            const m = String(date.getMonth() + 1).padStart(2, '0');
-            const y = date.getFullYear();
-            exportItem.dob = `${d}/${m}/${y}`;
-          }
-        } catch (e) {}
-      }
-
-      return exportItem;
-    });
   }
 
   async getUserStats(filters: Record<string, any> = {}) {

@@ -1,4 +1,5 @@
 import XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { Parser } from 'json2csv';
 import userService from '@modules/users/services/user.service';
 import ApiError from '@utils/api-error';
@@ -7,6 +8,23 @@ import type { SchemaDefinition, SchemaRule } from '@app-types/schema';
 
 const SERVICE_MAP = {
   users: userService,
+};
+
+const SYSTEM_READABLE_TEXT_MAP: Record<string, string> = {
+  male: 'Nam',
+  female: 'Nữ',
+  other: 'Khác',
+  active: 'Đang hoạt động',
+  inactive: 'Đã nghỉ',
+  dismissed: 'Khai trừ',
+  ctv: 'Cộng tác viên',
+  tv: 'Thành viên',
+  tvb: 'Thành viên ban',
+  pb: 'Phó ban',
+  tb: 'Trưởng ban',
+  dt: 'Đội trưởng',
+  true: 'Có',
+  false: 'Không',
 };
 
 const INSTRUCTION_KEYWORDS = ['required', 'string', 'number', 'boolean', 'FK:', 'min:', 'max:', 'values:'];
@@ -244,7 +262,7 @@ class ImportExportService {
       return this.generateEmptyFile(format);
     }
 
-    // Map data to use labels as headers
+    // Map data to use labels as headers and human-readable names for foreign keys & enums
     const columns = options.columns ? (options.columns as string[]) : Object.keys(schema);
     const mappedData = rawData.map((row) => {
       const mappedRow: AnyRecord = {};
@@ -252,13 +270,30 @@ class ImportExportService {
         const rule = schema[key];
         if (rule && !rule.hidden) {
           const label = rule.label || key;
-          mappedRow[label] = row[key];
+          const baseKey = key.replace(/(Ids|Id)$/, '');
+
+          const nameVal =
+            row[`${key}_name`] ||
+            row[`${baseKey}_name`] ||
+            row[`${baseKey}Name`] ||
+            row[`${baseKey}_names`] ||
+            row[`${baseKey}Names`];
+
+          const rawVal = row[key];
+          const lowerVal = String(rawVal ?? '')
+            .trim()
+            .toLowerCase();
+          const readableVal = SYSTEM_READABLE_TEXT_MAP[lowerVal];
+
+          mappedRow[label] = nameVal || readableVal || (rawVal ?? '');
         }
       });
       return mappedRow;
     });
 
-    return format === 'csv' ? this.generateCSV(mappedData) : this.generateExcel(mappedData, entityName);
+    return format === 'csv'
+      ? this.generateCSV(mappedData)
+      : await this.generateExcel(mappedData, entityName, options.columns as string[]);
   }
 
   async generateTemplate(entityName: string, format = 'xlsx', selectedColumns?: string[], withMockData = true) {
@@ -277,13 +312,23 @@ class ImportExportService {
       const label = rules.label || field;
 
       // Generate Instructions
-      const parts: string[] = [String(rules.type)];
-      if (rules.required) parts.push('required');
-      if (rules.foreignKey) parts.push(`FK: ${rules.foreignKey}`);
-      if (rules.min !== undefined) parts.push(`min: ${rules.min}`);
-      if (rules.max !== undefined) parts.push(`max: ${rules.max}`);
-      if (rules.values) parts.push(`values: ${rules.values.join('|')}`);
-      instructions[label] = parts.join(', ');
+      const parts: string[] = [];
+      if (rules.required) parts.push('Bắt buộc');
+      else parts.push('Tùy chọn');
+
+      if (rules.type === 'enum' && rules.enum?.length) {
+        parts.push(`Chọn: ${rules.enum.join(' | ')}`);
+      } else if (rules.type === 'boolean') {
+        parts.push('Chọn: Có | Không');
+      } else if (rules.type === 'date') {
+        parts.push('Định dạng: DD/MM/YYYY');
+      } else if (rules.type === 'email') {
+        parts.push('Định dạng: email@example.com');
+      } else if (rules.foreignKey) {
+        parts.push(`Nhập Tên hoặc ID ${rules.foreignKey}`);
+      }
+
+      instructions[label] = parts.join(' - ');
 
       // Generate Mock Data
       let mockValue: any = '';
@@ -295,7 +340,7 @@ class ImportExportService {
     }
 
     const data = withMockData ? [templateData] : [instructions, {}];
-    return format === 'csv' ? this.generateCSV(data) : this.generateExcel(data, `${entityName}_template`);
+    return format === 'csv' ? this.generateCSV(data) : await this.generateExcel(data, entityName, selectedColumns);
   }
 
   getEntitySchema(entityName: string) {
@@ -306,11 +351,82 @@ class ImportExportService {
     }
   }
 
-  generateExcel(data: AnyRecord[], sheetName = 'Sheet1') {
-    const worksheet = XLSX.utils.json_to_sheet(data);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
-    return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  async generateExcel(data: AnyRecord[], entityName = 'Sheet1', selectedColumns?: string[]) {
+    const service = this.getServiceForEntity(entityName);
+    const schema = (service?.getSchema ? service.getSchema() : {}) as SchemaDefinition;
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet(entityName);
+
+    if (data.length === 0) {
+      const buffer = await workbook.xlsx.writeBuffer();
+      return Buffer.from(buffer);
+    }
+
+    const headers = Object.keys(data[0]);
+    worksheet.addRow(headers);
+
+    // Style Header Row
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF8B1D1D' }, // Primary red theme
+    };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    headerRow.height = 24;
+
+    // Add Data Rows
+    data.forEach((row) => {
+      const rowValues = headers.map((h) => row[h] ?? '');
+      worksheet.addRow(rowValues);
+    });
+
+    // Configure Excel Native Data Validation & Dropdowns for rows 2 to 200
+    headers.forEach((header, colIdx) => {
+      const colLetter = worksheet.getColumn(colIdx + 1).letter;
+      const fieldKey = Object.keys(schema).find((k) => (schema[k]?.label || k) === header) || header;
+      const rule = schema[fieldKey];
+
+      let listFormula: string | null = null;
+      if (rule?.type === 'enum' && rule.enum?.length) {
+        listFormula = `"${rule.enum.join(',')}"`;
+      } else if (rule?.type === 'boolean') {
+        listFormula = '"Có,Không"';
+      } else if (fieldKey === 'gender') {
+        listFormula = '"Nam,Nữ,Khác"';
+      } else if (fieldKey === 'status') {
+        listFormula = '"Đang hoạt động,Đã nghỉ,Khai trừ"';
+      } else if (fieldKey === 'position') {
+        listFormula = '"Cộng tác viên,Thành viên,Thành viên ban,Phó ban,Trưởng ban,Đội trưởng"';
+      }
+
+      if (listFormula) {
+        for (let rowIdx = 2; rowIdx <= 200; rowIdx++) {
+          const cell = worksheet.getCell(`${colLetter}${rowIdx}`);
+          cell.dataValidation = {
+            type: 'list',
+            allowBlank: true,
+            formulae: [listFormula],
+            showErrorMessage: true,
+            errorTitle: 'Giá trị không hợp lệ',
+            error: 'Vui lòng chọn một giá trị hợp lệ từ danh sách thả xuống!',
+          };
+        }
+      }
+
+      // Auto-fit Column Width
+      let maxLen = header.length;
+      data.forEach((row) => {
+        const valStr = String(row[header] ?? '');
+        if (valStr.length > maxLen) maxLen = valStr.length;
+      });
+      worksheet.getColumn(colIdx + 1).width = Math.min(Math.max(maxLen + 6, 16), 45);
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
   }
 
   generateCSV(data: AnyRecord[]) {
