@@ -21,6 +21,7 @@ export default defineSchema({
     required: true,
     minLength: 8,
     label: 'Mật khẩu',
+    hidden: true,
     custom: (value: string) => {
       if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(value)) {
         return 'Password must contain uppercase, lowercase, and number';
@@ -32,12 +33,14 @@ export default defineSchema({
     required: false,
     default: [],
     label: 'Danh sách Vai trò',
+    hidden: true, // auto-assigned from position, not imported directly
   },
   customPermissions: {
     type: 'object',
     required: false,
     default: { extra: [], denied: [] },
     label: 'Quyền tùy chỉnh',
+    hidden: true, // managed separately, not imported
   },
   lastLogin: {
     type: 'date',

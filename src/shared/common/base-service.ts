@@ -248,11 +248,16 @@ class BaseService {
     return results;
   }
 
-  // ==================== IMPORT/EXPORT ====================
-
   async validateImportData(data: AnyRecord, _rowIndex?: number) {
+    await this.preprocessImportRecord(data);
     return this.schemaService.validateImportData(data);
   }
+
+  /**
+   * Pre-process import record before schema validation runs.
+   * Override in subclass for module-specific foreign key lookups or data normalization.
+   */
+  async preprocessImportRecord(_data: AnyRecord) {}
 
   async transformImportData(data: AnyRecord) {
     if (!this.getSchema()) return data;
@@ -367,6 +372,15 @@ class BaseService {
 
   getModelName() {
     return this.collection.slice(0, -1);
+  }
+
+  generateMockData(field: string, rules: any): any {
+    if (rules.type === 'string') return 'Dữ liệu mẫu';
+    if (rules.type === 'number') return rules.min || 1;
+    if (rules.type === 'date') return '01/01/2000';
+    if (rules.type === 'boolean') return 'Có';
+    if (rules.type === 'enum' && rules.enum && rules.enum.length > 0) return rules.enum[0];
+    return '';
   }
 }
 

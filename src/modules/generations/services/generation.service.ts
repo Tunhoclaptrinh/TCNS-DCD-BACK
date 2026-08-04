@@ -16,6 +16,33 @@ class GenerationService extends BaseService {
     return generationSchema;
   }
 
+  async validateCreate(data: AnyRecord) {
+    if (data.name && String(data.name).trim() !== '') {
+      const nameStr = String(data.name).trim();
+      const existing = await this.repository.findOne({
+        name: { $regex: new RegExp(`^${nameStr.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, 'i') },
+      });
+      if (existing) {
+        return { success: false, message: `Khóa/Thế hệ '${nameStr}' đã tồn tại` };
+      }
+    }
+    return { success: true };
+  }
+
+  async validateUpdate(id: Identifier, data: AnyRecord) {
+    if (data.name && String(data.name).trim() !== '') {
+      const nameStr = String(data.name).trim();
+      const existing = await this.repository.findOne({
+        name: { $regex: new RegExp(`^${nameStr.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, 'i') },
+        id: { $ne: Number(id) },
+      });
+      if (existing) {
+        return { success: false, message: `Khóa/Thế hệ '${nameStr}' đã tồn tại` };
+      }
+    }
+    return { success: true };
+  }
+
   async afterCreate(item: AnyRecord) {
     if (item.isCurrent) {
       await this.ensureOnlyOneCurrent(item.id);

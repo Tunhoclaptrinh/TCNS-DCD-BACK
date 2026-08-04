@@ -26,6 +26,7 @@ import bonusCampaigns from '@modules/bonus-campaigns/schemas/bonus-campaign.sche
 import bonusRegistrations from '@modules/bonus-registrations/schemas/bonus-registration.schema';
 import semesters from '@modules/semesters/schemas/semester.schema';
 import otpCodes from '@modules/auth/schemas/otp.schema';
+import systemSettings from '@modules/system-settings/schemas/system-setting.schema';
 
 const schemas: SchemaMap = {
   // Auth & User
@@ -39,6 +40,7 @@ const schemas: SchemaMap = {
   bonus_registrations: bonusRegistrations,
   otp_codes: otpCodes,
   semesters,
+  system_settings: systemSettings,
 
   // User Content
   notifications,

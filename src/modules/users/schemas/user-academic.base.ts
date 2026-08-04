@@ -24,6 +24,6 @@ export const userAcademicFields = {
     type: 'number' as const,
     required: true,
     foreignKey: 'generations',
-    label: 'ID Khóa/Thế hệ',
+    label: 'Khóa/Thế hệ',
   },
 };

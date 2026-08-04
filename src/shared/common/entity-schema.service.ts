@@ -4,6 +4,7 @@ import BaseRepository from '@shared/repositories/base.repository';
 import {
   convertValue as convertValueBySchema,
   isEmpty as isEmptyBySchema,
+  normalizeImportRecord,
   transformBySchema as transformBySchemaBySchema,
   validateFieldConstraints as validateFieldConstraintsBySchema,
   validateType as validateTypeBySchema,
@@ -76,7 +77,24 @@ class EntitySchemaService {
   }
 
   async validateImportData(data: AnyRecord) {
-    const issues = await this.collectValidationIssues(data, { includeCustomValidation: false });
+    // Normalize first: trim strings, lowercase booleans/enums, strip hidden fields, etc.
+    const schema = this.getSchema();
+    const normalized = normalizeImportRecord(schema, data);
+
+    // 1. Remove hidden fields from the live data object
+    //    (Object.assign won't delete keys, so we do it explicitly)
+    if (schema) {
+      for (const [field, rule] of Object.entries(schema)) {
+        if (rule.hidden) {
+          delete data[field];
+        }
+      }
+    }
+
+    // 2. Merge normalized (non-hidden) values back into data for downstream use
+    Object.assign(data, normalized);
+
+    const issues = await this.collectValidationIssues(normalized, { includeCustomValidation: false });
     return issues.map((issue) => issue.message);
   }
 
@@ -109,6 +127,9 @@ class EntitySchemaService {
     const issues: ValidationIssue[] = [];
 
     for (const [field, rule] of Object.entries(schema)) {
+      // Skip hidden fields — they are never present in import files
+      if (rule.hidden) continue;
+
       const message = await this.validateField(field, data[field], rule, data, options);
       if (message) {
         issues.push({ field, message });
@@ -127,8 +148,10 @@ class EntitySchemaService {
   ) {
     if (options.isUpdate && value === undefined) return null;
 
+    const label = rule.label || field;
+
     if (rule.required && isEmptyBySchema(value)) {
-      return `${field} is required`;
+      return `${label} là bắt buộc`;
     }
 
     if (!rule.required && (value === undefined || value === null)) {
@@ -149,14 +172,14 @@ class EntitySchemaService {
 
       const existing = await this.repository.findOne(query);
       if (existing) {
-        return `${field} '${value}' already exists`;
+        return `${label} '${value}' đã tồn tại`;
       }
     }
 
     if (rule.foreignKey) {
       const relatedEntity = await new BaseRepository(rule.foreignKey).findById(value);
       if (!relatedEntity) {
-        return `${field} references non-existent ${rule.foreignKey} (ID: ${value})`;
+        return `${label} tham chiếu đến dữ liệu không tồn tại (ID: ${value})`;
       }
     }
 
@@ -166,7 +189,7 @@ class EntitySchemaService {
         if (customError) return customError;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        return `Custom validation failed: ${message}`;
+        return `Kiểm tra dữ liệu thất bại: ${message}`;
       }
     }
 

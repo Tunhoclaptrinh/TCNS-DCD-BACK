@@ -1,6 +1,7 @@
 import BaseService from '@shared/common/base-service';
 import db from '@database/mongo-database.adapter';
 import usersRepository from '@modules/users/repositories/users.repository';
+import generationsRepository from '@modules/generations/repositories/generations.repository';
 import notificationsRepository from '@modules/notifications/repositories/notifications.repository';
 import rewardPenaltiesRepository from '@modules/reward-penalties/repositories/reward-penalties.repository';
 import dutySlotsRepository from '@modules/duty/repositories/duty-slots.repository';
@@ -308,20 +309,6 @@ class UserService extends BaseService {
     return { success: true };
   }
 
-  async transformImportData(data: AnyRecord) {
-    const transformed = await super.transformImportData(data);
-
-    if (transformed.password) {
-      transformed.password = await hashPassword(transformed.password);
-    }
-
-    if (!transformed.avatar && transformed.name) {
-      transformed.avatar = generateAvatarUrl(transformed.name);
-    }
-
-    return transformed;
-  }
-
   async beforeCreate(data: AnyRecord) {
     const transformed = this.transformBySchema(data);
 
@@ -392,6 +379,322 @@ class UserService extends BaseService {
     return {
       ...transformed,
     };
+  }
+
+  private cachedImportPasswordConfig: { strategy: string; fixedValue: string; time: number } | null = null;
+
+  private async getImportPasswordConfig(): Promise<{ strategy: string; fixedValue: string }> {
+    const now = Date.now();
+    if (this.cachedImportPasswordConfig && now - this.cachedImportPasswordConfig.time < 5000) {
+      return this.cachedImportPasswordConfig;
+    }
+    const Model = (db as any).getModel('system_settings');
+    let strategy = 'fixed';
+    let fixedValue = process.env.DEFAULT_IMPORT_PASSWORD || 'TCNS@2026';
+    if (Model) {
+      const docs = await Model.find({
+        key: { $in: ['DEFAULT_IMPORT_PASSWORD_STRATEGY', 'DEFAULT_IMPORT_PASSWORD'] },
+      }).lean();
+      docs.forEach((doc: any) => {
+        if (doc.key === 'DEFAULT_IMPORT_PASSWORD_STRATEGY' && doc.value) strategy = doc.value;
+        if (doc.key === 'DEFAULT_IMPORT_PASSWORD' && doc.value) fixedValue = doc.value;
+      });
+    }
+    const config = { strategy, fixedValue, time: now };
+    this.cachedImportPasswordConfig = config;
+    return config;
+  }
+
+  async preprocessImportRecord(data: AnyRecord) {
+    // ─── GENDER ───
+    if (data.gender) {
+      const g = String(data.gender).toLowerCase().trim();
+      if (g === 'nam') data.gender = 'male';
+      else if (g === 'nữ' || g === 'nu') data.gender = 'female';
+      else if (g === 'khác' || g === 'khac') data.gender = 'other';
+    }
+
+    // ─── STATUS ───
+    if (data.status) {
+      const s = String(data.status).toLowerCase().trim();
+      if (s === 'đang hoạt động' || s === 'hoạt động' || s === 'active') data.status = 'active';
+      else if (s === 'đã nghỉ' || s === 'đã ngưng' || s === 'nghỉ' || s === 'inactive') data.status = 'inactive';
+      else if (s === 'khai trừ' || s === 'đuổi' || s === 'dismissed') data.status = 'dismissed';
+    }
+
+    // ─── POSITION (Chức vụ) ─── map readable text → code
+    const POSITION_MAP: Record<string, string> = {
+      'cộng tác viên': 'ctv',
+      ctv: 'ctv',
+      'thành viên': 'tv',
+      tv: 'tv',
+      'thành viên ban': 'tvb',
+      tvb: 'tvb',
+      'phó ban': 'pb',
+      pb: 'pb',
+      'trưởng ban': 'tb',
+      tb: 'tb',
+      'đội trưởng': 'dt',
+      dt: 'dt',
+    };
+    if (data.position) {
+      const key = String(data.position).toLowerCase().trim();
+      const mapped = POSITION_MAP[key];
+      if (mapped) data.position = mapped;
+      // else: leave as-is and let schema validation report the error
+    }
+
+    // ─── GENERATION ID ─── check numeric ID first, then Name, then flexible digits
+    if (data.generationId !== undefined && data.generationId !== null && data.generationId !== '') {
+      const rawGen = String(data.generationId).trim();
+      const allGens = await generationsRepository.findAll();
+
+      // 1. Check numeric 'id' match first
+      let matched = allGens.find(
+        (g: any) => g.id !== undefined && g.id !== null && (String(g.id) === rawGen || Number(g.id) === Number(rawGen)),
+      );
+
+      // 2. Check exact Name match next
+      if (!matched) {
+        matched = allGens.find(
+          (g: any) =>
+            String(g.name || '')
+              .trim()
+              .toLowerCase() === rawGen.toLowerCase(),
+        );
+      }
+
+      // 3. Check digit extraction match (e.g. "K60" / "Khóa 60" -> 60)
+      if (!matched) {
+        const extractNum = (str: string) => str.replace(/\D/g, '');
+        const targetNum = extractNum(rawGen);
+        if (targetNum) {
+          matched = allGens.find((g: any) => extractNum(String(g.name || '')) === targetNum);
+        }
+      }
+
+      if (matched) {
+        data.generationId = Number(matched.id ?? matched._id); // Numeric ID for schema type validation
+        data.generation_name = matched.name; // Human-readable name for UI display
+        data._matchedGenerationId = Number(matched.id ?? matched._id);
+      } else {
+        throw new Error(`Không tìm thấy Khóa/Thế hệ '${data.generationId}'. Vui lòng kiểm tra lại.`);
+      }
+    }
+
+    // ─── DEPARTMENT ─── support name lookup (if provided as text instead of ID)
+    if (data.department && typeof data.department === 'string' && isNaN(Number(data.department))) {
+      const deptModel = (db as any).getModel('departments');
+      if (deptModel) {
+        const dept = await deptModel
+          .findOne({ name: { $regex: new RegExp('^' + data.department.trim() + '$', 'i') } })
+          .lean();
+        if (dept) {
+          data.department = (dept as any).name; // keep name; schema type is string
+        }
+        // else: keep original string — schema will validate
+      }
+    }
+
+    // ─── ROLE IDS ─── support comma-separated role names
+    if (data.roleIds && typeof data.roleIds === 'string') {
+      const roleNames = data.roleIds
+        .split(',')
+        .map((r: string) => r.trim())
+        .filter(Boolean);
+      if (roleNames.length > 0) {
+        const roleModel = (db as any).getModel('roles');
+        if (roleModel) {
+          const roles = await roleModel.find({ name: { $in: roleNames } });
+          const foundNames = roles.map((r: any) => r.name);
+          const missing = roleNames.filter((r) => !foundNames.includes(r));
+          if (missing.length > 0) {
+            throw new Error(`Không tìm thấy các Vai trò sau: ${missing.join(', ')}`);
+          }
+          data.roleIds = roles.map((r: any) => Number(r.id ?? r._id));
+        }
+      }
+    }
+
+    // ─── FULL NAME ─── combine lastName + firstName
+    if (!data.name && (data.lastName || data.firstName)) {
+      data.name = `${data.lastName || ''} ${data.firstName || ''}`.trim();
+    }
+
+    // ─── PASSWORD ─── default from config
+    if (!data.password || String(data.password).trim() === '') {
+      const config = await this.getImportPasswordConfig();
+      let pwd = '';
+      if (config.strategy === 'dob' && data.dob) {
+        let d: Date | null = null;
+        if (data.dob instanceof Date) {
+          d = isNaN(data.dob.getTime()) ? null : data.dob;
+        } else {
+          const str = String(data.dob).trim();
+          const dmyMatch = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+          if (dmyMatch) {
+            d = new Date(Number(dmyMatch[3]), Number(dmyMatch[2]) - 1, Number(dmyMatch[1]));
+          } else {
+            const parsed = new Date(str);
+            d = isNaN(parsed.getTime()) ? null : parsed;
+          }
+        }
+        if (d && !isNaN(d.getTime())) {
+          const day = String(d.getDate()).padStart(2, '0');
+          const month = String(d.getMonth() + 1).padStart(2, '0');
+          const year = d.getFullYear();
+          pwd = `${day}${month}${year}`;
+        }
+      } else if (config.strategy === 'studentId' && data.studentId) {
+        pwd = String(data.studentId).trim();
+      } else if (config.strategy === 'cccd' && data.cccd) {
+        pwd = String(data.cccd).trim();
+      }
+
+      data.password = pwd || config.fixedValue || process.env.DEFAULT_IMPORT_PASSWORD || 'TCNS@2026';
+    }
+  }
+
+  async validateImportData(data: AnyRecord, rowIndex?: number) {
+    await this.preprocessImportRecord(data);
+    return super.validateImportData(data, rowIndex);
+  }
+
+  async transformImportData(data: AnyRecord) {
+    const transformed = await super.transformImportData(data);
+
+    // Map _matchedGenerationId to numeric ID (number) for DB save
+    if (data._matchedGenerationId !== undefined) {
+      transformed.generationId = Number(data._matchedGenerationId);
+    } else if (transformed.generationId && isNaN(Number(transformed.generationId))) {
+      const gen = await generationsRepository.findOne({ name: String(transformed.generationId).trim() });
+      if (gen) transformed.generationId = Number(gen.id ?? gen._id);
+    }
+
+    // Ensure password is never empty before hashing
+    const rawPassword = transformed.password || data.password || 'TCNS@2026';
+    transformed.password = await hashPassword(String(rawPassword));
+
+    if (!transformed.avatar && transformed.name) {
+      transformed.avatar = generateAvatarUrl(transformed.name);
+    }
+
+    if (transformed.position) {
+      transformed.roleIds = getSuggestedRoles(
+        transformed.position as string,
+        (transformed.department as string) || null,
+      );
+    }
+
+    if (transformed.status === 'active') {
+      transformed.isActive = true;
+      transformed.isAlumni = false;
+    } else if (transformed.status === 'inactive') {
+      transformed.isActive = false;
+      transformed.isAlumni = true;
+    } else if (transformed.status === 'dismissed') {
+      transformed.isActive = false;
+      transformed.isAlumni = false;
+      transformed.expelled = true;
+    }
+
+    return transformed;
+  }
+
+  async generateMockData(field: string, rules: any): Promise<any> {
+    const lowerField = field.toLowerCase();
+    if (lowerField === 'gender') return 'Nam';
+    if (lowerField === 'status') return 'Đang hoạt động';
+    if (lowerField === 'position') return 'Thành viên';
+    if (lowerField === 'department') return 'Ban Chuyên Môn';
+    if (lowerField.includes('role')) return 'Quản trị viên, Thành viên';
+    if (lowerField.includes('generation')) return 'K60';
+    if (lowerField === 'isactive') return 'Có';
+    if (lowerField === 'isalumni') return 'Không';
+    if (lowerField === 'dob') return '01/01/2000';
+    if (lowerField === 'classid') return 'D20CQCN01-B';
+
+    if (lowerField.includes('name')) return 'Nguyễn Văn A';
+    if (lowerField === 'lastname') return 'Nguyễn Văn';
+    if (lowerField === 'firstname') return 'A';
+    if (lowerField.includes('email')) return 'nguyenvana@gmail.com';
+    if (lowerField.includes('phone')) return '0987654321';
+    if (lowerField.includes('student') || lowerField.includes('code')) return 'SV123456';
+    if (lowerField === 'cccd') return '001202000001';
+
+    return super.generateMockData(field, rules);
+  }
+
+  async prepareExportData(options: any = {}) {
+    const data = await super.prepareExportData(options);
+
+    return data.map((item: any) => {
+      const exportItem = { ...item };
+
+      delete exportItem.password;
+
+      const exportType = options.exportType || 'readable';
+
+      if (exportType === 'readable') {
+        // ─── Gender ───
+        if (exportItem.gender === 'male') exportItem.gender = 'Nam';
+        else if (exportItem.gender === 'female') exportItem.gender = 'Nữ';
+        else if (exportItem.gender === 'other') exportItem.gender = 'Khác';
+
+        // ─── Status ───
+        if (exportItem.status === 'active') exportItem.status = 'Đang hoạt động';
+        else if (exportItem.status === 'inactive') exportItem.status = 'Đã nghỉ';
+        else if (exportItem.status === 'dismissed') exportItem.status = 'Khai trừ';
+
+        // ─── Position ───
+        const POSITION_LABEL: Record<string, string> = {
+          ctv: 'Cộng tác viên',
+          tv: 'Thành viên',
+          tvb: 'Thành viên ban',
+          pb: 'Phó ban',
+          tb: 'Trưởng ban',
+          dt: 'Đội trưởng',
+        };
+        if (exportItem.position && POSITION_LABEL[exportItem.position]) {
+          exportItem.position = POSITION_LABEL[exportItem.position];
+        }
+
+        // ─── All boolean fields → Có / Không ───
+        const BOOL_FIELDS = ['isActive', 'isAlumni', 'expelled'];
+        for (const f of BOOL_FIELDS) {
+          if (exportItem[f] !== undefined) {
+            exportItem[f] = exportItem[f] ? 'Có' : 'Không';
+          }
+        }
+
+        // ─── Generation name (join) ───
+        if (exportItem.generation_name) {
+          exportItem.generationId = exportItem.generation_name;
+        }
+
+        // ─── Role names (join) ───
+        if (exportItem.roles_names) {
+          exportItem.roleIds = Array.isArray(exportItem.roles_names)
+            ? exportItem.roles_names.join(', ')
+            : exportItem.roles_names;
+        }
+      }
+
+      // ─── Date formatting: always dd/mm/yyyy (explicit, locale-independent) ───
+      if (exportItem.dob) {
+        try {
+          const date = new Date(exportItem.dob);
+          if (!isNaN(date.getTime())) {
+            const d = String(date.getDate()).padStart(2, '0');
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const y = date.getFullYear();
+            exportItem.dob = `${d}/${m}/${y}`;
+          }
+        } catch (e) {}
+      }
+
+      return exportItem;
+    });
   }
 
   async getUserStats(filters: Record<string, any> = {}) {

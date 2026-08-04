@@ -77,6 +77,11 @@ export const userProfileFields = {
     required: false,
     label: 'Địa chỉ',
   },
+  cccd: {
+    type: 'string' as const,
+    required: false,
+    label: 'Số CCCD',
+  },
   bio: {
     type: 'string' as const,
     required: false,
@@ -87,5 +92,6 @@ export const userProfileFields = {
     type: 'string' as const,
     required: false,
     label: 'Ảnh đại diện',
+    hidden: true,
   },
 };

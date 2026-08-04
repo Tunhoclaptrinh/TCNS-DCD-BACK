@@ -15,6 +15,7 @@ import meetingRoutes from '@modules/meetings/routes/meeting.routes';
 import bonusCampaignRoutes from '@modules/bonus-campaigns/routes/bonus-campaign.routes';
 import bonusRegistrationRoutes from '@modules/bonus-registrations/routes/bonus-registration.routes';
 import semesterRoutes from '@modules/semesters/routes/semesters.routes';
+import systemSettingRoutes from '@modules/system-settings/routes/system-setting.routes';
 
 const router = express.Router();
 
@@ -34,5 +35,6 @@ router.use('/meetings', meetingRoutes);
 router.use('/bonus-campaigns', bonusCampaignRoutes);
 router.use('/bonus-registrations', bonusRegistrationRoutes);
 router.use('/semesters', semesterRoutes);
+router.use('/system-settings', systemSettingRoutes);
 
 export default router;

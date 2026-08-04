@@ -35,8 +35,11 @@ class ImportExportService {
       throw ApiError.badRequest('Unsupported file format. Use .xlsx, .xls, or .csv');
     }
 
-    const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
-    const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]) as AnyRecord[];
+    const workbook = XLSX.read(fileBuffer, { type: 'buffer', cellDates: true });
+    const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], {
+      raw: false, // parse everything as formatted strings, not raw values
+      defval: '', // empty cells become ''
+    }) as AnyRecord[];
 
     if (schema && jsonData.length > 0) {
       return this.mapLabelsToKeys(jsonData, schema);
@@ -98,8 +101,16 @@ class ImportExportService {
     let rawData = this.parseFile(fileBuffer, filename, schema);
     rawData = this.cleanImportData(rawData);
 
+    const MAX_IMPORT_ROWS = 200;
+
     if (!rawData || rawData.length === 0) {
-      throw ApiError.badRequest('File is empty or invalid');
+      throw ApiError.badRequest('Tệp dữ liệu rỗng hoặc không hợp lệ');
+    }
+
+    if (rawData.length > MAX_IMPORT_ROWS) {
+      throw ApiError.badRequest(
+        `Tệp dữ liệu vượt quá giới hạn tối đa ${MAX_IMPORT_ROWS} dòng (hiện có ${rawData.length} dòng). Vui lòng chia nhỏ tệp và thử lại.`,
+      );
     }
 
     const fileHeaders = Object.keys(rawData[0]);
@@ -109,7 +120,7 @@ class ImportExportService {
 
     if (missingHeaders.length > 0) {
       const missingLabels = missingHeaders.map((h) => schema[h].label || h);
-      throw ApiError.badRequest(`Missing required columns: ${missingLabels.join(', ')}`);
+      throw ApiError.badRequest(`Thiếu các cột bắt buộc: ${missingLabels.join(', ')}`);
     }
 
     return await service.importData(rawData);
@@ -125,8 +136,16 @@ class ImportExportService {
     let rawData = this.parseFile(fileBuffer, filename, schema);
     rawData = this.cleanImportData(rawData);
 
+    const MAX_IMPORT_ROWS = 200;
+
     if (!rawData || rawData.length === 0) {
-      throw ApiError.badRequest('File is empty or invalid');
+      throw ApiError.badRequest('Tệp dữ liệu rỗng hoặc không hợp lệ');
+    }
+
+    if (rawData.length > MAX_IMPORT_ROWS) {
+      throw ApiError.badRequest(
+        `Tệp dữ liệu vượt quá giới hạn tối đa ${MAX_IMPORT_ROWS} dòng (hiện có ${rawData.length} dòng). Vui lòng chia nhỏ tệp và thử lại.`,
+      );
     }
 
     const results = [];
@@ -134,6 +153,7 @@ class ImportExportService {
     let errorCount = 0;
 
     for (let i = 0; i < rawData.length; i++) {
+      const originalRecord = { ...rawData[i] };
       const record = rawData[i];
       const rowIndex = i + 2; // Assuming header is row 1
 
@@ -141,16 +161,41 @@ class ImportExportService {
         // 1. Basic Schema Validation (types, required, etc)
         const schemaErrors = await service.validateImportData(record, rowIndex);
 
-        // 2. Custom Business Logic (unique constraints, etc)
-        // We need to transform the data first to check things like hashed passwords or generated fields correctly if needed
-        // But usually unique constraints (email) happen on the raw-ish data
+        // 2. Compute auto-mapping metadata between original input and normalized/mapped values
+        const _mappings: Record<string, { raw: any; mapped: any }> = {};
+        for (const [k, origVal] of Object.entries(originalRecord)) {
+          if (origVal !== undefined && origVal !== null && String(origVal).trim() !== '') {
+            const currentVal = record[k];
+            const baseKey = k.replace(/(Ids|Id)$/, '');
+            const nameVal =
+              record[`${k}_name`] ||
+              record[`${baseKey}_name`] ||
+              record[`${baseKey}Name`] ||
+              record[`${baseKey}_names`] ||
+              record[`${baseKey}Names`];
+            const displayMapped = nameVal || currentVal;
+            const rawStr = String(origVal).trim();
+            const mappedStr = String(displayMapped ?? '').trim();
+
+            if (mappedStr !== '' && rawStr !== mappedStr) {
+              _mappings[k] = { raw: origVal, mapped: displayMapped };
+              _mappings[baseKey] = { raw: origVal, mapped: displayMapped };
+            }
+          }
+        }
+        if (Object.keys(_mappings).length > 0) {
+          record._mappings = _mappings;
+        }
+
+        // 3. Custom Business Logic (unique constraints, etc)
         const transformed = await service.transformImportData(record);
         const bizValidation = await service.validateCreate(transformed);
 
-        const allErrors = [...schemaErrors];
-        if (!bizValidation.success) {
-          allErrors.push(bizValidation.message || 'Business validation failed');
+        const rawErrors = [...schemaErrors];
+        if (!bizValidation.success && bizValidation.message) {
+          rawErrors.push(bizValidation.message);
         }
+        const allErrors = Array.from(new Set(rawErrors));
 
         if (allErrors.length === 0) {
           validCount++;
@@ -216,33 +261,40 @@ class ImportExportService {
     return format === 'csv' ? this.generateCSV(mappedData) : this.generateExcel(mappedData, entityName);
   }
 
-  generateTemplate(entityName: string, format = 'xlsx', selectedColumns?: string[]) {
+  async generateTemplate(entityName: string, format = 'xlsx', selectedColumns?: string[], withMockData = true) {
     const service = this.getServiceForEntity(entityName);
-    const schema = service.getSchema();
+    const schema = service.getSchema() as SchemaDefinition;
 
     const templateData: AnyRecord = {};
     const instructions: AnyRecord = {};
 
     const columnsToInclude = selectedColumns || Object.keys(schema).filter((k) => !schema[k].hidden);
 
-    columnsToInclude.forEach((field) => {
+    for (const field of columnsToInclude) {
       const rules = schema[field];
-      if (!rules) return;
+      if (!rules) continue;
 
       const label = rules.label || field;
-      templateData[label] = '';
 
+      // Generate Instructions
       const parts: string[] = [String(rules.type)];
       if (rules.required) parts.push('required');
       if (rules.foreignKey) parts.push(`FK: ${rules.foreignKey}`);
       if (rules.min !== undefined) parts.push(`min: ${rules.min}`);
       if (rules.max !== undefined) parts.push(`max: ${rules.max}`);
       if (rules.values) parts.push(`values: ${rules.values.join('|')}`);
-
       instructions[label] = parts.join(', ');
-    });
 
-    const data = [instructions, templateData];
+      // Generate Mock Data
+      let mockValue: any = '';
+      if (typeof (service as any).generateMockData === 'function') {
+        mockValue = await (service as any).generateMockData(field, rules);
+      }
+
+      templateData[label] = mockValue;
+    }
+
+    const data = withMockData ? [templateData] : [instructions, {}];
     return format === 'csv' ? this.generateCSV(data) : this.generateExcel(data, `${entityName}_template`);
   }
 

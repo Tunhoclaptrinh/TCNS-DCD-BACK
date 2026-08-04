@@ -34,7 +34,8 @@ class ImportExportController extends BaseController {
   exportData = this.handle(async (req, res) => {
     const { entity } = req.params;
     const format = this.getFormat(req.query.format);
-    const buffer = await importExportService.exportData(entity, format, req.query);
+    const options = { ...req.query, ...req.parsedQuery };
+    const buffer = await importExportService.exportData(entity, format, options);
 
     const contentType =
       format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -49,7 +50,8 @@ class ImportExportController extends BaseController {
     const { entity } = req.params;
     const format = this.getFormat(req.query.format);
     const columns = req.query.columns ? String(req.query.columns).split(',') : undefined;
-    const buffer = importExportService.generateTemplate(entity, format, columns);
+    const withMockData = req.query.withMockData !== 'false';
+    const buffer = await importExportService.generateTemplate(entity, format, columns, withMockData);
 
     const ext = format === 'csv' ? 'csv' : 'xlsx';
     res.setHeader('Content-Type', 'application/octet-stream');
