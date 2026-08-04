@@ -7,14 +7,16 @@ const router = express.Router();
 
 router.use(requireAuth);
 
-router.get('/', requirePermission('system:manage_roles'), roleController.getAll);
-router.get('/:id', requirePermission('system:manage_roles'), roleController.getById);
+// GET: chỉ cần quyền xem roles (ns_specialist và cao hơn có quyền này)
+router.get('/', requirePermission('system:roles:view'), roleController.getAll);
+router.get('/:id', requirePermission('system:roles:view'), roleController.getById);
 
-router.post('/', requirePermission('system:manage_roles'), roleController.create);
+// WRITE: tạo/sửa/xóa cần quyền cao hơn
+router.post('/', requirePermission('system:roles:create'), roleController.create);
 
-router.put('/:id', requirePermission('system:manage_roles'), roleController.update);
-router.patch('/:id', requirePermission('system:manage_roles'), roleController.patch);
+router.put('/:id', requirePermission('system:roles:update'), roleController.update);
+router.patch('/:id', requirePermission('system:roles:update'), roleController.patch);
 
-router.delete('/:id', requirePermission('system:manage_roles'), roleController.delete);
+router.delete('/:id', requirePermission('system:roles:delete'), roleController.delete);
 
 export default router;

@@ -5,18 +5,20 @@ import { requirePermission } from '@middleware/rbac.middleware';
 
 const router = express.Router();
 
-// Tất cả các route yêu cầu phân quyền quản trị/staff tương tự bản stable
+// Tất cả các route yêu cầu đăng nhập
 router.use(requireAuth);
 
-router.get('/', requirePermission('generations:manage'), generationController.getAll);
-router.get('/:id', requirePermission('generations:manage'), generationController.getById);
+// GET: chỉ cần quyền xem để lọc danh sách, dropdown (settings:view hoặc system:manage:gen)
+router.get('/', requirePermission('settings:view'), generationController.getAll);
+router.get('/:id', requirePermission('settings:view'), generationController.getById);
 
-router.post('/', requirePermission('generations:manage'), generationController.create);
+// WRITE: chỉ admin mới được tạo/sửa/xóa khóa
+router.post('/', requirePermission('system:manage:gen'), generationController.create);
 
-router.put('/:id', requirePermission('generations:manage'), generationController.update);
+router.put('/:id', requirePermission('system:manage:gen'), generationController.update);
 
-router.delete('/:id', requirePermission('generations:manage'), generationController.delete);
+router.delete('/:id', requirePermission('system:manage:gen'), generationController.delete);
 
-router.patch('/:id/set-current', requirePermission('generations:manage'), generationController.setCurrent);
+router.patch('/:id/set-current', requirePermission('system:manage:gen'), generationController.setCurrent);
 
 export default router;

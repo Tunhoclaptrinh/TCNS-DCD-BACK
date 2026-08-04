@@ -48,6 +48,7 @@ const PERMISSIONS = [
   { key: 'users:update:org', name: 'Sửa Chức vụ / Ban / Khóa', module: 'users' },
   { key: 'users:promote', name: 'Nâng hạng (Promote)', module: 'users' },
   { key: 'users:expel', name: 'Khai trừ (Expel)', module: 'users' },
+  { key: 'users:manage_status', name: 'Kích hoạt / Vô hiệu hóa tài khoản', module: 'users' },
   { key: 'users:import', name: 'Nhập dữ liệu Excel (Import)', module: 'users' },
   { key: 'users:export', name: 'Xuất dữ liệu Excel (Export)', module: 'users' },
   { key: 'users:delete', name: 'Xóa vĩnh viễn tài khoản', module: 'users' },
@@ -103,6 +104,7 @@ const PERMISSIONS = [
   { key: 'system:notify:dept', name: 'Gửi thông báo theo Ban', module: 'system' },
   { key: 'system:manage', name: 'Quản lý cấu hình hệ thống & Học kỳ', module: 'system' },
   { key: 'settings:view', name: 'Xem cấu hình hệ thống', module: 'system' },
+  { key: 'settings:manage', name: 'Quản lý cấu hình (Alias cho system:manage)', module: 'system' },
 
   // Tài liệu
   { key: 'file:upload', name: 'Upload tài liệu minh chứng', module: 'file' },
@@ -110,9 +112,6 @@ const PERMISSIONS = [
   { key: 'file:manage:dept', name: 'Quản lý tài liệu nội bộ Ban', module: 'file' },
 
   // Đợt cộng điểm & Học kỳ (Bổ sung)
-  { key: 'duty:view', name: 'Xem & Đăng ký đợt cộng điểm', module: 'duty' },
-  { key: 'duty:manage', name: 'Quản lý toàn bộ đợt cộng điểm', module: 'duty' },
-  { key: 'system:manage', name: 'Quản lý cấu hình hệ thống & Học kỳ', module: 'system' },
   { key: 'bonus-campaigns:review', name: 'Xét duyệt chi tiết đăng ký', module: 'bonus-campaigns' },
   { key: 'bonus-campaigns:delete', name: 'Xóa bản đăng ký cộng điểm', module: 'bonus-campaigns' },
 ];
@@ -138,8 +137,10 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'users:update:org',
     'users:promote',
     'users:expel',
+    'users:manage_status',
     'users:import',
     'users:export',
+    'users:delete',
     'duty:view',
     'duty:view:all',
     'duty:register:self',
@@ -178,15 +179,13 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'system:permissions:view',
     'system:permissions:edit',
     'system:manage:gen',
+    'system:manage',
     'system:notify:all',
     'system:notify:dept',
+    'settings:view',
     'file:upload',
     'file:manage:all',
     'file:manage:dept',
-    'duty:view',
-    'duty:manage',
-    'system:manage',
-    'settings:view',
     'bonus-campaigns:review',
     'bonus-campaigns:delete',
   ],
@@ -201,6 +200,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'users:update:org',
     'users:promote',
     'users:expel',
+    'users:manage_status',
     'users:import',
     'users:export',
     'duty:view',
@@ -241,15 +241,13 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'system:permissions:view',
     'system:permissions:edit',
     'system:manage:gen',
+    'system:manage',
     'system:notify:all',
     'system:notify:dept',
+    'settings:view',
     'file:upload',
     'file:manage:all',
     'file:manage:dept',
-    'duty:view',
-    'duty:manage',
-    'system:manage',
-    'settings:view',
     'bonus-campaigns:review',
     'bonus-campaigns:delete',
   ],
@@ -261,10 +259,9 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'users:read:self',
     'users:create',
     'users:update:profile',
-    'users:update:org',
     'users:promote',
     'users:expel',
-    'users:import',
+    'users:manage_status',
     'users:export',
     'duty:view',
     'duty:view:all',
@@ -304,15 +301,13 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'system:permissions:view',
     'system:permissions:edit',
     'system:manage:gen',
+    'system:manage',
     'system:notify:all',
     'system:notify:dept',
+    'settings:view',
     'file:upload',
     'file:manage:all',
     'file:manage:dept',
-    'duty:view',
-    'duty:manage',
-    'system:manage',
-    'settings:view',
     'bonus-campaigns:review',
     'bonus-campaigns:delete',
   ],
@@ -559,10 +554,8 @@ async function seed() {
     }
 
     // 3. Reset User-specific customPermissions
-    console.log('Resetting custom permissions for all users...');
-    if (UserModel) {
-      await UserModel.updateMany({}, { $unset: { customPermissions: 1 } });
-    }
+    console.log('Preserving custom permissions for all users...');
+    // Removed: await UserModel.updateMany({}, { $unset: { customPermissions: 1 } });
 
     // 4. Critical Admin Wildcard Sync
     console.log('Ensuring Admin users have wildcard permissions...');

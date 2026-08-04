@@ -30,12 +30,44 @@ function hasArchivedGenerationRestriction(userGenerationId: unknown, currentGene
 }
 
 function hasDirectPermission(userPermissions: string[], permission: string) {
-  return (
-    userPermissions.includes(permission) ||
-    (permission === 'duty:view' && userPermissions.includes('duty:view:all')) ||
-    (permission === 'users:list' &&
-      (userPermissions.includes('users:list:all') || userPermissions.includes('users:list:dept')))
-  );
+  if (userPermissions.includes(permission)) return true;
+
+  // ── Alias map: route permission → accepted seed permissions ──────────────
+  const aliases: Record<string, string[]> = {
+    // Users
+    'users:list': ['users:list:all', 'users:list:dept'],
+    'users:update': ['users:update:profile', 'users:update:org', 'users:promote', 'users:expel'],
+    'users:import_export': ['users:import', 'users:export'],
+    'users:manage_status': ['users:update:org', 'users:expel'],
+    'dashboard:view': ['users:list:all', 'users:list:dept', 'duty:view', 'meeting:view'],
+    'users:list:all': ['users:list:all'], // exact
+    'users:list:dept': ['users:list:dept'], // exact
+
+    // Duty (alias để tương thích)
+    'duty:view': ['duty:view', 'duty:view:all'],
+
+    // Meetings (meetings routes đang dùng nhầm duty:*)
+    'meeting:view': ['meeting:view'],
+    'meeting:create': ['meeting:create:all', 'meeting:create:dept'],
+
+    // Reward penalties
+    'reward_penalty:view': ['reward:history:all', 'reward:stats:all', 'reward:stats:dept'],
+    'reward_penalty:manage': ['reward:create', 'reward:approve'],
+
+    // Semesters / Settings
+    'settings:manage': ['system:manage'],
+
+    // Reports
+    'reports:view': ['duty:manage', 'reward:stats:all'],
+    'reports:export': ['duty:manage', 'reward:stats:all'],
+  };
+
+  const accepted = aliases[permission];
+  if (accepted) {
+    return accepted.some((p) => userPermissions.includes(p));
+  }
+
+  return false;
 }
 
 /**
