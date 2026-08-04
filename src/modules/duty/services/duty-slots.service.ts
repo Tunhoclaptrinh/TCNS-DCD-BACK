@@ -1330,15 +1330,20 @@ class DutySlotsService {
     let meetings: any[] = [];
     if (mode === 'all' || mode === 'with_meetings') {
       const meetingModule = await import('@modules/meetings/services/meeting.service');
-      const mRes = await meetingModule.default.findAll({
-        filter: {
-          meetingAt: {
-            $gte: startDate.toISOString(),
-            $lte: endDate.toISOString(),
+      const mRes = await meetingModule.default.listMeetings(
+        options.fullUser || {
+          id: options.userId,
+          role: options.userRole,
+          permissions: options.userPermissions,
+        },
+        {
+          filter: {
+            meetingAt_gte: startDate.toISOString(),
+            meetingAt_lte: endDate.toISOString(),
           },
         },
-      });
-      if (mRes.success) meetings = mRes.data;
+      );
+      if (mRes && mRes.data) meetings = mRes.data;
     }
 
     const workbook = new ExcelJS.Workbook();

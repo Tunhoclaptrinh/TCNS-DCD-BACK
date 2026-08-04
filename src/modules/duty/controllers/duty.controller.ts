@@ -373,6 +373,7 @@ class DutyController extends BaseController {
       userId: req.user?.id,
       userRole: req.user?.role,
       userPermissions: req.user?.permissions || [],
+      fullUser: req.user,
     });
 
     const label = startDate ? dayjs(startDate as string).format('DDMM') : dayjs(weekStart as string).format('WW');

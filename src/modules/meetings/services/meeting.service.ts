@@ -142,6 +142,10 @@ class MeetingService extends BaseService {
   ensureReadable(meeting: AnyRecord, user: AnyRecord = {}) {
     if (this.canManage(user)) return;
 
+    if (meeting.visibility === 'public') return;
+
+    if (meeting.visibility === 'members' && user.position && user.position !== 'ctv') return;
+
     const userId = toNum(user.id);
     const participantIds = normalizeIds(meeting.participantIds);
 
@@ -156,7 +160,14 @@ class MeetingService extends BaseService {
     if (!this.canManage(user)) {
       const userId = toNum(user.id);
       if (!userId) throw ApiError.unauthorized('Người dùng không hợp lệ');
-      filter.participantIds = userId;
+
+      const visibilityConditions: any[] = [{ visibility: 'public' }];
+
+      if (user.position && user.position !== 'ctv') {
+        visibilityConditions.push({ visibility: 'members' });
+      }
+
+      filter.$or = [...visibilityConditions, { participantIds: userId }];
     }
 
     const result = await this.repository.findAllAdvanced({
@@ -176,7 +187,14 @@ class MeetingService extends BaseService {
     if (!this.canManage(user)) {
       const userId = toNum(user.id);
       if (!userId) throw ApiError.unauthorized('Người dùng không hợp lệ');
-      filter.participantIds = userId;
+
+      const visibilityConditions: any[] = [{ visibility: 'public' }];
+
+      if (user.position && user.position !== 'ctv') {
+        visibilityConditions.push({ visibility: 'members' });
+      }
+
+      filter.$or = [...visibilityConditions, { participantIds: userId }];
     }
 
     const meetings = await this.repository.findMany(filter);
@@ -240,7 +258,10 @@ class MeetingService extends BaseService {
     const isAll = payload.isAllParticipants === true || payload.isAllParticipants === 'true';
 
     if (isAll) {
-      const allUsers = await usersRepository.findAllAdvanced({ pageSize: 2000 });
+      const allUsers = await usersRepository.findAllAdvanced({
+        pageSize: 2000,
+        filter: { status: 'active' },
+      });
       participantIds = (allUsers.data || []).map((u: AnyRecord) => Number(u.id));
     } else {
       participantIds = await this.resolveParticipantIds(payload.participantIds, userId);
@@ -257,6 +278,7 @@ class MeetingService extends BaseService {
       status: this.normalizeStatus(payload.status),
       participantIds,
       isAllParticipants: isAll,
+      visibility: payload.visibility === 'public' ? 'public' : 'private',
       confirmations: this.buildConfirmations(participantIds, payload.confirmations, userId),
       note: toStr(payload.note),
       createdBy: userId,
@@ -265,14 +287,17 @@ class MeetingService extends BaseService {
 
     const receivers = participantIds.filter((id) => id !== userId);
     if (receivers.length > 0) {
-      await notificationService.notifyUsers(receivers, {
-        title: 'Lịch họp mới',
-        message: `Bạn có lịch họp mới: ${title}`,
-        category: 'system',
-        type: 'system',
-        refId: created.id,
-        metadata: { meetingId: created.id, meetingAt, location },
-      });
+      // Fire-and-forget: Chạy ngầm, không block API
+      notificationService
+        .notifyUsers(receivers, {
+          title: 'Lịch họp mới',
+          message: `Bạn có lịch họp mới: ${title}`,
+          category: 'system',
+          type: 'system',
+          refId: created.id,
+          metadata: { meetingId: created.id, meetingAt, location },
+        })
+        .catch((err) => console.error('Lỗi khi gửi thông báo lịch họp:', err));
     }
 
     await auditLogsService.log({
@@ -310,7 +335,10 @@ class MeetingService extends BaseService {
     let participantIds: number[];
     if (payload.isAllParticipants !== undefined || payload.participantIds !== undefined) {
       if (isAll) {
-        const allUsers = await usersRepository.findAllAdvanced({ pageSize: 2000 });
+        const allUsers = await usersRepository.findAllAdvanced({
+          pageSize: 2000,
+          filter: { status: 'active' },
+        });
         participantIds = (allUsers.data || []).map((u: AnyRecord) => Number(u.id));
       } else {
         participantIds = await this.resolveParticipantIds(payload.participantIds, userId);
@@ -363,6 +391,9 @@ class MeetingService extends BaseService {
       endAt,
       participantIds,
       isAllParticipants: isAll,
+      ...(payload.visibility !== undefined
+        ? { visibility: payload.visibility === 'public' ? 'public' : 'private' }
+        : {}),
       confirmations: finalConfirmations,
       ...(payload.minutesContent !== undefined ? { minutesContent: toStr(payload.minutesContent) } : {}),
       ...(payload.chairpersonIds !== undefined ? { chairpersonIds: normalizeIds(payload.chairpersonIds) } : {}),

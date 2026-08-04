@@ -243,6 +243,7 @@ class MongoConnect implements DatabaseAdapter {
         { title: { $regex: options.q, $options: 'i' } },
         { description: { $regex: options.q, $options: 'i' } },
         { comment: { $regex: options.q, $options: 'i' } },
+        { studentId: { $regex: options.q, $options: 'i' } },
       ];
     }
 

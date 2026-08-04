@@ -141,12 +141,9 @@ class NotificationService extends BaseService {
     const uniqueUserIds = [
       ...new Set(userIds.map((id) => normalizeId(id)).filter((id) => id !== null && id !== undefined)),
     ];
-    const created = [];
 
-    for (const userId of uniqueUserIds) {
-      const item = await this.notifyUser(userId, payload, options);
-      created.push(item);
-    }
+    // Chạy song song để tối ưu hiệu năng
+    const created = await Promise.all(uniqueUserIds.map((userId) => this.notifyUser(userId, payload, options)));
 
     return created;
   }

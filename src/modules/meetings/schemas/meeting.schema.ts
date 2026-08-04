@@ -50,6 +50,14 @@ export default defineSchema({
     required: false,
     default: false,
   },
+  visibility: {
+    type: 'enum',
+    description:
+      'Phạm vi hiển thị lịch họp (public: công khai toàn đội, members: chỉ thành viên, private: chỉ người được mời).',
+    enum: ['public', 'members', 'private'],
+    required: false,
+    default: 'private',
+  },
   confirmations: {
     type: 'array',
     description: 'Danh sách phản hồi chi tiết của các thành viên.',
