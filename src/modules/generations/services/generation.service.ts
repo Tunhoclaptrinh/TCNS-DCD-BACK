@@ -92,13 +92,14 @@ class GenerationService extends BaseService {
   async syncUsersToAlumni(id: Identifier) {
     await db.updateMany(
       'users',
-      { generationId: id, status: 'active' },
+      { generationId: id, isAlumni: { $ne: true }, status: { $ne: 'dismissed' } },
       {
+        isAlumni: true,
+        isActive: false,
         status: 'inactive',
-        isActive: false, // Also deactivate account when moving to alumni
       },
     );
-    logger.info(`Automatically moved members of generation ${id} to alumni status and deactivated their accounts`);
+    logger.info(`Automatically moved members of generation ${id} to alumni status`);
   }
 
   async ensureOnlyOneCurrent(currentId: Identifier) {

@@ -36,6 +36,7 @@ type UserRecord = {
 type UserStatItem = {
   total: number;
   active: number;
+  locked: number;
   inactive: number;
   dismissed: number;
   ctv: number;
@@ -56,6 +57,7 @@ function createUserStatItem(): UserStatItem {
   return {
     total: 0,
     active: 0,
+    locked: 0,
     inactive: 0,
     dismissed: 0,
     ctv: 0,
@@ -83,9 +85,16 @@ function processUserStats(item: UserStatItem, user: any, weekAgo: Date) {
     }
   } else if (user.status === 'inactive') {
     item.inactive++;
-    item.alumni++;
   } else if (user.status === 'dismissed') {
     item.dismissed++;
+  }
+
+  if (user.isActive === false) {
+    item.locked++;
+  }
+
+  if (user.isAlumni) {
+    item.alumni++;
   }
 
   // Management stats: dt, tb, pb
@@ -385,8 +394,22 @@ class UserService extends BaseService {
     };
   }
 
-  async getUserStats() {
-    const users = (await this.repository.findAll()) as UserRecord[];
+  async getUserStats(filters: Record<string, any> = {}) {
+    const query: any = {};
+    if (filters.generationId) {
+      query.generationId = isNaN(Number(filters.generationId)) ? filters.generationId : Number(filters.generationId);
+    }
+    if (filters.isAlumni !== undefined) {
+      query.isAlumni = filters.isAlumni === 'true' || filters.isAlumni === true;
+    }
+    if (filters.isAlumni_ne !== undefined) {
+      query.isAlumni = { $ne: filters.isAlumni_ne === 'true' || filters.isAlumni_ne === true };
+    }
+    if (filters.status) {
+      query.status = filters.status;
+    }
+
+    const users = (await this.repository.findMany(query)) as UserRecord[];
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
 
@@ -426,13 +449,6 @@ class UserService extends BaseService {
     const updateData: AnyRecord = {
       isActive: newIsActive,
     };
-
-    // Unify status: Alumni <=> Inactive
-    if (newIsActive && user.status === 'inactive') {
-      updateData.status = 'active';
-    } else if (!newIsActive && user.status === 'active') {
-      updateData.status = 'inactive';
-    }
 
     const updated = await this.repository.update(userId, updateData);
 
@@ -586,7 +602,7 @@ class UserService extends BaseService {
 
     const users = await db.findMany('users', {
       generationId: { $in: inactiveGenIds },
-      status: 'active',
+      $or: [{ isAlumni: false }, { isAlumni: { $exists: false } }],
     });
 
     return users;
@@ -599,8 +615,9 @@ class UserService extends BaseService {
       // Sync only specific users
       for (const id of userIds) {
         await this.repository.update(id, {
-          status: 'inactive',
+          isAlumni: true,
           isActive: false,
+          status: 'inactive',
         });
         count++;
       }
@@ -611,13 +628,14 @@ class UserService extends BaseService {
 
       const users = await this.repository.findAll();
       for (const user of users) {
-        const isCurrentlyActive = user.status === 'active';
         const shouldBeActive = user.generationId && activeGenIds.has(user.generationId);
-
-        if (isCurrentlyActive && !shouldBeActive) {
+        // Skip already alumni, or if their position dictates they should remain active
+        // Also skip dismissed users
+        if (!user.isAlumni && !shouldBeActive && user.status !== 'dismissed') {
           await this.repository.update(user.id, {
-            status: 'inactive',
+            isAlumni: true,
             isActive: false,
+            status: 'inactive',
           });
           count++;
         }

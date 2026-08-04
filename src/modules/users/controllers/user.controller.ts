@@ -118,8 +118,8 @@ class UserController extends BaseController {
     this.ok(res, result);
   });
 
-  getUserStats = this.handle(async (_req, res) => {
-    const data = await this.service.getUserStats();
+  getUserStats = this.handle(async (req, res) => {
+    const data = await this.service.getUserStats(req.query);
     this.ok(res, data);
   });
 

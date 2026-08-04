@@ -12,6 +12,12 @@ export const userStatusFields = {
     default: true,
     label: 'Đang hoạt động',
   },
+  isAlumni: {
+    type: 'boolean' as const,
+    required: false,
+    default: false,
+    label: 'Cựu thành viên',
+  },
   expelled: {
     type: 'boolean' as const,
     required: false,
