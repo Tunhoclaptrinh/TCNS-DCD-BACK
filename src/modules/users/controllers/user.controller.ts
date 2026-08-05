@@ -7,6 +7,54 @@ import BaseController from '@shared/common/base-controller';
 import ApiError from '@utils/api-error';
 import type { AnyRecord } from '@app-types/common';
 
+function sanitizeStats(stats: any, user: any, permissions: string[]) {
+  const isSuperAdmin = permissions.includes('*');
+  const hasFullStatsPermission =
+    isSuperAdmin ||
+    permissions.includes('users:view_stats:full') ||
+    permissions.includes('users:list:all') ||
+    permissions.includes('users:update:org') ||
+    ['tb', 'pb', 'dt'].includes(user?.position);
+
+  if (hasFullStatsPermission) return stats;
+
+  const isCTV = user?.position === 'ctv';
+
+  const sanitizeItem = (item: any) => {
+    if (!item) return item;
+    const clean = { ...item };
+    // Always hide sensitive information for non-managers
+    clean.alumni = 0;
+    clean.locked = 0;
+    clean.inactive = 0;
+    clean.dismissed = 0;
+    clean.total = clean.active || 0;
+
+    if (isCTV) {
+      clean.official = 0;
+      clean.management = 0;
+      clean.byRole = {};
+      if (clean.byPosition) {
+        clean.byPosition = { ctv: clean.byPosition.ctv || 0 };
+      }
+    }
+    return clean;
+  };
+
+  const cleanStats = {
+    global: sanitizeItem(stats.global),
+    byDepartment: {} as Record<string, any>,
+  };
+
+  if (stats.byDepartment) {
+    for (const [dept, item] of Object.entries(stats.byDepartment)) {
+      cleanStats.byDepartment[dept] = sanitizeItem(item);
+    }
+  }
+
+  return cleanStats;
+}
+
 class UserController extends BaseController {
   constructor() {
     super(userService);
@@ -57,12 +105,18 @@ class UserController extends BaseController {
 
     const query = { ...req.parsedQuery };
 
-    if (!canReadAll && canReadDept) {
-      // Force filter by actor's department
-      query.where = {
-        ...(query.where || {}),
-        department: req.user.department,
+    // Handle special 'others' tab filter (Dismissed, Locked, Expelled, or No Position)
+    if (query.filter?.tab === 'others') {
+      delete query.filter.tab;
+      query.filter = {
+        ...(query.filter || {}),
+        $or: [{ status: { $in: ['dismissed', 'locked'] } }, { expelled: true }, { position: { $in: [null, ''] } }],
       };
+    }
+
+    // Strict rule: if the user's position is CTV, they can ONLY see CTVs, regardless of other permissions
+    if (req.user.position === 'ctv') {
+      query.filter = { ...(query.filter || {}), position: 'ctv' };
     }
 
     const result = await this.service.findAll(query);
@@ -119,8 +173,11 @@ class UserController extends BaseController {
   });
 
   getUserStats = this.handle(async (req, res) => {
-    const data = await this.service.getUserStats(req.query);
-    this.ok(res, data);
+    const actorPermissions = req.user?.permissions || [];
+    const query = { ...(req.query as Record<string, any>) };
+    const data = await this.service.getUserStats(query);
+    const sanitized = sanitizeStats(data, req.user, actorPermissions);
+    this.ok(res, sanitized);
   });
 
   getMeStats = this.handle(async (req, res) => {

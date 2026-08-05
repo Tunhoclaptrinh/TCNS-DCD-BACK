@@ -23,7 +23,7 @@ type SerializableRecord = AnyRecord & {
   _doc?: AnyRecord;
 };
 
-const PRIVILEGED_ROLES = new Set(['admin', 'staff', 'researcher']);
+const PRIVILEGED_ROLES = new Set(['admin', 'ns_leader', 'ns_sub_leader', 'ns_specialist']);
 
 function normalizeNumericId(value: Identifier | null | undefined) {
   if (value === null || value === undefined || value === '') {

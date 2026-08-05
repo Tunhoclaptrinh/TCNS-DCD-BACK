@@ -76,36 +76,58 @@ function createUserStatItem(): UserStatItem {
 function processUserStats(item: UserStatItem, user: any, weekAgo: Date) {
   item.total++;
 
-  // Status-based stats
-  if (user.status === 'active') {
+  const isAlumni = Boolean(user.isAlumni);
+  const isLocked = user.isActive === false;
+  const isDismissed = user.status === 'dismissed';
+  const isInactive = user.status === 'inactive';
+  const isActive = !isAlumni && !isLocked && !isDismissed && !isInactive;
+
+  if (isAlumni) {
+    item.alumni++;
+  }
+  if (isLocked) {
+    item.locked++;
+  }
+  if (isDismissed) {
+    item.dismissed++;
+  } else if (isInactive) {
+    item.inactive++;
+  }
+
+  if (isActive) {
     item.active++;
-    // Only 'ctv' is considered collaborator, others are official members
     if (user.position === 'ctv') {
       item.ctv++;
     } else {
       item.official++;
     }
-  } else if (user.status === 'inactive') {
-    item.inactive++;
-  } else if (user.status === 'dismissed') {
-    item.dismissed++;
+
+    // Ban quản lý (Active management positions/roles: Đội trưởng, Trưởng ban, Phó ban, Thành viên ban)
+    const mgmtPositions = [
+      'dt',
+      'tb',
+      'pb',
+      'tvb',
+      'ns_leader',
+      'ns_sub_leader',
+      'tc_leader',
+      'tc_sub_leader',
+      'tt_leader',
+      'tt_sub_leader',
+      'other_leader',
+      'other_sub_leader',
+    ];
+    const userRole = user.role || '';
+    const isManagement =
+      mgmtPositions.includes(user.position) || mgmtPositions.includes(userRole) || userRole === 'admin';
+    if (isManagement) {
+      item.management++;
+    }
   }
 
-  if (user.isActive === false) {
-    item.locked++;
+  if (user.createdAt && new Date(user.createdAt) >= weekAgo) {
+    item.recentSignups++;
   }
-
-  if (user.isAlumni) {
-    item.alumni++;
-  }
-
-  // Management stats: dt, tb, pb
-  const isManagement = ['dt', 'tb', 'pb'].includes(user.position);
-  if (isManagement) {
-    item.management++;
-  }
-
-  if (user.createdAt && new Date(user.createdAt) >= weekAgo) item.recentSignups++;
 
   if (user.position) {
     item.byPosition[user.position] = (item.byPosition[user.position] || 0) + 1;
@@ -481,11 +503,20 @@ class UserService extends BaseService {
       'đội trưởng': 'dt',
       dt: 'dt',
     };
-    if (data.position) {
-      const key = String(data.position).toLowerCase().trim();
-      const mapped = POSITION_MAP[key];
-      if (mapped) data.position = mapped;
-      // else: leave as-is and let schema validation report the error
+    if (!data.position || String(data.position).trim() === '') {
+      throw new Error(
+        `Cột 'Hạng/Chức vụ' (position) là bắt buộc khi nhập file Excel. Vui lòng điền Chức vụ hợp lệ (ví dụ: Cộng tác viên, Thành viên, Thành viên ban, Phó ban, Trưởng ban, Đội trưởng).`,
+      );
+    }
+
+    const key = String(data.position).toLowerCase().trim();
+    const mapped = POSITION_MAP[key];
+    if (mapped) {
+      data.position = mapped;
+    } else {
+      throw new Error(
+        `Giá trị '${data.position}' ở cột 'Hạng/Chức vụ' không hợp lệ. Các giá trị hợp lệ: Cộng tác viên, Thành viên, Thành viên ban, Phó ban, Trưởng ban, Đội trưởng.`,
+      );
     }
 
     // ─── GENERATION ID ─── check numeric ID first, then Name, then flexible digits

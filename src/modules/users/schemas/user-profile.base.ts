@@ -4,7 +4,7 @@ export const userProfileFields = {
     required: true,
     minLength: 2,
     maxLength: 100,
-    label: 'Họ và tên',
+    label: 'Tên đầy đủ',
   },
   lastName: {
     type: 'string' as const,

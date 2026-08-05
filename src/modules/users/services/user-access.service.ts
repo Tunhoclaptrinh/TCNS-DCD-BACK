@@ -2,7 +2,15 @@ import ApiError from '@utils/api-error';
 import type { Identifier } from '@app-types/common';
 import db from '@database/mongo-database.adapter';
 
-const CAN_READ_OTHERS_ROLES = new Set(['admin', 'staff', 'researcher']);
+const CAN_READ_OTHERS_ROLES = new Set([
+  'admin',
+  'ns_leader',
+  'ns_sub_leader',
+  'ns_specialist',
+  'tc_leader',
+  'tt_leader',
+  'other_leader',
+]);
 
 const POSITION_LEVELS: Record<string, number> = {
   ctv: 0, // Cộng tác viên
@@ -25,25 +33,35 @@ class UserAccessService {
   async computePermissions(user: any) {
     if (!user) return [];
 
-    // 1. Get permissions from all roles
+    // 1. Get permissions dynamically from roles defined in DB
     let roleIds = Array.isArray(user.roleIds) ? user.roleIds : [];
+    let roles: any[] = [];
+    if (roleIds.length > 0) {
+      roles = await db.findMany('roles', { id_in: roleIds });
+    }
 
-    const roles = await db.findMany('roles', { id_in: roleIds });
+    if (roles.length === 0) {
+      const keysToSearch = [user.role, user.position].filter(Boolean);
+      if (keysToSearch.length > 0) {
+        roles = await db.findMany('roles', { key_in: keysToSearch });
+      }
+    }
 
     const permissionSet = new Set<string>();
     roles.forEach((role: any) => {
       if (Array.isArray(role.permissions)) {
         role.permissions.forEach((p: string) => {
-          if (p === '*') {
-            // If it's a super-admin role, we might want to expand all permissions
-            // or just keep it as '*' and handle it in rbac middleware.
-            permissionSet.add('*');
-          } else {
-            permissionSet.add(p);
-          }
+          permissionSet.add(p);
         });
       }
     });
+
+    // Ensure all active members/CTVs have basic view_stats and duty permissions
+    if (user.position || ['member', 'ctv'].includes(user.role)) {
+      permissionSet.add('users:view_stats');
+      permissionSet.add('users:list:dept');
+      permissionSet.add('duty:view');
+    }
 
     // 2. Add extra permissions
     const extra = user.customPermissions?.extra || [];
@@ -75,6 +93,10 @@ class UserAccessService {
   assertCanReadProfile(actor: any, target: any) {
     if (actor.id === this.normalizeTargetId(target.id)) return;
 
+    if (actor.position === 'ctv' && target.position !== 'ctv') {
+      throw ApiError.forbidden('Cộng tác viên chỉ có quyền xem thông tin của Cộng tác viên');
+    }
+
     const canReadAll = this.canReadOtherProfiles(actor);
     if (canReadAll) return;
 
@@ -85,7 +107,7 @@ class UserAccessService {
   }
 
   assertNotSelfAction(
-    actor,
+    actor: any,
     targetId: Identifier,
     message = 'Không thể thực hiện thao tác này trên chính tài khoản của bạn',
   ) {

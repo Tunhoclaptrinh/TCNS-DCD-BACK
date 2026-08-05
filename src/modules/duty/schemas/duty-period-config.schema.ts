@@ -42,6 +42,23 @@ export default defineSchema({
     required: false,
     default: true,
   },
+  note: {
+    type: 'string',
+    required: false,
+    description: 'Ghi chú tuần',
+  },
+  penaltyAbsentNoPermission: {
+    type: 'number',
+    required: false,
+  },
+  penaltyAbsentWithPermissionLate: {
+    type: 'number',
+    required: false,
+  },
+  penaltyLate: {
+    type: 'number',
+    required: false,
+  },
   updatedAt: {
     type: 'date',
     required: false,

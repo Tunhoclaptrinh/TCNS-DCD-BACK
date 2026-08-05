@@ -40,7 +40,8 @@ const PERMISSIONS = [
   // Thành viên
   { key: 'users:list:all', name: 'Xem danh sách toàn bộ thành viên', module: 'users' },
   { key: 'users:list:dept', name: 'Xem danh sách thành viên trong Ban', module: 'users' },
-  { key: 'users:view_stats', name: 'Xem thống kê nhân sự', module: 'users' },
+  { key: 'users:view_stats', name: 'Xem thống kê nhân sự cơ bản', module: 'users' },
+  { key: 'users:view_stats:full', name: 'Xem thống kê nhân sự đầy đủ (Gồm dữ liệu nhạy cảm)', module: 'users' },
   { key: 'users:read:all', name: 'Xem chi tiết bất kỳ thành viên nào', module: 'users' },
   { key: 'users:read:self', name: 'Xem hồ sơ chi tiết (Cá nhân)', module: 'users' },
   { key: 'users:create', name: 'Thêm mới thành viên', module: 'users' },
@@ -481,6 +482,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
   ],
   member: [
     'users:list:dept',
+    'users:view_stats',
     'users:read:self',
     'users:update:profile',
     'duty:view',
@@ -496,6 +498,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
   ],
   ctv: [
     'users:list:dept',
+    'users:view_stats',
     'users:read:self',
     'users:update:profile',
     'duty:view',

@@ -252,8 +252,10 @@ class MongoConnect implements DatabaseAdapter {
     }
 
     const page = parseInt(String(options.page || options._page || 1), 10) || 1;
-    const limit = parseInt(String(options.limit || options._limit || 10), 10) || 10;
-    const skip = (page - 1) * limit;
+    const rawLimit = parseInt(String(options.limit || options._limit || 10), 10);
+    const isUnlimited = rawLimit === -1 || rawLimit === 0;
+    const limit = isUnlimited ? 0 : rawLimit || 10;
+    const skip = isUnlimited ? 0 : (page - 1) * limit;
 
     let queryBuilder = Model.find(query);
 
@@ -283,10 +285,12 @@ class MongoConnect implements DatabaseAdapter {
       }
     }
 
-    const [data, total] = await Promise.all([
-      queryBuilder.skip(skip).limit(limit).lean().exec(),
-      Model.countDocuments(query),
-    ]);
+    let dataQuery = queryBuilder;
+    if (!isUnlimited) {
+      dataQuery = dataQuery.skip(skip).limit(limit);
+    }
+
+    const [data, total] = await Promise.all([dataQuery.lean().exec(), Model.countDocuments(query)]);
 
     return {
       success: true,
