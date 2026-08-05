@@ -80,7 +80,9 @@ function processUserStats(item: UserStatItem, user: any, weekAgo: Date) {
   const isLocked = user.isActive === false;
   const isDismissed = user.status === 'dismissed';
   const isInactive = user.status === 'inactive';
-  const isActive = !isAlumni && !isLocked && !isDismissed && !isInactive;
+  // 'active' reflects membership status only — account lock (isActive) is tracked separately.
+  // A member can be active in the club but have their login account disabled.
+  const isActive = !isAlumni && user.status === 'active';
 
   if (isAlumni) {
     item.alumni++;
@@ -98,7 +100,9 @@ function processUserStats(item: UserStatItem, user: any, weekAgo: Date) {
     item.active++;
     if (user.position === 'ctv') {
       item.ctv++;
-    } else {
+    } else if (user.position) {
+      // Only count as official if they have an explicit position set (not null/undefined)
+      // Members with no position fall into the 'others' tab and are counted in active but not official
       item.official++;
     }
 
