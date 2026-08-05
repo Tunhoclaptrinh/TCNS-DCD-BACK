@@ -1,4 +1,5 @@
 import dutySlotsRepository from '@modules/duty/repositories/duty-slots.repository';
+import db from '@database/mongo-database.adapter';
 import ExcelJS from 'exceljs';
 import dutyDaysRepository from '@modules/duty/repositories/duty-days.repository';
 import dutyKipsRepository from '@modules/duty/repositories/duty-kips.repository';
@@ -857,9 +858,31 @@ class DutySlotsService {
       throw ApiError.badRequest('Bạn không có lịch trực trong kíp này');
     }
 
-    // 1. Check IP
-    const settings = await dutySettingsService.getSettings();
-    if (settings.allowedIpRanges && !isIpAllowed(ip, settings.allowedIpRanges)) {
+    // 1. Check IP (Check system_settings first, fallback to duty_settings)
+    let allowedIpRanges: string[] = [];
+    const SystemSettingModel = (db as any).getModel('system_settings');
+    if (SystemSettingModel) {
+      const ipDoc = await SystemSettingModel.findOne({ key: 'ALLOWED_IP_RANGES' }).lean();
+      if (ipDoc && ipDoc.value) {
+        allowedIpRanges = String(ipDoc.value)
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+    }
+    if (allowedIpRanges.length === 0) {
+      const settings = await dutySettingsService.getSettings();
+      allowedIpRanges = Array.isArray(settings.allowedIpRanges)
+        ? settings.allowedIpRanges
+        : typeof settings.allowedIpRanges === 'string'
+          ? (settings.allowedIpRanges as string)
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : [];
+    }
+
+    if (allowedIpRanges.length > 0 && !isIpAllowed(ip, allowedIpRanges)) {
       throw ApiError.badRequest(`Địa chỉ mạng (${ip}) không hợp lệ để điểm danh tại văn phòng.`);
     }
 

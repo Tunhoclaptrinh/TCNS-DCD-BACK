@@ -1,4 +1,5 @@
 import BaseService from '@shared/common/base-service';
+import db from '@database/mongo-database.adapter';
 import dutySettingsRepository from '@modules/duty/repositories/duty-settings.repository';
 import { GenericRecord } from './duty-utils';
 
@@ -22,13 +23,35 @@ class DutySettingsService extends BaseService {
       penaltyAbsentNoPermission: 50000,
       penaltyAbsentWithPermissionLate: 20000,
       penaltyLate: 10000,
+      isPrivacyMode: false,
+      violationPenaltyRate: 0,
       allowedIpRanges: [] as string[],
       updatedAt: new Date().toISOString(),
     };
 
-    if (!settings) return defaults;
-    const plainSettings = typeof (settings as any).toObject === 'function' ? (settings as any).toObject() : settings;
-    return { ...defaults, ...plainSettings };
+    let result = defaults;
+    if (settings) {
+      const plainSettings = typeof (settings as any).toObject === 'function' ? (settings as any).toObject() : settings;
+      result = { ...defaults, ...plainSettings };
+    }
+
+    // Merge ALLOWED_IP_RANGES from system_settings if present
+    try {
+      const SystemSettingModel = (db as any).getModel('system_settings');
+      if (SystemSettingModel) {
+        const ipDoc = await SystemSettingModel.findOne({ key: 'ALLOWED_IP_RANGES' }).lean();
+        if (ipDoc && ipDoc.value) {
+          result.allowedIpRanges = String(ipDoc.value)
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean);
+        }
+      }
+    } catch {
+      // Ignore system_settings lookup error
+    }
+
+    return result;
   }
 
   /**
@@ -56,6 +79,29 @@ class DutySettingsService extends BaseService {
 
   private async processSettingsPayload(data: GenericRecord, _id?: any) {
     const settings = await dutySettingsRepository.getGlobalSettings();
+    const parsedIpRanges = Array.isArray(data.allowedIpRanges)
+      ? data.allowedIpRanges
+      : typeof data.allowedIpRanges === 'string'
+        ? data.allowedIpRanges
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
+
+    // Sync to system_settings as ALLOWED_IP_RANGES
+    try {
+      const SystemSettingModel = (db as any).getModel('system_settings');
+      if (SystemSettingModel && data.hasOwnProperty('allowedIpRanges')) {
+        await SystemSettingModel.findOneAndUpdate(
+          { key: 'ALLOWED_IP_RANGES' },
+          { value: parsedIpRanges.join(', ') },
+          { upsert: true, new: true },
+        );
+      }
+    } catch {
+      // Ignore system_settings write error
+    }
+
     const payload = {
       weeklyLimitEnabled: data.hasOwnProperty('weeklyLimitEnabled')
         ? data.weeklyLimitEnabled === true || data.weeklyLimitEnabled === 'true'
@@ -70,14 +116,7 @@ class DutySettingsService extends BaseService {
       penaltyAbsentNoPermission: Number(data.penaltyAbsentNoPermission) || 50000,
       penaltyAbsentWithPermissionLate: Number(data.penaltyAbsentWithPermissionLate) || 20000,
       penaltyLate: Number(data.penaltyLate) || 10000,
-      allowedIpRanges: Array.isArray(data.allowedIpRanges)
-        ? data.allowedIpRanges
-        : typeof data.allowedIpRanges === 'string'
-          ? data.allowedIpRanges
-              .split(',')
-              .map((s) => s.trim())
-              .filter(Boolean)
-          : [],
+      allowedIpRanges: parsedIpRanges,
       updatedAt: new Date().toISOString(),
     };
     return payload;

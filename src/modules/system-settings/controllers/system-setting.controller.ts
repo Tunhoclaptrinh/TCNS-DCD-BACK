@@ -8,6 +8,15 @@ class SystemSettingController extends BaseController {
     super(new BaseService('system_settings'));
   }
 
+  getAll = this.handle(async (_req: Request, res: Response) => {
+    const Model = (db as any).getModel('system_settings');
+    if (!Model) {
+      return this.ok(res, []);
+    }
+    const docs = await Model.find({}).lean();
+    this.ok(res, docs);
+  });
+
   // Bulk update settings by key
   bulkUpdateSettings = this.handle(async (req: Request, res: Response) => {
     const settings = req.body;
@@ -17,14 +26,35 @@ class SystemSettingController extends BaseController {
       return res.status(500).json({ message: 'Model not found' });
     }
 
-    const updates = [];
-    for (const [key, value] of Object.entries(settings)) {
-      updates.push(
-        Model.findOneAndUpdate({ key }, { value: String(value), updatedBy: req.user?.id }, { upsert: true, new: true }),
-      );
-    }
+    // Mapping for camelCase body keys to original uppercase setting keys
+    const keyMap: Record<string, string> = {
+      defaultImportPasswordStrategy: 'DEFAULT_IMPORT_PASSWORD_STRATEGY',
+      defaultimportpasswordstrategy: 'DEFAULT_IMPORT_PASSWORD_STRATEGY',
+      defaultImportPassword: 'DEFAULT_IMPORT_PASSWORD',
+      defaultimportpassword: 'DEFAULT_IMPORT_PASSWORD',
+      allowedIpRanges: 'ALLOWED_IP_RANGES',
+      allowedipranges: 'ALLOWED_IP_RANGES',
+    };
 
-    await Promise.all(updates);
+    for (const [rawKey, value] of Object.entries(settings)) {
+      const dbKey = keyMap[rawKey] || keyMap[rawKey.toLowerCase()] || rawKey;
+      const existing = await Model.findOne({ key: dbKey });
+
+      if (existing) {
+        existing.value = String(value ?? '');
+        existing.updatedBy = req.user?.id;
+        await existing.save();
+      } else {
+        const nextId = await db.getNextId('system_settings');
+        await Model.create({
+          id: nextId,
+          key: dbKey,
+          value: String(value ?? ''),
+          type: 'string',
+          updatedBy: req.user?.id,
+        });
+      }
+    }
 
     this.ok(res, { success: true, message: 'Settings updated successfully' });
   });
