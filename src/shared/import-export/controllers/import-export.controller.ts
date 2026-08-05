@@ -34,7 +34,20 @@ class ImportExportController extends BaseController {
   exportData = this.handle(async (req, res) => {
     const { entity } = req.params;
     const format = this.getFormat(req.query.format);
-    const options = { ...req.query, ...req.parsedQuery };
+
+    // Extract query params carefully; req.query._limit = '-1' or '0' means unlimited
+    const queryParams: Record<string, any> = { ...req.query };
+    const parsedParams: Record<string, any> = req.parsedQuery ? { ...req.parsedQuery } : {};
+
+    if (queryParams._limit !== undefined) {
+      const parsedLimit = Number(queryParams._limit);
+      parsedParams.limit = parsedLimit;
+    }
+    if (queryParams._page !== undefined) {
+      parsedParams.page = Number(queryParams._page);
+    }
+
+    const options = { ...parsedParams, format };
     const buffer = await importExportService.exportData(entity, format, options);
 
     const contentType =
