@@ -704,15 +704,33 @@ class UserService extends BaseService {
     const query: any = {};
     if (filters.generationId) {
       query.generationId = isNaN(Number(filters.generationId)) ? filters.generationId : Number(filters.generationId);
+    } else if (filters.generationId_in) {
+      const raw = Array.isArray(filters.generationId_in)
+        ? filters.generationId_in
+        : String(filters.generationId_in).split(',');
+      const ids = raw.map((id: any) => (isNaN(Number(id)) ? id : Number(id))).filter(Boolean);
+      if (ids.length > 0) {
+        query.generationId_in = ids;
+      }
     }
+
     if (filters.isAlumni !== undefined) {
       query.isAlumni = filters.isAlumni === 'true' || filters.isAlumni === true;
     }
     if (filters.isAlumni_ne !== undefined) {
-      query.isAlumni = { $ne: filters.isAlumni_ne === 'true' || filters.isAlumni_ne === true };
+      query.isAlumni_ne = filters.isAlumni_ne === 'true' || filters.isAlumni_ne === true;
     }
     if (filters.status) {
       query.status = filters.status;
+    }
+    if (filters.status_ne) {
+      query.status_ne = filters.status_ne;
+    }
+    if (filters.department) {
+      query.department = filters.department;
+    }
+    if (filters.position) {
+      query.position = filters.position;
     }
 
     const users = (await this.repository.findMany(query)) as UserRecord[];
