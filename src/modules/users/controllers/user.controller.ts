@@ -140,20 +140,26 @@ class UserController extends BaseController {
   });
 
   update = this.handle(async (req, res) => {
-    // Prevent self-update via admin endpoint if it contains sensitive fields
+    // Fetch target user
+    const targetUserResult = await this.service.findById(req.params.id);
+    if (!targetUserResult.success || !targetUserResult.data) {
+      throw ApiError.notFound('Không tìm thấy người dùng mục tiêu');
+    }
+    const existingUser = targetUserResult.data as AnyRecord;
+
+    // Prevent self-update via admin endpoint if sensitive fields are modified
     if (req.params.id === String(req.user.id)) {
       const sensitiveFields = ['position', 'department', 'role', 'isActive', 'status'];
-      const hasSensitive = sensitiveFields.some((f) => req.body[f] !== undefined);
-      if (hasSensitive) {
+      const hasSensitiveChange = sensitiveFields.some((f) => {
+        if (req.body[f] === undefined) return false;
+        return String(req.body[f] ?? '') !== String(existingUser[f] ?? '');
+      });
+      if (hasSensitiveChange) {
         throw ApiError.badRequest('Không thể tự cập nhật chức vụ hoặc trạng thái của bản thân');
       }
     } else {
       // Hierarchy check for others
-      const targetUserResult = await this.service.findById(req.params.id);
-      if (!targetUserResult.success) {
-        throw ApiError.notFound('Không tìm thấy người dùng mục tiêu');
-      }
-      userAccessService.assertAuthority(req.user, targetUserResult.data, req.body.position);
+      userAccessService.assertAuthority(req.user, existingUser, req.body.position);
     }
 
     const data = await userAvatarService.updateUserWithAvatar(
