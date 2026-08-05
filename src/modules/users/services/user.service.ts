@@ -702,36 +702,23 @@ class UserService extends BaseService {
 
   async getUserStats(filters: Record<string, any> = {}) {
     const query: any = {};
-    if (filters.generationId) {
-      query.generationId = isNaN(Number(filters.generationId)) ? filters.generationId : Number(filters.generationId);
-    } else if (filters.generationId_in) {
-      const raw = Array.isArray(filters.generationId_in)
-        ? filters.generationId_in
-        : String(filters.generationId_in).split(',');
-      const ids = raw.map((id: any) => (isNaN(Number(id)) ? id : Number(id))).filter(Boolean);
-      if (ids.length > 0) {
-        query.generationId_in = ids;
-      }
+
+    if (filters.generationId === 'active_generations') {
+      // Resolve active generation IDs from the source of truth
+      const activeGens = await generationsRepository.findMany({ isActive: true });
+      const activeGenIds = activeGens.map((g: any) => Number(g.id ?? g._id)).filter(Boolean);
+      if (activeGenIds.length > 0) query.generationId_in = activeGenIds;
+    } else if (filters.generationId) {
+      query.generationId = Number(filters.generationId) || filters.generationId;
     }
 
     if (filters.isAlumni !== undefined) {
       query.isAlumni = filters.isAlumni === 'true' || filters.isAlumni === true;
     }
-    if (filters.isAlumni_ne !== undefined) {
-      query.isAlumni_ne = filters.isAlumni_ne === 'true' || filters.isAlumni_ne === true;
-    }
-    if (filters.status) {
-      query.status = filters.status;
-    }
-    if (filters.status_ne) {
-      query.status_ne = filters.status_ne;
-    }
-    if (filters.department) {
-      query.department = filters.department;
-    }
-    if (filters.position) {
-      query.position = filters.position;
-    }
+    if (filters.status) query.status = filters.status;
+    if (filters.status_ne) query.status_ne = filters.status_ne;
+    if (filters.department) query.department = filters.department;
+    if (filters.position) query.position = filters.position;
 
     const users = (await this.repository.findMany(query)) as UserRecord[];
     const weekAgo = new Date();
@@ -752,6 +739,10 @@ class UserService extends BaseService {
         processUserStats(stats.byDepartment[user.department], user, weekAgo);
       }
     }
+
+    // Active generations count always comes from the generations table (source of truth)
+    const allGenerations = await generationsRepository.findAll();
+    (stats.global as any).activeGenerations = allGenerations.filter((g: any) => g.isActive === true).length;
 
     return stats;
   }
