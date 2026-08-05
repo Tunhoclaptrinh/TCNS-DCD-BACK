@@ -4,7 +4,7 @@ import { requireAuth, requireRole } from '@middleware/auth.middleware';
 
 const router = express.Router();
 
-// Protected routes
+// Protected routes (any authenticated user)
 router.use(requireAuth);
 
 // Upload Avatar
@@ -13,10 +13,12 @@ router.post('/avatar', uploadController.getUploadMiddleware('avatar'), uploadCon
 // Upload General File
 router.post('/general', uploadController.getUploadMiddleware('general'), uploadController.uploadGeneralFile);
 
+// Delete file (any authenticated user can delete their own uploaded file)
+router.delete('/file', uploadController.deleteFile);
+
 // Management (Admin only)
 router.use(requireRole('admin'));
 
-router.delete('/file', uploadController.deleteFile);
 router.get('/file/info', uploadController.getFileInfo);
 router.get('/stats', uploadController.getStorageStats);
 router.post('/cleanup', uploadController.cleanupOldFiles);
