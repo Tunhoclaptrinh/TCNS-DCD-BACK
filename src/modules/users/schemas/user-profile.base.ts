@@ -94,4 +94,19 @@ export const userProfileFields = {
     label: 'Ảnh đại diện',
     hidden: true,
   },
+  facebook: {
+    type: 'string' as const,
+    required: false,
+    label: 'Link Facebook',
+  },
+  joinDate: {
+    type: 'date' as const,
+    required: false,
+    label: 'Ngày vào Đội',
+  },
+  note: {
+    type: 'string' as const,
+    required: false,
+    label: 'Ghi chú',
+  },
 };

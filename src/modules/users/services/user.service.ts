@@ -179,16 +179,22 @@ class UserService extends BaseService {
       }
 
       // ─── Date formatting: dd/mm/yyyy ───
-      if (exportItem.dob) {
-        try {
-          const date = new Date(exportItem.dob);
-          if (!isNaN(date.getTime())) {
-            const d = String(date.getDate()).padStart(2, '0');
-            const m = String(date.getMonth() + 1).padStart(2, '0');
-            const y = date.getFullYear();
-            exportItem.dob = `${d}/${m}/${y}`;
-          }
-        } catch (e) {}
+      ['dob', 'joinDate'].forEach((dateKey) => {
+        if (exportItem[dateKey]) {
+          try {
+            const date = new Date(exportItem[dateKey]);
+            if (!isNaN(date.getTime())) {
+              const d = String(date.getDate()).padStart(2, '0');
+              const m = String(date.getMonth() + 1).padStart(2, '0');
+              const y = date.getFullYear();
+              exportItem[dateKey] = `${d}/${m}/${y}`;
+            }
+          } catch (e) {}
+        }
+      });
+
+      if (!exportItem.note && exportItem.notes) {
+        exportItem.note = exportItem.notes;
       }
 
       return exportItem;

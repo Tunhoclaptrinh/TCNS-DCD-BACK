@@ -70,21 +70,40 @@ class ImportExportService {
    * Helper to map human-readable labels from Excel back to technical JSON keys
    */
   private mapLabelsToKeys(data: AnyRecord[], schema: SchemaDefinition) {
-    // Create label -> key map
+    // Dynamically build label -> key mapping purely from Schema Definition
     const labelToKey: Record<string, string> = {};
+
     Object.entries(schema).forEach(([key, rule]) => {
-      if (rule.label) {
-        labelToKey[rule.label] = key;
-      }
-      // Also keep the original key mapping in case user used technical names
+      // 1. Technical key itself
       labelToKey[key] = key;
+
+      // 2. Base key if it ends with Id or Ids (e.g. generationId -> generation)
+      const baseKey = key.replace(/(Ids|Id)$/, '');
+      if (baseKey !== key) {
+        labelToKey[baseKey] = key;
+      }
+
+      // 3. Human readable label defined in Schema
+      if (rule.label) {
+        labelToKey[rule.label.trim()] = key;
+        labelToKey[rule.label.trim().toLowerCase()] = key;
+      }
     });
 
     return data.map((row) => {
       const mappedRow: AnyRecord = {};
       Object.entries(row).forEach(([header, value]) => {
-        const key = labelToKey[header.trim()] || header;
-        mappedRow[key] = value;
+        const trimmedHeader = header.trim();
+        const lowerHeader = trimmedHeader.toLowerCase();
+
+        // Match against exact label, technical key, base key, or lowercase label from Schema
+        const matchedKey =
+          labelToKey[trimmedHeader] ||
+          labelToKey[lowerHeader] ||
+          Object.keys(schema).find((k) => schema[k].label?.trim().toLowerCase() === lowerHeader) ||
+          trimmedHeader;
+
+        mappedRow[matchedKey] = value;
       });
       return mappedRow;
     });
@@ -263,13 +282,20 @@ class ImportExportService {
     }
 
     // Map data to use labels as headers and human-readable names for foreign keys & enums
-    const columns = options.columns ? (options.columns as string[]) : Object.keys(schema);
+    const rawColumns = options.columns ? (options.columns as string[]) : Object.keys(schema);
+    const keyAliasMap: Record<string, string> = {
+      generation: 'generationId',
+    };
+
     const mappedData = rawData.map((row) => {
       const mappedRow: AnyRecord = {};
-      columns.forEach((key) => {
+      rawColumns.forEach((rawColKey) => {
+        const key = keyAliasMap[rawColKey] || rawColKey;
         const rule = schema[key];
-        if (rule && !rule.hidden) {
-          const label = rule.label || key;
+        // Allow column if explicitly requested in options.columns or if not hidden in schema
+        const isRequested = Array.isArray(options.columns) && options.columns.includes(rawColKey);
+        if (!rule || isRequested || !rule.hidden) {
+          const label = rule?.label || rawColKey;
           const baseKey = key.replace(/(Ids|Id)$/, '');
 
           const nameVal =
@@ -279,7 +305,7 @@ class ImportExportService {
             row[`${baseKey}_names`] ||
             row[`${baseKey}Names`];
 
-          const rawVal = row[key];
+          const rawVal = row[key] !== undefined ? row[key] : row[rawColKey];
           const lowerVal = String(rawVal ?? '')
             .trim()
             .toLowerCase();

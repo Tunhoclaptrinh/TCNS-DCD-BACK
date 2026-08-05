@@ -47,6 +47,11 @@ class ImportExportController extends BaseController {
       parsedParams.page = Number(queryParams._page);
     }
 
+    if (queryParams.columns) {
+      parsedParams.columns =
+        typeof queryParams.columns === 'string' ? queryParams.columns.split(',') : queryParams.columns;
+    }
+
     const options = { ...parsedParams, format };
     const buffer = await importExportService.exportData(entity, format, options);
 

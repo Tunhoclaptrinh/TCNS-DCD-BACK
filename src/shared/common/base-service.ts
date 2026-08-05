@@ -319,19 +319,6 @@ class BaseService {
       data = await this.schemaService.enrichRelationFields(data);
     }
 
-    if (options.columns && Array.isArray(options.columns)) {
-      data = data.map((item) => {
-        const selected: AnyRecord = {};
-        for (const col of options.columns) {
-          selected[col] = item[col];
-          if (item[`${col}_name`]) {
-            selected[`${col}_name`] = item[`${col}_name`];
-          }
-        }
-        return selected;
-      });
-    }
-
     return data;
   }
 
