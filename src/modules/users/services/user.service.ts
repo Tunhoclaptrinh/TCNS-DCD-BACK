@@ -127,19 +127,19 @@ function processUserStats(item: UserStatItem, user: any, weekAgo: Date) {
     if (isManagement) {
       item.management++;
     }
+
+    // Track position/generation breakdown for ACTIVE members only — consistent with official/ctv/management
+    if (user.position) {
+      item.byPosition[user.position] = (item.byPosition[user.position] || 0) + 1;
+    }
+    if (user.generationId) {
+      const genId = String(user.generationId);
+      item.byGeneration[genId] = (item.byGeneration[genId] || 0) + 1;
+    }
   }
 
   if (user.createdAt && new Date(user.createdAt) >= weekAgo) {
     item.recentSignups++;
-  }
-
-  if (user.position) {
-    item.byPosition[user.position] = (item.byPosition[user.position] || 0) + 1;
-  }
-
-  if (user.generationId) {
-    const genId = String(user.generationId);
-    item.byGeneration[genId] = (item.byGeneration[genId] || 0) + 1;
   }
 }
 
