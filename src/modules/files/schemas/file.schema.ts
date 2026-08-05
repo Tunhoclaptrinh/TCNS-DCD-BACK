@@ -30,6 +30,7 @@ export default defineSchema({
 
   fileType: {
     type: 'enum',
+    enum: ['image', 'video', 'audio', 'document', 'file', 'csv', 'xlsx', 'xls', 'other'],
     default: 'file',
     required: false,
     label: 'Loại tập tin',

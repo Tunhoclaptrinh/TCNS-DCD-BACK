@@ -170,6 +170,7 @@ export function validateType(field: string, value: any, rule: SchemaRule) {
 
     case 'enum':
       // After normalizeImportRecord, value is already the canonical lowercase enum string.
+      if (!Array.isArray(rule.enum)) return null;
       return !rule.enum.includes(value) ? `${field} phải là một trong: ${rule.enum.join(', ')}` : null;
 
     case 'array':
