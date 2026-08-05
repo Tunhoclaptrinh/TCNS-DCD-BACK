@@ -10,7 +10,7 @@ export const userStatusFields = {
     type: 'boolean' as const,
     required: false,
     default: true,
-    label: 'Đang hoạt động',
+    label: 'Tài khoản kích hoạt',
   },
   isAlumni: {
     type: 'boolean' as const,
