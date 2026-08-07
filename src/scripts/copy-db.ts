@@ -89,14 +89,17 @@ async function main() {
       const indexes = await srcCol.indexes();
       const nonIdIndexes = indexes.filter((idx) => idx.name !== '_id_');
       if (nonIdIndexes.length > 0) {
-        const indexSpecs = nonIdIndexes.map((idx) => ({
-          key: idx.key,
-          name: idx.name,
-          unique: idx.unique,
-          sparse: idx.sparse,
-          expireAfterSeconds: idx.expireAfterSeconds,
-          background: true,
-        }));
+        const indexSpecs = nonIdIndexes.map((idx) => {
+          const spec: any = {
+            key: idx.key,
+            name: idx.name,
+            background: true,
+          };
+          if (idx.unique != null) spec.unique = idx.unique;
+          if (idx.sparse != null) spec.sparse = idx.sparse;
+          if (idx.expireAfterSeconds != null) spec.expireAfterSeconds = idx.expireAfterSeconds;
+          return spec;
+        });
         await tgtCol.createIndexes(indexSpecs as any).catch((err) => {
           console.warn(`   ⚠️  Lỗi tạo index cho [${colName}]: ${err.message}`);
         });

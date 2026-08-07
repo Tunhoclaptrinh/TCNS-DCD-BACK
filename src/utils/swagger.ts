@@ -1194,12 +1194,6 @@ const ROUTE_DOCS: Record<string, SwaggerRouteDoc> = {
     protected: true,
     permission: 'meetings:manage',
   },
-  'PATCH /meetings/{id}/rsvp': {
-    summary: 'Xác nhận tham gia họp',
-    description: 'Người dùng thực hiện xác nhận có tham gia họp hay không.',
-    protected: true,
-    requestBody: buildSchemaRefBody('MeetingRsvpRequest'),
-  },
 
   'GET /bonus-campaigns': {
     summary: 'Danh sách đợt cộng điểm',
@@ -1624,13 +1618,390 @@ function buildDefaultResponses(method: string, routePattern: string) {
   return {
     [successCode]: { description: successCode === 201 ? 'Tạo mới thành công' : 'Thành công' },
     400: { description: 'Dữ liệu không hợp lệ' },
+
+    'GET /users/me/stats': {
+      summary: 'Lấy thống kê cá nhân người dùng',
+      description: 'API tự động sinh để hỗ trợ frontend. Lấy thống kê cá nhân người dùng.',
+      protected: true,
+    },
+    'GET /users/public-search': {
+      summary: 'Tìm kiếm công khai người dùng',
+      description: 'API tự động sinh để hỗ trợ frontend. Tìm kiếm công khai người dùng.',
+      protected: true,
+    },
+    'PATCH /users/{id}': {
+      summary: 'Cập nhật dữ liệu',
+      description: 'API tự động sinh để hỗ trợ frontend. Cập nhật dữ liệu.',
+      protected: true,
+    },
+    'GET /users/potential-alumni': {
+      summary: 'Lấy danh sách người dùng sắp ra trường (Alumni tiềm năng)',
+      description: 'API tự động sinh để hỗ trợ frontend. Lấy danh sách người dùng sắp ra trường (Alumni tiềm năng).',
+      protected: true,
+    },
+    'POST /users/sync-alumni': {
+      summary: 'Đồng bộ trạng thái cựu sinh viên (Alumni)',
+      description: 'API tự động sinh để hỗ trợ frontend. Đồng bộ trạng thái cựu sinh viên (Alumni).',
+      protected: true,
+    },
+    'POST /users/validate-import': {
+      summary: 'Kiểm tra tính hợp lệ của file import người dùng',
+      description: 'API tự động sinh để hỗ trợ frontend. Kiểm tra tính hợp lệ của file import người dùng.',
+      protected: true,
+    },
+    'POST /files/url': {
+      summary: 'Lấy URL của tệp lưu trữ',
+      description: 'API tự động sinh để hỗ trợ frontend. Lấy URL của tệp lưu trữ.',
+      protected: true,
+    },
+    'GET /duty/week/export': {
+      summary: 'Xuất dữ liệu trực ra Excel/CSV',
+      description: 'API tự động sinh để hỗ trợ frontend. Xuất dữ liệu trực ra Excel/CSV.',
+      protected: true,
+    },
+    'GET /duty/stats/comprehensive': {
+      summary: 'Lấy dữ liệu',
+      description: 'API tự động sinh để hỗ trợ frontend. Lấy dữ liệu.',
+      protected: true,
+    },
+    'GET /duty/stats/export': {
+      summary: 'Xuất dữ liệu trực ra Excel/CSV',
+      description: 'API tự động sinh để hỗ trợ frontend. Xuất dữ liệu trực ra Excel/CSV.',
+      protected: true,
+    },
+    'POST /duty/stats/notify-absentees': {
+      summary: 'Gửi thông báo cho người vắng trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Gửi thông báo cho người vắng trực.',
+      protected: true,
+    },
+    'GET /duty/remarks/user/{id}': {
+      summary: 'Lấy dữ liệu',
+      description: 'API tự động sinh để hỗ trợ frontend. Lấy dữ liệu.',
+      protected: true,
+    },
+    'GET /duty/snapshots': {
+      summary: 'Lấy snapshot điểm danh',
+      description: 'API tự động sinh để hỗ trợ frontend. Lấy snapshot điểm danh.',
+      protected: true,
+    },
+    'POST /duty/snapshots': {
+      summary: 'Tạo snapshot điểm danh',
+      description: 'API tự động sinh để hỗ trợ frontend. Tạo snapshot điểm danh.',
+      protected: true,
+    },
+    'DELETE /duty/snapshots/{id}': {
+      summary: 'Xóa snapshot điểm danh',
+      description: 'API tự động sinh để hỗ trợ frontend. Xóa snapshot điểm danh.',
+      protected: true,
+    },
+    'POST /duty/shifts': {
+      summary: 'Tạo ca trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Tạo ca trực.',
+      protected: true,
+    },
+    'PUT /duty/shifts/{id}': {
+      summary: 'Cập nhật toàn bộ ca trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Cập nhật toàn bộ ca trực.',
+      protected: true,
+    },
+    'POST /duty/kips': {
+      summary: 'Tạo kíp trực (thời gian ca)',
+      description: 'API tự động sinh để hỗ trợ frontend. Tạo kíp trực (thời gian ca).',
+      protected: true,
+    },
+    'PUT /duty/kips/{id}': {
+      summary: 'Cập nhật toàn bộ kíp trực (thời gian ca)',
+      description: 'API tự động sinh để hỗ trợ frontend. Cập nhật toàn bộ kíp trực (thời gian ca).',
+      protected: true,
+    },
+    'DELETE /duty/kips/{id}': {
+      summary: 'Xóa kíp trực (thời gian ca)',
+      description: 'API tự động sinh để hỗ trợ frontend. Xóa kíp trực (thời gian ca).',
+      protected: true,
+    },
+    'GET /duty/slots/{id}': {
+      summary: 'Lấy slot trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Lấy slot trực.',
+      protected: true,
+    },
+    'DELETE /duty/slots/{id}': {
+      summary: 'Xóa slot trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Xóa slot trực.',
+      protected: true,
+    },
+    'POST /duty/slots/{id}/attendance': {
+      summary: 'Điểm danh kíp trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Điểm danh kíp trực.',
+      protected: true,
+    },
+    'POST /duty/slots/{id}/check-in': {
+      summary: 'Check-in kíp trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Check-in kíp trực.',
+      protected: true,
+    },
+    'POST /duty/slots/{id}/violation': {
+      summary: 'Ghi nhận vi phạm trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Ghi nhận vi phạm trực.',
+      protected: true,
+    },
+    'GET /duty/slots/{id}/logs': {
+      summary: 'Lấy slot trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Lấy slot trực.',
+      protected: true,
+    },
+    'GET /duty/slots/{id}/requests': {
+      summary: 'Lấy slot trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Lấy slot trực.',
+      protected: true,
+    },
+    'POST /duty/leave-request': {
+      summary: 'Tạo yêu cầu nghỉ phép kíp trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Tạo yêu cầu nghỉ phép kíp trực.',
+      protected: true,
+    },
+    'GET /duty/leave-requests': {
+      summary: 'Lấy yêu cầu nghỉ phép kíp trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Lấy yêu cầu nghỉ phép kíp trực.',
+      protected: true,
+    },
+    'POST /duty/leave-requests/manual': {
+      summary: 'Xử lý thủ công (admin)',
+      description: 'API tự động sinh để hỗ trợ frontend. Xử lý thủ công (admin).',
+      protected: true,
+    },
+    'PATCH /duty/leave-requests/{id}/resolve': {
+      summary: 'Duyệt/từ chối nghỉ phép',
+      description: 'API tự động sinh để hỗ trợ frontend. Duyệt/từ chối nghỉ phép.',
+      protected: true,
+    },
+    'PUT /duty/leave-requests/{id}': {
+      summary: 'Cập nhật toàn bộ yêu cầu nghỉ phép kíp trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Cập nhật toàn bộ yêu cầu nghỉ phép kíp trực.',
+      protected: true,
+    },
+    'DELETE /duty/leave-requests/{id}': {
+      summary: 'Xóa yêu cầu nghỉ phép kíp trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Xóa yêu cầu nghỉ phép kíp trực.',
+      protected: true,
+    },
+    'POST /duty/swaps/manual': {
+      summary: 'Xử lý thủ công (admin)',
+      description: 'API tự động sinh để hỗ trợ frontend. Xử lý thủ công (admin).',
+      protected: true,
+    },
+    'PUT /duty/swaps/{id}': {
+      summary: 'Cập nhật toàn bộ yêu cầu đổi ca',
+      description: 'API tự động sinh để hỗ trợ frontend. Cập nhật toàn bộ yêu cầu đổi ca.',
+      protected: true,
+    },
+    'DELETE /duty/swaps/{id}': {
+      summary: 'Xóa yêu cầu đổi ca',
+      description: 'API tự động sinh để hỗ trợ frontend. Xóa yêu cầu đổi ca.',
+      protected: true,
+    },
+    'GET /duty/templates/groups': {
+      summary: 'Lấy nhóm kíp trực mẫu',
+      description: 'API tự động sinh để hỗ trợ frontend. Lấy nhóm kíp trực mẫu.',
+      protected: true,
+    },
+    'POST /duty/templates/groups': {
+      summary: 'Tạo nhóm kíp trực mẫu',
+      description: 'API tự động sinh để hỗ trợ frontend. Tạo nhóm kíp trực mẫu.',
+      protected: true,
+    },
+    'PUT /duty/templates/groups/{id}': {
+      summary: 'Cập nhật toàn bộ nhóm kíp trực mẫu',
+      description: 'API tự động sinh để hỗ trợ frontend. Cập nhật toàn bộ nhóm kíp trực mẫu.',
+      protected: true,
+    },
+    'DELETE /duty/templates/groups/{id}': {
+      summary: 'Xóa nhóm kíp trực mẫu',
+      description: 'API tự động sinh để hỗ trợ frontend. Xóa nhóm kíp trực mẫu.',
+      protected: true,
+    },
+    'GET /duty/templates': {
+      summary: 'Lấy dữ liệu',
+      description: 'API tự động sinh để hỗ trợ frontend. Lấy dữ liệu.',
+      protected: true,
+    },
+    'POST /duty/templates/shifts': {
+      summary: 'Tạo ca trực mẫu',
+      description: 'API tự động sinh để hỗ trợ frontend. Tạo ca trực mẫu.',
+      protected: true,
+    },
+    'PUT /duty/templates/shifts/{id}': {
+      summary: 'Cập nhật toàn bộ ca trực mẫu',
+      description: 'API tự động sinh để hỗ trợ frontend. Cập nhật toàn bộ ca trực mẫu.',
+      protected: true,
+    },
+    'DELETE /duty/templates/shifts/{id}': {
+      summary: 'Xóa ca trực mẫu',
+      description: 'API tự động sinh để hỗ trợ frontend. Xóa ca trực mẫu.',
+      protected: true,
+    },
+    'POST /duty/templates/kips': {
+      summary: 'Tạo kíp mẫu',
+      description: 'API tự động sinh để hỗ trợ frontend. Tạo kíp mẫu.',
+      protected: true,
+    },
+    'PUT /duty/templates/kips/{id}': {
+      summary: 'Cập nhật toàn bộ kíp mẫu',
+      description: 'API tự động sinh để hỗ trợ frontend. Cập nhật toàn bộ kíp mẫu.',
+      protected: true,
+    },
+    'DELETE /duty/templates/kips/{id}': {
+      summary: 'Xóa kíp mẫu',
+      description: 'API tự động sinh để hỗ trợ frontend. Xóa kíp mẫu.',
+      protected: true,
+    },
+    'POST /duty/generate-range': {
+      summary: 'Tạo tự động slot trực theo khoảng thời gian',
+      description: 'API tự động sinh để hỗ trợ frontend. Tạo tự động slot trực theo khoảng thời gian.',
+      protected: true,
+    },
+    'DELETE /duty/slots-range': {
+      summary: 'Xóa slot trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Xóa slot trực.',
+      protected: true,
+    },
+    'POST /duty/templates/copy': {
+      summary: 'Sao chép cấu hình mẫu trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Sao chép cấu hình mẫu trực.',
+      protected: true,
+    },
+    'DELETE /duty/slots-week': {
+      summary: 'Xóa slot trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Xóa slot trực.',
+      protected: true,
+    },
+    'DELETE /duty/slots-shift': {
+      summary: 'Xóa slot trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Xóa slot trực.',
+      protected: true,
+    },
+    'POST /duty/template-shifts-day': {
+      summary: 'Tạo ca trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Tạo ca trực.',
+      protected: true,
+    },
+    'DELETE /duty/template-shifts-day': {
+      summary: 'Xóa ca trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Xóa ca trực.',
+      protected: true,
+    },
+    'GET /duty/assignment': {
+      summary: 'Lấy cấu hình phân công trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Lấy cấu hình phân công trực.',
+      protected: true,
+    },
+    'POST /duty/assignment': {
+      summary: 'Tạo cấu hình phân công trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Tạo cấu hình phân công trực.',
+      protected: true,
+    },
+    'PUT /duty/assignment/{id}': {
+      summary: 'Cập nhật toàn bộ cấu hình phân công trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Cập nhật toàn bộ cấu hình phân công trực.',
+      protected: true,
+    },
+    'DELETE /duty/assignment/{id}': {
+      summary: 'Xóa cấu hình phân công trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Xóa cấu hình phân công trực.',
+      protected: true,
+    },
+    'GET /duty/settings': {
+      summary: 'Lấy cài đặt kíp trực chung',
+      description: 'API tự động sinh để hỗ trợ frontend. Lấy cài đặt kíp trực chung.',
+      protected: true,
+    },
+    'PUT /duty/settings': {
+      summary: 'Cập nhật toàn bộ cài đặt kíp trực chung',
+      description: 'API tự động sinh để hỗ trợ frontend. Cập nhật toàn bộ cài đặt kíp trực chung.',
+      protected: true,
+    },
+    'GET /duty/period-config': {
+      summary: 'Lấy cấu hình chu kỳ trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Lấy cấu hình chu kỳ trực.',
+      protected: true,
+    },
+    'PUT /duty/period-config': {
+      summary: 'Cập nhật toàn bộ cấu hình chu kỳ trực',
+      description: 'API tự động sinh để hỗ trợ frontend. Cập nhật toàn bộ cấu hình chu kỳ trực.',
+      protected: true,
+    },
+    'PATCH /duty/days': {
+      summary: 'Cập nhật dữ liệu',
+      description: 'API tự động sinh để hỗ trợ frontend. Cập nhật dữ liệu.',
+      protected: true,
+    },
+    'GET /meetings/stats': {
+      summary: 'Thống kê cuộc họp',
+      description: 'API tự động sinh để hỗ trợ frontend. Thống kê cuộc họp.',
+      protected: true,
+    },
+    'POST /meetings/{id}/rsvp': {
+      summary: 'Xác nhận tham gia/vắng họp',
+      description: 'API tự động sinh để hỗ trợ frontend. Xác nhận tham gia/vắng họp.',
+      protected: true,
+    },
+    'POST /meetings/attendance': {
+      summary: 'Điểm danh cuộc họp',
+      description: 'API tự động sinh để hỗ trợ frontend. Điểm danh cuộc họp.',
+      protected: true,
+    },
+    'GET /system-settings': {
+      summary: 'Lấy cài đặt hệ thống',
+      description: 'API tự động sinh để hỗ trợ frontend. Lấy cài đặt hệ thống.',
+      protected: true,
+    },
+    'POST /system-settings/bulk': {
+      summary: 'Tạo cài đặt hệ thống',
+      description: 'API tự động sinh để hỗ trợ frontend. Tạo cài đặt hệ thống.',
+      protected: true,
+    },
   };
 }
 
-function buildSwaggerPaths(includeInternal: boolean) {
+function extractExpressRoutes(router: any, prefix = ''): string[] {
+  const allRoutes: string[] = [];
+  if (router && router.stack) {
+    router.stack.forEach((layer: any) => {
+      if (layer.route) {
+        const path = layer.route.path;
+        const methods = Object.keys(layer.route.methods).map((m) => m.toUpperCase());
+        methods.forEach((method) => {
+          allRoutes.push(`${method} ${prefix}${path}`);
+        });
+      } else if (layer.name === 'router') {
+        let basePath = '';
+        if (layer.regexp && layer.regexp.fast_slash) basePath = '';
+        else if (layer.regexp) {
+          const match = layer.regexp.toString().match(/^\/\^\\\/([^\\\/?]+)/);
+          if (match) basePath = '/' + match[1];
+        }
+        allRoutes.push(...extractExpressRoutes(layer.handle, prefix + basePath));
+      }
+    });
+  }
+  return allRoutes;
+}
+
+function buildSwaggerPaths(includeInternal: boolean, app?: any) {
   const paths: AnyRecord = {};
 
-  for (const [routeKey, doc] of Object.entries(ROUTE_DOCS)) {
+  const autoRoutes = app && app._router ? extractExpressRoutes(app._router, '') : [];
+  const discoveredKeys = autoRoutes.map((r) =>
+    r
+      .replace('/api', '')
+      .replace(/:([a-zA-Z0-9_]+)/g, '{$1}')
+      .replace(/\/$/, ''),
+  );
+
+  const allRouteKeys = new Set([...Object.keys(ROUTE_DOCS), ...discoveredKeys]);
+
+  for (const routeKey of allRouteKeys) {
+    const isDocumented = !!ROUTE_DOCS[routeKey];
+    const doc = ROUTE_DOCS[routeKey] || { internal: false };
     if (!includeInternal && doc.internal) {
       continue;
     }
@@ -1667,6 +2038,9 @@ function buildSwaggerPaths(includeInternal: boolean) {
     if (doc.adminRole) descriptionParts.push(`Yêu cầu vai trò: \`${doc.adminRole}\`.`);
     if (doc.permission) descriptionParts.push(`Yêu cầu permission: \`${doc.permission}\`.`);
     if (doc.internal) descriptionParts.push('API nội bộ/hỗ trợ vận hành. Mặc định được ẩn khỏi Swagger public.');
+    if (!isDocumented)
+      descriptionParts.push('⚠️ Tuyến đường này được tự động phát hiện từ router (thiếu mô tả chi tiết).');
+
     if (descriptionParts.length > 0) {
       operation.description = descriptionParts.join(' | ');
     }
@@ -1695,9 +2069,9 @@ function buildSwaggerPaths(includeInternal: boolean) {
   return paths;
 }
 
-function buildSwaggerSpec() {
+function buildSwaggerSpec(app?: any) {
   const includeInternal = String(process.env.SWAGGER_INCLUDE_INTERNAL || 'false') === 'true';
-  const paths = buildSwaggerPaths(includeInternal);
+  const paths = buildSwaggerPaths(includeInternal, app);
   const tagSet = new Set<string>();
 
   for (const pathMethods of Object.values(paths)) {
@@ -1758,7 +2132,7 @@ function buildSwaggerSpec() {
 }
 
 function setupSwagger(app: AnyRecord) {
-  const spec = buildSwaggerSpec();
+  const spec = buildSwaggerSpec(app);
 
   app.get('/api-docs.json', (_req, res) => res.json(spec));
 

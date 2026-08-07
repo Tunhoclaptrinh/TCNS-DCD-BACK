@@ -102,8 +102,8 @@ function setupRateLimiting() {
 
 // ==================== ROUTES ====================
 function setupRoutes() {
-  setupSwagger(app);
   app.use('/api', routes);
+  setupSwagger(app);
 
   app.get('/api/health', (_req, res) => {
     res.json({
