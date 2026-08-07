@@ -1737,7 +1737,10 @@ function buildSwaggerSpec() {
       description: 'Tài liệu OpenAPI cho hệ thống TCNS. Swagger được khai báo tĩnh để bám sát tài liệu mong muốn.',
     },
     servers: [
-      ...(process.env.BASE_URL ? [{ url: `${process.env.BASE_URL}/api`, description: 'Máy chủ production' }] : []),
+      { url: '/api', description: 'Máy chủ hiện tại (Current Server)' },
+      ...(process.env.BASE_URL
+        ? [{ url: `${process.env.BASE_URL}/api`, description: 'Máy chủ cấu hình (BASE_URL)' }]
+        : []),
       { url: `http://localhost:${process.env.PORT || 3000}/api`, description: 'Máy chủ local' },
     ],
     tags: Array.from(tagSet).map((tagName) => {
