@@ -12,6 +12,8 @@
     "import:members": "tsx ./src/scripts/import_members.ts",
     "restore:status": "tsx ./src/scripts/restore_status.ts",
     "fix:alumni": "tsx ./src/scripts/check_fix_alumni.ts",
+    "copy:db": "tsx ./src/scripts/copy-db.ts",
+    "reset:col": "tsx ./src/scripts/reset-collection.ts",
     "build": "tsc && tsc-alias",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
