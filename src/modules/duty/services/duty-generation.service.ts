@@ -72,6 +72,7 @@ class DutyGenerationService {
           endTime: ak.endTime,
           capacity: ak.capacity,
           slotStructure: ak.slotStructure || [],
+          config: ak.config || {},
           status: 'open',
           createdBy: normalizeId(actorId),
           note: 'INSTANCE',

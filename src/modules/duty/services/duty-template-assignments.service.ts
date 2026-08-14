@@ -18,6 +18,8 @@ class DutyTemplateAssignmentsService extends BaseService {
     return {
       ...base,
       templateId: data.templateId ? Number(data.templateId) : undefined,
+      startDate: data.startDate ? new Date(data.startDate).toISOString() : undefined,
+      endDate: data.endDate ? new Date(data.endDate).toISOString() : undefined,
     };
   }
 

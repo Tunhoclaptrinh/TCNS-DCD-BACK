@@ -8,6 +8,7 @@ import usersRepository from '@modules/users/repositories/users.repository';
 import dutyLeaveRequestsRepository from '@modules/duty/repositories/duty-leave-requests.repository';
 import dutySwapRequestsRepository from '@modules/duty/repositories/duty-swap-requests.repository';
 import dutyTemplateAssignmentsRepository from '@modules/duty/repositories/duty-template-assignments.repository';
+import dutyTemplatesRepository from '@modules/duty/repositories/duty-templates.repository';
 import ApiError from '@utils/api-error';
 import notificationService from '@modules/notifications/services/notification.service';
 import dayjs from 'dayjs';
@@ -271,11 +272,12 @@ class DutySlotsService {
         let weeklyQuota = Number(settings.weeklyKipLimit) || 0;
 
         if (limitMode === 'quota') {
+          const defaultGroup = templateData.find((g: any) => g.isDefault);
           const defaultQuota =
             periodConfig.defaultQuota !== undefined && periodConfig.defaultQuota !== null
               ? Number(periodConfig.defaultQuota)
-              : 0;
-          const quotaRules = periodConfig.quotaRules || [];
+              : Number(settings.defaultQuota ?? (defaultGroup?.defaultQuota || 2.5));
+          const quotaRules = periodConfig.quotaRules || settings.quotaRules || defaultGroup?.quotaRules || [];
           const pos = String(fullUser.position || '').toLowerCase();
           const uDept = String(fullUser.department?.name || fullUser.department || '').trim();
 
@@ -300,8 +302,9 @@ class DutySlotsService {
           let registeredKips = 0;
 
           if (cycle === 'month') {
-            const startOfMonth = dayjs(options.startDate).startOf('month').toISOString();
-            const endOfMonth = dayjs(options.startDate).endOf('month').toISOString();
+            const targetDate = options.startDate || options.weekStart || weekStart;
+            const startOfMonth = dayjs(targetDate).startOf('month').toISOString();
+            const endOfMonth = dayjs(targetDate).endOf('month').toISOString();
 
             const allSlotsInMonth = await dutySlotsRepository.findMany({
               shiftDate_gte: startOfMonth,
@@ -625,9 +628,11 @@ class DutySlotsService {
     // If quota mode, calculate limit based on user rules
     if (limitMode === 'quota') {
       const periodConfig = await dutyPeriodConfigsService.getConfig(slot.shiftDate, slot.shiftDate);
-      // Fallback: periodConfig.defaultQuota → settings.defaultQuota → 0
-      const defaultQuota = Number(periodConfig.defaultQuota ?? settings.defaultQuota ?? 0);
-      const quotaRules = periodConfig.quotaRules || settings.quotaRules || [];
+      const defaultGroup = await dutyTemplatesRepository.findDefault();
+      const defaultQuota = Number(
+        periodConfig.defaultQuota ?? settings.defaultQuota ?? (defaultGroup?.defaultQuota || 2.5),
+      );
+      const quotaRules = periodConfig.quotaRules || settings.quotaRules || defaultGroup?.quotaRules || [];
       const pos = String(fullUser.position || '').toLowerCase();
       const uDept = String(fullUser.department?.name || fullUser.department || '').trim();
 
@@ -700,27 +705,84 @@ class DutySlotsService {
 
     const slotStructure = slot.slotStructure || [];
     if (slotStructure.length > 0) {
-      const fullUser = typeof user === 'object' ? user : await usersRepository.findById(userId);
-      const userPosition = fullUser?.position;
-      const requirement = slotStructure.find(
-        (req: any) => Array.isArray(req.positions) && req.positions.includes(userPosition),
-      );
+      const fullUser = (await usersRepository.findById(userId)) || (typeof user === 'object' ? user : null);
+      if (!fullUser) throw ApiError.notFound('Người dùng không tồn tại');
+
+      const matchesUser = (posList: string[] = [], u: any, label?: string) => {
+        if (!u) return false;
+        const targetPos = String(u.position || '')
+          .toLowerCase()
+          .trim();
+        const targetRole = String(u.role || '')
+          .toLowerCase()
+          .trim();
+        const isUserCTV =
+          targetPos === 'ctv' ||
+          targetRole === 'ctv' ||
+          targetPos.includes('cộng tác viên') ||
+          targetRole.includes('cộng tác viên');
+        const isUserMember = !isUserCTV;
+
+        // 1. Direct match by label
+        const labelLower = String(label || '')
+          .toLowerCase()
+          .trim();
+        if (
+          isUserCTV &&
+          (labelLower === 'ctv' ||
+            labelLower.includes('cộng tác viên') ||
+            labelLower.includes('ctv') ||
+            labelLower === 'ctc')
+        )
+          return true;
+        if (
+          isUserMember &&
+          (labelLower === 'tv' ||
+            labelLower === 'thành viên' ||
+            labelLower.includes('thành viên') ||
+            labelLower === 'tvb' ||
+            labelLower === 'member')
+        )
+          return true;
+
+        if (!Array.isArray(posList)) return false;
+
+        // 2. Match by positions array
+        return posList.some((p) => {
+          const pLower = String(p).toLowerCase().trim();
+          if (pLower === targetPos || pLower === targetRole) return true;
+          if (pLower === 'dt' && (targetPos === 'dt' || targetPos.includes('đội trưởng'))) return true;
+          if (pLower === 'tb' && (targetPos === 'tb' || targetPos.includes('trưởng ban'))) return true;
+          if (pLower === 'pb' && (targetPos === 'pb' || targetPos.includes('phó ban'))) return true;
+          if ((pLower === 'ctv' || pLower === 'ctc' || pLower.includes('cộng tác viên')) && isUserCTV) return true;
+          if (
+            (pLower === 'tv' || pLower === 'tvb' || pLower === 'member_all' || pLower === 'member_official') &&
+            isUserMember
+          )
+            return true;
+          return false;
+        });
+      };
+
+      const requirement = slotStructure.find((req: any) => matchesUser(req.positions, fullUser, req.label));
+
+      const allUsers = (await usersRepository.findAll()) as any[];
+      const assignedUserMap = new Map(allUsers.map((u) => [normalizeId(u.id), u]));
+      const assignedUsers = assigned.map((id) => assignedUserMap.get(id)).filter(Boolean);
 
       if (requirement) {
-        const assignedUsers = await usersRepository.findMany({ id_in: assigned });
-        const occupantsInGroup = assignedUsers.filter(
-          (u: any) => Array.isArray(requirement.positions) && requirement.positions.includes(u.position),
+        const occupantsInGroup = assignedUsers.filter((u: any) =>
+          matchesUser(requirement.positions, u, requirement.label),
         ).length;
         if (occupantsInGroup >= requirement.slots && !isAdmin)
           throw ApiError.badRequest(`Hết chỗ cho vị trí '${requirement.label}' (${requirement.slots} slot).`);
       } else {
         const totalStructuredSlots = slotStructure.reduce((acc: number, req: any) => acc + (Number(req.slots) || 0), 0);
         const freeSlotsTotal = maxCapacity - totalStructuredSlots;
-        const assignedUsers = await usersRepository.findMany({ id_in: assigned });
         const structuredUserIds = new Set();
         slotStructure.forEach((req: any) => {
           assignedUsers.forEach((u: any) => {
-            if (Array.isArray(req.positions) && req.positions.includes(u.position)) structuredUserIds.add(u.id);
+            if (matchesUser(req.positions, u, req.label)) structuredUserIds.add(normalizeId(u.id));
           });
         });
         const unmappedOccupants = assigned.length - structuredUserIds.size;

@@ -8,6 +8,7 @@ import dutyKipsRepository from '@modules/duty/repositories/duty-kips.repository'
 import dutyShiftsRepository from '@modules/duty/repositories/duty-shifts.repository';
 import generationsRepository from '@modules/generations/repositories/generations.repository';
 import dutyPeriodConfigsService from './duty-period-configs.service';
+import dutyTemplatesRepository from '@modules/duty/repositories/duty-templates.repository';
 import { normalizeId, normalizeIdList, findMatchingQuotaRule } from './duty-utils';
 import dayjs from 'dayjs';
 import * as xlsx from 'xlsx';
@@ -22,13 +23,13 @@ class DutyStatsService {
 
     const periodConfig = await dutyPeriodConfigsService.getConfig(startDate, endDate);
     const settings = await dutySettingsService.getSettings();
-    // Prioritize period-specific config strictly. If uninitialized, fallback to hardcoded 2.5
+    const defaultGroup = await dutyTemplatesRepository.findDefault();
     const defaultQuota =
       periodConfig.defaultQuota !== undefined && periodConfig.defaultQuota !== null
         ? Number(periodConfig.defaultQuota)
-        : 2.5;
-    const kipPrice = Number(periodConfig.kipPrice) || 0;
-    const quotaRules = periodConfig.quotaRules || [];
+        : Number(settings.defaultQuota ?? (defaultGroup?.defaultQuota || 2.5));
+    const kipPrice = Number(periodConfig.kipPrice ?? settings.kipPrice ?? (defaultGroup?.kipPrice || 0));
+    const quotaRules = periodConfig.quotaRules || settings.quotaRules || defaultGroup?.quotaRules || [];
     const isPeriodInitialized = !!periodConfig.isInitialized;
 
     const slotFilter: any = {};
@@ -117,7 +118,7 @@ class DutyStatsService {
       const cycle = matchedRule?.cycle || 'week';
 
       let userQuota = userQuotaBase;
-      const diffDays = dayjs(endDate).diff(dayjs(startDate), 'day') + 1;
+      const diffDays = startDate && endDate ? dayjs(endDate).diff(dayjs(startDate), 'day') + 1 : 7;
 
       if (cycle === 'week') {
         userQuota = (userQuotaBase * diffDays) / 7;
