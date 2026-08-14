@@ -23,7 +23,34 @@ class SystemSettingController extends BaseController {
     if (!Model) {
       return res.status(404).json({ message: 'Settings model not found' });
     }
-    const doc = await Model.findOne({ key }).lean();
+    let doc = await Model.findOne({ key }).lean();
+    if (!doc && (key === 'DEPARTMENT_CONFIGS' || key === 'DEPARTMENTCONFIGS')) {
+      // Fallback check between DEPARTMENT_CONFIGS and DEPARTMENTCONFIGS
+      const altKey = key === 'DEPARTMENT_CONFIGS' ? 'DEPARTMENTCONFIGS' : 'DEPARTMENT_CONFIGS';
+      doc = await Model.findOne({ key: altKey }).lean();
+      if (doc) {
+        doc.key = key; // Return as requested key
+      }
+    } else if (doc && (key === 'DEPARTMENT_CONFIGS' || key === 'DEPARTMENTCONFIGS')) {
+      // Check if the other variant exists and has a newer update or longer content
+      const altKey = key === 'DEPARTMENT_CONFIGS' ? 'DEPARTMENTCONFIGS' : 'DEPARTMENT_CONFIGS';
+      const altDoc = await Model.findOne({ key: altKey }).lean();
+      if (altDoc) {
+        const docTime = new Date(doc.updatedAt || doc.createdAt || 0).getTime();
+        const altTime = new Date(altDoc.updatedAt || altDoc.createdAt || 0).getTime();
+        if (altTime > docTime || (altDoc.value && altDoc.value.length > (doc.value || '').length)) {
+          // Sync canonical DEPARTMENT_CONFIGS to have the newer value
+          await Model.updateOne(
+            { key: 'DEPARTMENT_CONFIGS' },
+            { $set: { value: altDoc.value, updatedAt: new Date() } },
+            { upsert: true },
+          );
+          await Model.deleteOne({ key: 'DEPARTMENTCONFIGS' });
+          doc = await Model.findOne({ key: 'DEPARTMENT_CONFIGS' }).lean();
+        }
+      }
+    }
+
     if (!doc) {
       return res.status(404).json({ message: 'Setting not found' });
     }
@@ -47,6 +74,10 @@ class SystemSettingController extends BaseController {
       defaultimportpassword: 'DEFAULT_IMPORT_PASSWORD',
       allowedIpRanges: 'ALLOWED_IP_RANGES',
       allowedipranges: 'ALLOWED_IP_RANGES',
+      departmentConfigs: 'DEPARTMENT_CONFIGS',
+      departmentconfigs: 'DEPARTMENT_CONFIGS',
+      DEPARTMENTCONFIGS: 'DEPARTMENT_CONFIGS',
+      DEPARTMENT_CONFIGS: 'DEPARTMENT_CONFIGS',
     };
 
     for (const [rawKey, value] of Object.entries(settings)) {
@@ -66,6 +97,11 @@ class SystemSettingController extends BaseController {
           type: 'string',
           updatedBy: req.user?.id,
         });
+      }
+
+      // Cleanup duplicate legacy keys if saving DEPARTMENT_CONFIGS
+      if (dbKey === 'DEPARTMENT_CONFIGS') {
+        await Model.deleteOne({ key: 'DEPARTMENTCONFIGS' });
       }
     }
 
