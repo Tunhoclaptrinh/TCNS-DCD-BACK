@@ -17,6 +17,19 @@ class SystemSettingController extends BaseController {
     this.ok(res, docs);
   });
 
+  getByKey = this.handle(async (req: Request, res: Response) => {
+    const key = req.params.key;
+    const Model = (db as any).getModel('system_settings');
+    if (!Model) {
+      return res.status(404).json({ message: 'Settings model not found' });
+    }
+    const doc = await Model.findOne({ key }).lean();
+    if (!doc) {
+      return res.status(404).json({ message: 'Setting not found' });
+    }
+    this.ok(res, doc);
+  });
+
   // Bulk update settings by key
   bulkUpdateSettings = this.handle(async (req: Request, res: Response) => {
     const settings = req.body;
