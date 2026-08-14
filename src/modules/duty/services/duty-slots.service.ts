@@ -235,16 +235,23 @@ class DutySlotsService {
         resolvedShiftLabel = slot.shiftLabel || 'Kíp trực';
       }
 
+      const slotCoefficient = Number(slot.coefficient ?? kip?.coefficient ?? shift?.coefficient ?? 1);
+      const slotCapacity = Number(slot.capacity ?? kip?.capacity ?? shift?.capacity ?? 1);
+
       return {
         ...slot,
         shiftLabel: resolvedShiftLabel,
         startTime: slotStartTime,
         endTime: slotEndTime,
+        coefficient: slotCoefficient,
+        capacity: slotCapacity,
+        kip: kip ? { ...kip, coefficient: Number(kip.coefficient || 1) } : slot.kip,
+        shift: shift ? { ...shift, coefficient: Number(shift.coefficient || 1) } : slot.shift,
         assignedUsers,
         attendedUsers,
         totalRegistered: assignedIds.length,
         registeredCount: assignedIds.length,
-        isFull: assignedIds.length >= (slot.capacity || 0),
+        isFull: assignedIds.length >= slotCapacity,
         violations: violations.filter((v: any) => normalizeId(v.slotId) === normalizeId(slot.id)),
         leaveRequests: leaveRequests.filter((r: any) => normalizeId(r.slotId) === normalizeId(slot.id)),
         swapRequests: swapRequests.filter((r: any) => normalizeId(r.fromSlotId) === normalizeId(slot.id)),
