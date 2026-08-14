@@ -146,12 +146,28 @@ class DutySlotsService {
     const slots = slotsResult.data.map((slot: any) => {
       const assignedIds = normalizeIdList(slot.assignedUserIds || []);
       const attendedIds = normalizeIdList(slot.attendedUserIds || []);
-      const kip = kips.find((k: any) => normalizeId(k.id) === normalizeId(slot.kipId));
-      const shift = shifts.find((s: any) => normalizeId(s.id) === normalizeId(slot.shiftId || kip?.shiftId));
+      const kip = kips.find((k: any) => normalizeId(k.id) === normalizeId(slot.kipId)) || slot.kip;
+      const shiftId = slot.shiftId || kip?.shiftId || slot.kip?.shiftId;
+      const shift =
+        shifts.find(
+          (s: any) =>
+            normalizeId(s.id) === normalizeId(shiftId) || normalizeId(s.fromTemplateShiftId) === normalizeId(shiftId),
+        ) || slot.shift;
 
-      const slotVisibilityMode = slot.config?.visibilityMode || (isGlobalPrivacyMode ? 'private_mutual' : 'public');
+      const slotVisibilityMode =
+        slot.config?.visibilityMode ||
+        (slot as any).kip?.config?.visibilityMode ||
+        kip?.config?.visibilityMode ||
+        kip?.visibilityMode ||
+        (isGlobalPrivacyMode ? 'private_mutual' : 'public');
 
-      const filterUserByPrivacy = (user: any, visibilityMode: string) => {
+      const privacyMaskType =
+        slot.config?.privacyMaskType ||
+        (slot as any).kip?.config?.privacyMaskType ||
+        kip?.config?.privacyMaskType ||
+        'masked';
+
+      const filterUserByPrivacy = (user: any, visibilityMode: string, maskType: string) => {
         if (!user) return null;
         if (isAdmin) return user;
         if (normalizeId(user.id) === requesterId) return user;
@@ -163,8 +179,9 @@ class DutySlotsService {
         const uPos = String(user.position || '').toLowerCase();
         const isOfficial = uPos !== 'ctv';
 
+        const requesterPosition = String(options.userPosition || options.fullUser?.position || '').toLowerCase();
         const reqRoleStr = String(requesterRole || '').toLowerCase();
-        const isReqOfficial = reqRoleStr !== 'ctv';
+        const isReqOfficial = requesterPosition ? requesterPosition !== 'ctv' : reqRoleStr !== 'ctv';
 
         let isHidden = false;
         if (visibilityMode === 'hidden_all') {
@@ -176,31 +193,57 @@ class DutySlotsService {
         }
 
         if (isHidden) {
+          if (maskType === 'omitted') {
+            return null; // Ẩn hoàn toàn khỏi danh sách
+          }
           return {
             id: user.id,
             name: 'Thành viên',
             avatar: null,
             studentId: '********',
             position: 'Thành viên',
+            isMasked: true,
           };
         }
         return user;
       };
 
       const assignedUsers = assignedIds
-        .map((id) => filterUserByPrivacy(userMap.get(id), slotVisibilityMode))
+        .map((id) => filterUserByPrivacy(userMap.get(id), slotVisibilityMode, privacyMaskType))
         .filter(Boolean);
       const attendedUsers = attendedIds
-        .map((id) => filterUserByPrivacy(userMap.get(id), slotVisibilityMode))
+        .map((id) => filterUserByPrivacy(userMap.get(id), slotVisibilityMode, privacyMaskType))
         .filter(Boolean);
+
+      const slotStartTime = slot.startTime || kip?.startTime || shift?.startTime || '00:00';
+      const slotEndTime = slot.endTime || kip?.endTime || shift?.endTime || '00:00';
+
+      let resolvedShiftLabel = '';
+      if (shift && kip) {
+        resolvedShiftLabel = `${shift.name} - ${kip.name}`;
+      } else if (slot.shift && slot.kip) {
+        resolvedShiftLabel = `${slot.shift.name} - ${slot.kip.name}`;
+      } else if (slot.shiftLabel && slot.shiftLabel.includes(' - ')) {
+        resolvedShiftLabel = slot.shiftLabel;
+      } else if (kip) {
+        const shiftPrefix = slotStartTime < '12:00' ? 'Sáng' : slotStartTime < '18:00' ? 'Ca chiều' : 'Ca tối';
+        resolvedShiftLabel = `${shiftPrefix} - ${kip.name}`;
+      } else if (shift) {
+        resolvedShiftLabel = `${shift.name} - Toàn ca`;
+      } else {
+        resolvedShiftLabel = slot.shiftLabel || 'Kíp trực';
+      }
 
       return {
         ...slot,
-        shiftLabel: shift && kip ? `${shift.name} - ${kip.name}` : kip?.name || 'Kíp trực',
-        startTime: slot.startTime || kip?.startTime || shift?.startTime,
-        endTime: slot.endTime || kip?.endTime || shift?.endTime,
+        shiftLabel: resolvedShiftLabel,
+        startTime: slotStartTime,
+        endTime: slotEndTime,
         assignedUsers,
         attendedUsers,
+        totalRegistered: assignedIds.length,
+        registeredCount: assignedIds.length,
+        isFull: assignedIds.length >= (slot.capacity || 0),
         violations: violations.filter((v: any) => normalizeId(v.slotId) === normalizeId(slot.id)),
         leaveRequests: leaveRequests.filter((r: any) => normalizeId(r.slotId) === normalizeId(slot.id)),
         swapRequests: swapRequests.filter((r: any) => normalizeId(r.fromSlotId) === normalizeId(slot.id)),
@@ -1333,22 +1376,6 @@ class DutySlotsService {
     const mode = options.mode || 'only_duty';
     const includeDays = options.includeDays || [1, 2, 3, 4, 5, 6, 0]; // Default to all days if not provided
 
-    const slotsResult = await dutySlotsRepository.findAllAdvanced({
-      filter: {
-        shiftDate_gte: startDate.toISOString(),
-        shiftDate_lte: endDate.toISOString(),
-      },
-      expand: 'assignedUsers,kip,shift',
-      limit: 1000,
-    });
-
-    const slots = (slotsResult.data || []).map((slot: any) => ({
-      ...slot,
-      shiftLabel:
-        slot.shiftLabel ||
-        (slot.shift && slot.kip ? `${slot.shift.name} - ${slot.kip.name}` : slot.kip?.name || 'Ca không tên'),
-    }));
-
     // Fetch meetings if needed
     let meetings: any[] = [];
     if (mode === 'all' || mode === 'with_meetings') {
@@ -1383,14 +1410,17 @@ class DutySlotsService {
 
     if (allDays.length === 0) throw new ApiError(400, 'Không có ngày nào để xuất');
 
-    // Split into chunks of 7 days (weeks) for the template look
-    const chunks: dayjs.Dayjs[][] = [];
-    for (let i = 0; i < allDays.length; i += 7) {
-      chunks.push(allDays.slice(i, i + 7));
-    }
+    // Group days by ISO calendar week so each sheet accurately corresponds to 1 week
+    const weekMap = new Map<string, dayjs.Dayjs[]>();
+    allDays.forEach((d) => {
+      const weekKey = d.startOf('isoWeek' as any).format('YYYY-MM-DD');
+      if (!weekMap.has(weekKey)) {
+        weekMap.set(weekKey, []);
+      }
+      weekMap.get(weekKey)!.push(d);
+    });
 
-    // Fetch templates once to maintain order
-    const { templates } = (await this.getWeeklySchedule({ weekStart: startDate.format('YYYY-MM-DD') })).data;
+    const chunks = Array.from(weekMap.values());
 
     // Styles
     const headerStyle: Partial<ExcelJS.Style> = {
@@ -1424,7 +1454,7 @@ class DutySlotsService {
     };
 
     const cellStyle: Partial<ExcelJS.Style> = {
-      font: { size: 10 },
+      font: { size: 10, color: { argb: 'FF000000' } },
       alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
       border: {
         top: { style: 'thin' },
@@ -1435,9 +1465,9 @@ class DutySlotsService {
     };
 
     const meetingCellStyle: Partial<ExcelJS.Style> = {
-      font: { size: 10, italic: true, color: { argb: 'FFFF0000' } },
-      alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
-      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } }, // Light yellow
+      font: { size: 10, color: { argb: 'FF4338CA' }, bold: true },
+      alignment: { horizontal: 'left', vertical: 'middle', wrapText: true },
+      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F3FF' } },
       border: {
         top: { style: 'thin' },
         left: { style: 'thin' },
@@ -1466,67 +1496,75 @@ class DutySlotsService {
       for (let i = 2; i <= numCols + 1; i++) worksheet.getColumn(i).width = 20;
 
       const rangeStr = `${weekDays[0].format('DD/MM')} - ${weekDays[numCols - 1].format('DD/MM')}`;
-      const titleRow = worksheet.addRow([`LỊCH TRỰC TV DCD (${rangeStr})`]);
+      const memberFilter = options.memberFilter || 'all'; // 'all' | 'tv' | 'ctv'
+
+      let titlePrefix = 'LỊCH TRỰC DCD';
+      if (memberFilter === 'tv') titlePrefix = 'LỊCH TRỰC THÀNH VIÊN DCD';
+      else if (memberFilter === 'ctv') titlePrefix = 'LỊCH TRỰC CTV DCD';
+      else titlePrefix = 'LỊCH TRỰC TV & CTV DCD';
+
+      const titleRow = worksheet.addRow([`${titlePrefix} (${rangeStr})`]);
       worksheet.mergeCells(1, 1, 1, numCols + 1);
       titleRow.getCell(1).style = headerStyle;
       titleRow.height = 30;
 
-      const dayHeaderRow = worksheet.addRow(['', ...weekDays.map((d) => d.format('dddd (DD/MM)'))]);
+      const VI_DAY_NAMES = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+      const dayHeaderRow = worksheet.addRow([
+        '',
+        ...weekDays.map((d) => `${VI_DAY_NAMES[d.day()]} (${d.format('DD/MM')})`),
+      ]);
       dayHeaderRow.eachCell((cell, colNumber) => {
         cell.style = dayHeaderStyle;
         if (colNumber > 1) {
           const d = weekDays[colNumber - 2];
           const isWeekend = d.day() === 0 || d.day() === 6;
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isWeekend ? 'FFE2EFDA' : 'FFF8D7DA' } };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: isWeekend ? 'FFFCE4D6' : 'FFD9E1F2' },
+          };
+          cell.font = { bold: true, size: 10, color: { argb: isWeekend ? 'FFC00000' : 'FF1F4E79' } };
         }
       });
       dayHeaderRow.height = 25;
 
-      const [settings] = await Promise.all([dutySettingsService.getSettings()]);
+      const weekStartStr = weekDays[0].startOf('isoWeek' as any).format('YYYY-MM-DD');
+      const scheduleRes = await this.getWeeklySchedule({
+        weekStart: weekStartStr,
+        userId: options.userId,
+        userRole: options.userRole,
+        userPosition: options.userPosition,
+        userPermissions: options.userPermissions,
+        fullUser: options.fullUser,
+      });
 
-      const isGlobalPrivacyMode = settings.isPrivacyMode === true;
-      const requesterRole = options.userRole;
-      const requesterId = normalizeId(options.userId);
-      const isAdmin = requesterRole === 'admin' || requesterRole === 'staff';
+      const weekSlots = scheduleRes.data.slots || [];
+      const weekTemplates = scheduleRes.data.templates || [];
 
       const scheduleMap: Record<number, Record<string, string[]>> = {};
       for (let i = 0; i < numCols; i++) scheduleMap[i] = {};
 
-      slots.forEach((slot: any) => {
+      weekSlots.forEach((slot: any) => {
         const slotDate = dayjs(slot.shiftDate);
         const dayIdx = weekDays.findIndex((d) => d.isSame(slotDate, 'day'));
         if (dayIdx === -1) return;
         const label = slot.shiftLabel;
+        if (!label) return;
         if (!scheduleMap[dayIdx][label]) scheduleMap[dayIdx][label] = [];
-
-        const slotVisibilityMode = slot.config?.visibilityMode || (isGlobalPrivacyMode ? 'private_mutual' : 'public');
 
         (slot.assignedUsers || []).forEach((u: any) => {
           if (!u) return;
 
-          const userPermissions = options.userPermissions || [];
-          const hasOverride = userPermissions.includes('duty:view:private') || userPermissions.includes('*');
+          const uPos = String(u.position || '').toLowerCase();
+          const isCTV = uPos === 'ctv';
 
-          let isHidden = false;
-          if (!isAdmin && normalizeId(u.id) !== requesterId && !hasOverride) {
-            const uRole = String(u.role || '').toLowerCase();
-            const uPos = String(u.position || '').toLowerCase();
-            const isOfficial =
-              userPermissions.includes('*') || userPermissions.includes('duty:manage') || (true && uPos !== 'ctv');
+          if (memberFilter === 'tv' && isCTV) return;
+          if (memberFilter === 'ctv' && !isCTV) return;
 
-            const reqRoleStr = String(requesterRole || '').toLowerCase();
-            const isReqOfficial = reqRoleStr !== 'ctv';
-
-            if (slotVisibilityMode === 'hidden_all') {
-              isHidden = true;
-            } else if (slotVisibilityMode === 'private_mutual') {
-              if (isReqOfficial !== isOfficial) isHidden = true;
-            } else if (slotVisibilityMode === 'protect_members') {
-              if (!isReqOfficial && isOfficial) isHidden = true;
-            }
+          let displayName = u.name || u.studentId || 'N/A';
+          if (displayName !== 'Thành viên') {
+            displayName = `${displayName} (${isCTV ? 'CTV' : 'TV'})`;
           }
-
-          const displayName = isHidden ? 'Thành viên' : u.name || u.studentId || 'N/A';
           scheduleMap[dayIdx][label].push(displayName);
         });
       });
@@ -1540,26 +1578,47 @@ class DutySlotsService {
         dayMeetings[dayIdx].push(m);
       });
 
-      const periodKipLabels = Array.from(
-        new Set(
-          slots
-            .filter((s) => weekDays.some((d) => d.isSame(dayjs(s.shiftDate), 'day')))
-            .map((s: any) => (s.shiftLabel || 'Ca không tên') as string),
-        ),
-      )
-        .filter(Boolean)
-        .sort();
-      const orderedKips: { label: string; details: string }[] = [];
-      templates.forEach((s: any) => {
-        s.kips.forEach((k: any) => {
+      const kipMap = new Map<string, { label: string; details: string; order: number }>();
+
+      // 1. Build definitions from weekTemplates
+      weekTemplates.forEach((s: any, sIdx: number) => {
+        (s.kips || []).forEach((k: any, kIdx: number) => {
           const label = `${s.name} - ${k.name}`;
-          const details = `(${k.startTime} - ${k.endTime})\n<${k.coefficient} kíp>`;
-          orderedKips.push({ label, details });
+          const timeStr = k.startTime && k.endTime ? `(${k.startTime.slice(0, 5)} - ${k.endTime.slice(0, 5)})` : '';
+          const coeffStr = k.coefficient ? `<${k.coefficient} kíp>` : '';
+          const details = [timeStr, coeffStr].filter(Boolean).join('\n');
+          const timeVal = (k.startTime || '00:00').replace(':', '');
+          if (!kipMap.has(label)) {
+            kipMap.set(label, {
+              label,
+              details,
+              order: parseInt(timeVal, 10) * 100 + (s.order ?? sIdx) * 10 + (k.order ?? kIdx),
+            });
+          }
         });
       });
-      periodKipLabels.forEach((label) => {
-        if (!orderedKips.find((ok) => ok.label === label)) orderedKips.push({ label, details: '' });
+
+      // 2. Ensure any slot from actual weekSlots is included
+      weekSlots.forEach((slot: any) => {
+        const label = slot.shiftLabel;
+        if (!label) return;
+        const timeStr =
+          slot.startTime && slot.endTime ? `(${slot.startTime.slice(0, 5)} - ${slot.endTime.slice(0, 5)})` : '';
+        const coeffStr = slot.kip?.coefficient ? `<${slot.kip.coefficient} kíp>` : '';
+        const details = [timeStr, coeffStr].filter(Boolean).join('\n');
+        const timeVal = (slot.startTime || '00:00').replace(':', '');
+        if (!kipMap.has(label)) {
+          kipMap.set(label, {
+            label,
+            details,
+            order: parseInt(timeVal, 10) * 100 + 50,
+          });
+        } else if (!kipMap.get(label)!.details && details) {
+          kipMap.get(label)!.details = details;
+        }
       });
+
+      const orderedKips = Array.from(kipMap.values()).sort((a, b) => a.order - b.order);
 
       let currentRow = 3;
       let kipColorIdx = 0;
@@ -1585,13 +1644,41 @@ class DutySlotsService {
               cell.style = cellStyle;
               const d = weekDays[colNumber - 2];
               const isWeekend = d.day() === 0 || d.day() === 6;
-              if (isWeekend)
+              const dayIdx = colNumber - 2;
+              const hasSlotForDay = weekSlots.some(
+                (s: any) => dayjs(s.shiftDate).isSame(d, 'day') && s.shiftLabel === label,
+              );
+              const hasPeopleInSlot = (scheduleMap[dayIdx][label]?.length || 0) > 0;
+
+              if (!hasSlotForDay && !hasPeopleInSlot) {
+                // Ô KHÔNG CÓ KÍP TRỰC: Bôi màu xám đậm rõ ràng + Dấu X
                 cell.fill = {
                   type: 'pattern',
                   pattern: 'solid',
-                  fgColor: { argb: isSubRowEven ? 'FFF2F2F2' : 'FFEAEAEA' },
+                  fgColor: { argb: 'FFD1D5DB' },
                 };
-              else cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: cellBgColor } };
+                if (!rowData[colNumber - 1]) {
+                  cell.value = '✕';
+                  cell.font = { bold: true, size: 12, color: { argb: 'FF6B7280' } };
+                  cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                }
+              } else if (isWeekend) {
+                // Kíp trực cuối tuần
+                cell.fill = {
+                  type: 'pattern',
+                  pattern: 'solid',
+                  fgColor: { argb: isSubRowEven ? 'FFFFF2CC' : 'FFFFF9E6' },
+                };
+                cell.font = { size: 10, color: { argb: 'FF000000' } };
+              } else {
+                // Kíp trực ngày thường thực tế
+                cell.fill = {
+                  type: 'pattern',
+                  pattern: 'solid',
+                  fgColor: { argb: cellBgColor },
+                };
+                cell.font = { size: 10, color: { argb: 'FF000000' } };
+              }
             } else {
               cell.style = kipLabelStyle;
               cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: kipBgColor } };

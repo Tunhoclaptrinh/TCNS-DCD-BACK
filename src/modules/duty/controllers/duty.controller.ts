@@ -14,7 +14,9 @@ class DutyController extends BaseController {
       weekStart: req.query.weekStart || req.query.week_start,
       userId: req.user?.id,
       userRole: req.user?.role,
+      userPosition: req.user?.position,
       userPermissions: req.user?.permissions || [],
+      fullUser: req.user,
     });
     this.ok(res, data);
   });
@@ -356,12 +358,18 @@ class DutyController extends BaseController {
   });
 
   exportWeeklyExcel = this.handle(async (req, res) => {
-    const { weekStart, mode, startDate, endDate, includeDays, date } = req.query;
+    const { weekStart, mode, startDate, endDate, date, memberFilter } = req.query;
 
-    // Parse includeDays if it's a string (from query params)
-    let parsedIncludes = [];
-    if (typeof includeDays === 'string') parsedIncludes = includeDays.split(',').map(Number);
-    else if (Array.isArray(includeDays)) parsedIncludes = includeDays.map(Number);
+    const rawIncludes = req.query.includeDays || req.query['includeDays[]'];
+    let parsedIncludes: number[] = [];
+    if (typeof rawIncludes === 'string') {
+      parsedIncludes = rawIncludes
+        .split(',')
+        .map(Number)
+        .filter((n) => !isNaN(n));
+    } else if (Array.isArray(rawIncludes)) {
+      parsedIncludes = rawIncludes.map(Number).filter((n) => !isNaN(n));
+    }
 
     const buffer = await dutyService.exportRangeExcel({
       weekStart,
@@ -370,14 +378,19 @@ class DutyController extends BaseController {
       endDate,
       ...(parsedIncludes.length > 0 ? { includeDays: parsedIncludes } : {}),
       date,
+      memberFilter: memberFilter || 'all',
       userId: req.user?.id,
       userRole: req.user?.role,
+      userPosition: req.user?.position || (req.user as any)?.position,
       userPermissions: req.user?.permissions || [],
       fullUser: req.user,
     });
 
     const label = startDate ? dayjs(startDate as string).format('DDMM') : dayjs(weekStart as string).format('WW');
-    const fileName = `Lich_Truc_${label}.xlsx`;
+    let filterSuffix = '';
+    if (memberFilter === 'tv') filterSuffix = '_TV';
+    else if (memberFilter === 'ctv') filterSuffix = '_CTV';
+    const fileName = `Lich_Truc_${label}${filterSuffix}.xlsx`;
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);

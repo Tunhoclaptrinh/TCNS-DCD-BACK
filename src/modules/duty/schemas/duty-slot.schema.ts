@@ -96,7 +96,8 @@ export default defineSchema({
     type: 'object',
     required: false,
     default: {},
-    description: 'Cấu hình nâng cao (Privacy, visibility, etc.)',
+    description:
+      'Cấu hình nâng cao: visibilityMode (public | protect_members | private_mutual | hidden_all), privacyMaskType (masked | omitted), v.v.',
   },
   slotStructure: {
     type: 'array',
