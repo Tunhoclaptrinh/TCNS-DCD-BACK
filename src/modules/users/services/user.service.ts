@@ -12,7 +12,7 @@ import ApiError from '@utils/api-error';
 import userSchema from '@modules/users/schemas/user.schema';
 import notificationService from '@modules/notifications/services/notification.service';
 import auditLogsService from '@modules/audit-logs/services/audit-logs.service';
-import { getSuggestedRoles } from '../utils/user-mapping.utils';
+import { getSuggestedRoles, getSuggestedRolesAsync } from '../utils/user-mapping.utils';
 import type { AnyRecord, Identifier } from '@app-types/common';
 import type { QueryOptions } from '@app-types/database';
 
@@ -230,7 +230,7 @@ class UserService extends BaseService {
     }
 
     if (data.position && data.roleIds === undefined) {
-      data.roleIds = getSuggestedRoles(data.position as string, data.department as string);
+      data.roleIds = await getSuggestedRolesAsync(data.position as string, data.department as string);
     }
 
     const result = await super.create(data);
@@ -262,7 +262,7 @@ class UserService extends BaseService {
 
       // Tự động đồng bộ quyền nếu có thay đổi chức vụ mà không truyền roleIds
       if (data.position !== undefined && data.roleIds === undefined) {
-        data.roleIds = getSuggestedRoles(position as string, department as string);
+        data.roleIds = await getSuggestedRolesAsync(position as string, department as string);
       }
     }
 

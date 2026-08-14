@@ -18,8 +18,52 @@ export const ROLE_MAP = {
   CTV: 8,
 };
 
+import db from '@database/mongo-database.adapter';
+
 /**
- * Logic to determine suggested roles based on position and department
+ * Logic to determine suggested roles based on position and department (Async with DB lookup)
+ */
+export const getSuggestedRolesAsync = async (position: string, department?: string): Promise<number[]> => {
+  if (!position) return [];
+  const dept = department || '';
+
+  if (position === 'dt') return [ROLE_MAP.ADMIN];
+  if (position === 'ctv') return [ROLE_MAP.CTV];
+  if (position === 'tv') return [ROLE_MAP.MEMBER];
+
+  try {
+    const Model = (db as any).getModel('system_settings');
+    if (Model) {
+      const settingDoc = await Model.findOne({ key: 'DEPARTMENT_CONFIGS' }).lean();
+      if (settingDoc && settingDoc.value) {
+        const configs = typeof settingDoc.value === 'string' ? JSON.parse(settingDoc.value) : settingDoc.value;
+        if (Array.isArray(configs)) {
+          const config =
+            configs.find((c: any) => c.name === dept || c.id === dept) || configs.find((c: any) => c.id === 'khac');
+          if (config && config.roles && config.roles[position]) {
+            const mappedRoleKeys = Array.isArray(config.roles[position])
+              ? config.roles[position]
+              : [config.roles[position]];
+            const roleModel = (db as any).getModel('roles');
+            if (roleModel) {
+              const rolesInDb = await roleModel.find({ key: { $in: mappedRoleKeys } }).lean();
+              if (rolesInDb && rolesInDb.length > 0) {
+                return rolesInDb.map((r: any) => r.id);
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    // Fallback to static mapping if DB lookup fails
+  }
+
+  return getSuggestedRoles(position, department);
+};
+
+/**
+ * Sync logic to determine suggested roles based on position and department (Fallback)
  */
 export const getSuggestedRoles = (position: string, department?: string): number[] => {
   if (!position) return [];
