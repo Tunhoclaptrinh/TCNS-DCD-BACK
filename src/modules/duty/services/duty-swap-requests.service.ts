@@ -7,6 +7,7 @@ import ApiError from '@utils/api-error';
 import { Identifier, GenericRecord, normalizeId, normalizeIdList } from './duty-utils';
 import dutyLogsService from './duty-logs.service';
 import dutySlotsService from './duty-slots.service';
+import dutyLeaveRequestsService from './duty-leave-requests.service';
 
 class DutySwapRequestsService extends BaseService {
   constructor() {
@@ -273,15 +274,11 @@ class DutySwapRequestsService extends BaseService {
       filter: isApprover ? options.filter : { ...options.filter, requesterId: userId },
     });
 
-    // Enrich slots with labels
+    // Enrich slots
     await Promise.all(
       (result.data || []).map(async (req: any) => {
-        if (req.fromSlot) {
-          req.fromSlot.shiftLabel = await dutySlotsService.getSlotLabel(req.fromSlot);
-        }
-        if (req.toSlot) {
-          req.toSlot.shiftLabel = await dutySlotsService.getSlotLabel(req.toSlot);
-        }
+        req.fromSlot = await dutyLeaveRequestsService.enrichSlotDetails(req.fromSlot, req.fromSlotId);
+        req.toSlot = await dutyLeaveRequestsService.enrichSlotDetails(req.toSlot, req.toSlotId);
       }),
     );
 

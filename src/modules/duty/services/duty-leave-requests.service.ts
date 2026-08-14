@@ -1,11 +1,14 @@
 import BaseService from '@shared/common/base-service';
 import dutyLeaveRequestsRepository from '@modules/duty/repositories/duty-leave-requests.repository';
 import dutySlotsRepository from '@modules/duty/repositories/duty-slots.repository';
+import dutyKipsRepository from '@modules/duty/repositories/duty-kips.repository';
+import dutyShiftsRepository from '@modules/duty/repositories/duty-shifts.repository';
 import notificationService from '@modules/notifications/services/notification.service';
 import ApiError from '@utils/api-error';
 import { Identifier, GenericRecord, normalizeId, normalizeIdList } from './duty-utils';
 import dutyLogsService from './duty-logs.service';
 import dutySlotsService from './duty-slots.service';
+import usersRepository from '@modules/users/repositories/users.repository';
 
 class DutyLeaveRequestsService extends BaseService {
   constructor() {
@@ -75,6 +78,59 @@ class DutyLeaveRequestsService extends BaseService {
     return updated;
   }
 
+  async enrichSlotDetails(rawSlot: any, slotId?: Identifier) {
+    let slot = rawSlot;
+    const targetSlotId = slot?.id || slotId;
+    if ((!slot || !slot.shiftDate || (!slot.startTime && !slot.kipId)) && targetSlotId) {
+      const fetched = await dutySlotsRepository.findById(targetSlotId);
+      if (fetched) {
+        slot = { ...fetched, ...(slot || {}) };
+      }
+    }
+    if (!slot) return null;
+
+    let kip = slot.kip;
+    if (!kip && slot.kipId) {
+      kip = await dutyKipsRepository.findById(slot.kipId);
+    }
+    let shift = slot.shift;
+    if (!shift && (kip?.shiftId || slot.shiftId)) {
+      shift = await dutyShiftsRepository.findById(kip?.shiftId || slot.shiftId);
+    }
+
+    const shiftName = shift?.name || slot.shiftName || undefined;
+    const kipName = kip?.name || slot.kipName || undefined;
+    const startTime = slot.startTime || kip?.startTime || shift?.startTime || undefined;
+    const endTime = slot.endTime || kip?.endTime || shift?.endTime || undefined;
+
+    let shiftLabel = undefined;
+    if (shiftName && kipName) {
+      shiftLabel = `${shiftName} • ${kipName}`;
+    } else if (shiftName || kipName) {
+      shiftLabel = shiftName || kipName;
+    }
+
+    let assignedUsers = slot.assignedUsers || [];
+    if ((!assignedUsers || assignedUsers.length === 0) && slot.assignedUserIds?.length > 0) {
+      const usersList = await usersRepository.findMany({ id_in: slot.assignedUserIds });
+      if (Array.isArray(usersList)) {
+        assignedUsers = usersList;
+      }
+    }
+
+    return {
+      ...slot,
+      kip,
+      shift,
+      shiftName,
+      kipName,
+      startTime,
+      endTime,
+      shiftLabel,
+      assignedUsers,
+    };
+  }
+
   /**
    * Get leave requests with slot labels
    */
@@ -86,13 +142,41 @@ class DutyLeaveRequestsService extends BaseService {
       ...options,
     });
 
-    // Enrich slots with labels
+    // Enrich slots and users
     if (result.data) {
+      const userIdsToFetch = new Set<number>();
+      result.data.forEach((req: any) => {
+        if ((!req.user || (!req.user.name && !req.user.lastName && !req.user.firstName)) && req.userId) {
+          userIdsToFetch.add(Number(req.userId));
+        }
+        if (
+          (!req.approver || (!req.approver.name && !req.approver.lastName && !req.approver.firstName)) &&
+          req.approvedBy
+        ) {
+          userIdsToFetch.add(Number(req.approvedBy));
+        }
+      });
+
+      const userMap = new Map<number, any>();
+      if (userIdsToFetch.size > 0) {
+        const usersList = await usersRepository.findMany({ id_in: Array.from(userIdsToFetch) });
+        if (Array.isArray(usersList)) {
+          usersList.forEach((u: any) => userMap.set(Number(u.id), u));
+        }
+      }
+
       await Promise.all(
         result.data.map(async (req: any) => {
-          if (req.slot) {
-            req.slot.shiftLabel = await dutySlotsService.getSlotLabel(req.slot);
+          if ((!req.user || (!req.user.name && !req.user.lastName && !req.user.firstName)) && req.userId) {
+            req.user = userMap.get(Number(req.userId)) || req.user || null;
           }
+          if (
+            (!req.approver || (!req.approver.name && !req.approver.lastName && !req.approver.firstName)) &&
+            req.approvedBy
+          ) {
+            req.approver = userMap.get(Number(req.approvedBy)) || req.approver || null;
+          }
+          req.slot = await this.enrichSlotDetails(req.slot, req.slotId);
         }),
       );
     }
