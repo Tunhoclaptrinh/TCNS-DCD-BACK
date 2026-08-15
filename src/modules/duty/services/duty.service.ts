@@ -307,6 +307,8 @@ class DutyService extends BaseService {
 
   selfCheckIn = (slotId: Identifier, user: any, ip: string) => dutySlotsService.selfCheckIn(slotId, user, ip);
 
+  getSlotDetails = (slotId: Identifier, performer?: any) => dutySlotsService.getSlotDetails(slotId, performer);
+
   leaderMarkAttendance = (slotId: Identifier, targetUserId: Identifier, performer: any, customCoefficient?: number) =>
     dutySlotsService.leaderMarkAttendance(slotId, targetUserId, performer, customCoefficient);
 

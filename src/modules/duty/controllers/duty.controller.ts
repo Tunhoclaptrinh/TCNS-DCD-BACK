@@ -22,7 +22,7 @@ class DutyController extends BaseController {
   });
 
   getSlot = this.handle(async (req, res) => {
-    const data = await dutyService.findById(req.params.id);
+    const data = await dutyService.getSlotDetails(req.params.id, req.user);
     this.ok(res, data);
   });
 

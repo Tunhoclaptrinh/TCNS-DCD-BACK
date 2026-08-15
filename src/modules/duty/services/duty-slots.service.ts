@@ -455,6 +455,7 @@ class DutySlotsService {
       kipId: kip.id,
       shiftDate: kip.date,
       capacity: payload.capacity || kip.capacity,
+      coefficient: payload.coefficient !== undefined ? Number(payload.coefficient) : Number(kip.coefficient || 1),
       assignedUserIds: normalizeIdList(payload.assignedUserIds || []),
       status: 'open',
       createdBy: normalizeId(actorId),
@@ -473,6 +474,66 @@ class DutySlotsService {
     );
 
     return created;
+  }
+
+  async getSlotDetails(slotId: Identifier, _performer?: any) {
+    const slot = await dutySlotsRepository.findById(slotId);
+    if (!slot) throw ApiError.notFound('Kíp trực không tồn tại');
+
+    const kip = slot.kipId ? await dutyKipsRepository.findById(slot.kipId) : null;
+    const shiftId = slot.shiftId || kip?.shiftId;
+    const shift = shiftId ? await dutyShiftsRepository.findById(shiftId) : null;
+
+    const assignedIds = normalizeIdList(slot.assignedUserIds || []);
+    const attendedIds = normalizeIdList(slot.attendedUserIds || []);
+    const allUserIds = Array.from(new Set([...assignedIds, ...attendedIds]));
+
+    const users = allUserIds.length > 0 ? await usersRepository.findMany({ id: { $in: allUserIds } }) : [];
+    const userMap = new Map(users.map((u: any) => [u.id, u]));
+
+    const assignedUsers = assignedIds.map((id) => userMap.get(id)).filter(Boolean);
+    const attendedUsers = attendedIds.map((id) => userMap.get(id)).filter(Boolean);
+
+    const slotStartTime = slot.startTime || kip?.startTime || shift?.startTime || '00:00';
+    const slotEndTime = slot.endTime || kip?.endTime || shift?.endTime || '00:00';
+
+    let resolvedShiftLabel = slot.shiftLabel;
+    if (!resolvedShiftLabel) {
+      if (shift && kip) resolvedShiftLabel = `${shift.name} - ${kip.name}`;
+      else if (kip) resolvedShiftLabel = kip.name;
+      else if (shift) resolvedShiftLabel = shift.name;
+      else resolvedShiftLabel = 'Kíp trực';
+    }
+
+    const slotCoefficient = Number(slot.coefficient ?? kip?.coefficient ?? shift?.coefficient ?? 1);
+    const slotCapacity = Number(slot.capacity ?? kip?.capacity ?? shift?.capacity ?? 1);
+
+    const [violations, leaveRequests, swapRequests] = await Promise.all([
+      dutyViolationsRepository.findMany({ slotId: slot.id }),
+      dutyLeaveRequestsRepository.findMany({ slotId: slot.id }),
+      dutySwapRequestsRepository.findMany({ fromSlotId: slot.id }),
+    ]);
+
+    return {
+      ...slot,
+      shiftLabel: resolvedShiftLabel,
+      startTime: slotStartTime,
+      endTime: slotEndTime,
+      coefficient: slotCoefficient,
+      capacity: slotCapacity,
+      attendanceOverrides: slot.attendanceOverrides || {},
+      kip: kip ? { ...kip, coefficient: Number(kip.coefficient || 1) } : slot.kip,
+      shift: shift ? { ...shift, coefficient: Number(shift.coefficient || 1) } : slot.shift,
+      assignedUsers,
+      attendedUsers,
+      totalRegistered: assignedIds.length,
+      registeredCount: assignedIds.length,
+      isFull: assignedIds.length >= slotCapacity,
+      violations,
+      leaveRequests,
+      swapRequests,
+      isSpecialEvent: !!(shift?.isSpecialEvent || kip?.isSpecialEvent),
+    };
   }
 
   async deleteSlot(id: Identifier, performerId: Identifier) {
@@ -542,6 +603,18 @@ class DutySlotsService {
       };
     }
 
+    if (payload.attendedUserIds !== undefined) {
+      patch.attendedUserIds = normalizeIdList(payload.attendedUserIds).map(Number);
+    }
+
+    if (payload.attendanceOverrides !== undefined) {
+      patch.attendanceOverrides = payload.attendanceOverrides;
+    }
+
+    if (payload.coefficient !== undefined) {
+      patch.coefficient = Number(payload.coefficient);
+    }
+
     const updated = await dutySlotsRepository.update(slotId, patch);
     const newAssignedIds = normalizeIdList(updated.assignedUserIds || []).map(Number);
 
@@ -585,6 +658,10 @@ class DutySlotsService {
       let changed = false;
       if (payload.capacity !== undefined) {
         kipUpdate.capacity = Number(payload.capacity);
+        changed = true;
+      }
+      if (payload.coefficient !== undefined) {
+        kipUpdate.coefficient = Number(payload.coefficient);
         changed = true;
       }
       if (payload.startTime !== undefined) {
