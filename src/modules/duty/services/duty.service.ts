@@ -713,6 +713,7 @@ class DutyService extends BaseService {
 
     const data = result.data.map((log) => ({
       ...log,
+      description: log.details || log.description || log.action || 'Thao tác trên kíp',
       performer: userMap.get(normalizeId(log.performerId)),
       targetUser: log.targetUserId ? userMap.get(normalizeId(log.targetUserId)) : null,
     }));

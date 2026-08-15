@@ -34,49 +34,15 @@ class DutySettingsService extends BaseService {
       isPrivacyMode: false,
       violationPenaltyRate: 0,
       allowedIpRanges: [] as string[],
+      selfCheckInBeforeMinutes: 15,
       updatedAt: new Date().toISOString(),
     };
 
-    let result = defaults;
     if (settings) {
       const plainSettings = typeof (settings as any).toObject === 'function' ? (settings as any).toObject() : settings;
-      result = { ...defaults, ...plainSettings };
-      if (!Array.isArray(plainSettings.violationTypes) || plainSettings.violationTypes.length === 0) {
-        result.violationTypes = defaults.violationTypes;
-        try {
-          const SystemSettingModel = (db as any).getModel('system_settings');
-          if (SystemSettingModel) {
-            const vDoc = await SystemSettingModel.findOne({ key: 'DUTY_VIOLATION_TYPES' }).lean();
-            if (vDoc && vDoc.value) {
-              const parsed = typeof vDoc.value === 'string' ? JSON.parse(vDoc.value) : vDoc.value;
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                result.violationTypes = parsed;
-              }
-            }
-          }
-        } catch {
-          // Ignore
-        }
-      }
+      return { ...defaults, ...plainSettings };
     }
-
-    // Merge ALLOWED_IP_RANGES from system_settings if present
-    try {
-      const SystemSettingModel = (db as any).getModel('system_settings');
-      if (SystemSettingModel) {
-        const ipDoc = await SystemSettingModel.findOne({ key: 'ALLOWED_IP_RANGES' }).lean();
-        if (ipDoc && ipDoc.value) {
-          result.allowedIpRanges = String(ipDoc.value)
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean);
-        }
-      }
-    } catch {
-      // Ignore system_settings lookup error
-    }
-
-    return result;
+    return defaults;
   }
 
   /**
@@ -88,6 +54,26 @@ class DutySettingsService extends BaseService {
       return await this.create(data);
     }
     return await this.update(settings.id, data);
+  }
+
+  async create(data: GenericRecord) {
+    if (typeof data.allowedIpRanges === 'string') {
+      data.allowedIpRanges = data.allowedIpRanges
+        .split(',')
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+    }
+    return super.create(data);
+  }
+
+  async update(id: any, data: GenericRecord) {
+    if (typeof data.allowedIpRanges === 'string') {
+      data.allowedIpRanges = data.allowedIpRanges
+        .split(',')
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+    }
+    return super.update(id, data);
   }
 
   async beforeCreate(data: GenericRecord) {
@@ -104,48 +90,30 @@ class DutySettingsService extends BaseService {
 
   private async processSettingsPayload(data: GenericRecord, _id?: any) {
     const settings = await dutySettingsRepository.getGlobalSettings();
-    const parsedIpRanges = Array.isArray(data.allowedIpRanges)
-      ? data.allowedIpRanges
-      : typeof data.allowedIpRanges === 'string'
-        ? data.allowedIpRanges
+    const rawIp = data.allowedIpRanges !== undefined ? data.allowedIpRanges : data.ALLOWED_IP_RANGES;
+    const parsedIpRanges = Array.isArray(rawIp)
+      ? rawIp
+      : typeof rawIp === 'string'
+        ? rawIp
             .split(',')
             .map((s) => s.trim())
             .filter(Boolean)
-        : [];
+        : settings?.allowedIpRanges || [];
 
-    // Sync to system_settings as ALLOWED_IP_RANGES and DUTY_VIOLATION_TYPES
-    try {
-      const SystemSettingModel = (db as any).getModel('system_settings');
-      if (SystemSettingModel && data.hasOwnProperty('allowedIpRanges')) {
-        await SystemSettingModel.findOneAndUpdate(
-          { key: 'ALLOWED_IP_RANGES' },
-          { value: parsedIpRanges.join(', ') },
-          { upsert: true, new: true },
-        );
-      }
-      if (SystemSettingModel && data.hasOwnProperty('violationTypes')) {
-        await SystemSettingModel.findOneAndUpdate(
-          { key: 'DUTY_VIOLATION_TYPES' },
-          {
-            value: JSON.stringify(data.violationTypes),
-            type: 'json',
-            description: 'Cấu hình danh mục loại lỗi vi phạm ca trực và mức phạt mặc định',
-          },
-          { upsert: true, new: true },
-        );
-      }
-    } catch {
-      // Ignore system_settings write error
-    }
+    const vTypes = Array.isArray(data.violationTypes) ? data.violationTypes : settings?.violationTypes || [];
+    const findPen = (keyStr: string, fallbackVal: number) => {
+      const item = vTypes.find((v: any) => v.key === keyStr);
+      return item && item.defaultPenalty !== undefined ? Number(item.defaultPenalty) : fallbackVal;
+    };
 
     const payload = {
       weeklyLimitEnabled: data.hasOwnProperty('weeklyLimitEnabled')
         ? data.weeklyLimitEnabled === true || data.weeklyLimitEnabled === 'true'
-        : settings
-          ? settings.weeklyLimitEnabled
-          : true,
-      weeklyKipLimit: Number(data.weeklyKipLimit) || 0,
-      allowUnregisterWhenFull: data.allowUnregisterWhenFull !== false,
+        : (settings?.weeklyLimitEnabled ?? true),
+      weeklyKipLimit: data.weeklyKipLimit !== undefined ? Number(data.weeklyKipLimit) : (settings?.weeklyKipLimit ?? 2),
+      allowUnregisterWhenFull: data.hasOwnProperty('allowUnregisterWhenFull')
+        ? data.allowUnregisterWhenFull === true || data.allowUnregisterWhenFull === 'true'
+        : (settings?.allowUnregisterWhenFull ?? false),
       currentGeneration: data.currentGeneration || '',
       generations: Array.isArray(data.generations) ? data.generations : [],
       kipLimitMode: data.kipLimitMode || 'quota',
@@ -155,22 +123,29 @@ class DutySettingsService extends BaseService {
       penaltyAbsentNoPermission:
         data.penaltyAbsentNoPermission !== undefined
           ? Number(data.penaltyAbsentNoPermission)
-          : (settings?.penaltyAbsentNoPermission ?? 50000),
+          : findPen('absent_no_permission', settings?.penaltyAbsentNoPermission ?? 50000),
       penaltyAbsentWithPermissionLate:
         data.penaltyAbsentWithPermissionLate !== undefined
           ? Number(data.penaltyAbsentWithPermissionLate)
-          : (settings?.penaltyAbsentWithPermissionLate ?? 20000),
-      penaltyLate: data.penaltyLate !== undefined ? Number(data.penaltyLate) : (settings?.penaltyLate ?? 10000),
+          : findPen('absent_with_permission_late', settings?.penaltyAbsentWithPermissionLate ?? 20000),
+      penaltyLate:
+        data.penaltyLate !== undefined ? Number(data.penaltyLate) : findPen('late', settings?.penaltyLate ?? 10000),
       penaltyWrongUniform:
         data.penaltyWrongUniform !== undefined
           ? Number(data.penaltyWrongUniform)
-          : (settings?.penaltyWrongUniform ?? 10000),
+          : findPen('wrong_uniform', settings?.penaltyWrongUniform ?? 10000),
       violationPenaltyRate:
         data.violationPenaltyRate !== undefined
           ? Number(data.violationPenaltyRate)
           : (settings?.violationPenaltyRate ?? 0),
-      violationTypes: Array.isArray(data.violationTypes) ? data.violationTypes : settings?.violationTypes || [],
+      violationTypes: vTypes,
       allowedIpRanges: parsedIpRanges,
+      selfCheckInBeforeMinutes:
+        data.selfCheckInBeforeMinutes !== undefined
+          ? Number(data.selfCheckInBeforeMinutes)
+          : data.SELF_CHECKIN_BEFORE_MINUTES !== undefined
+            ? Number(data.SELF_CHECKIN_BEFORE_MINUTES)
+            : (settings?.selfCheckInBeforeMinutes ?? 15),
       updatedAt: new Date().toISOString(),
     };
     return payload;

@@ -28,6 +28,11 @@ class DutySwapRequestsService extends BaseService {
     const fromSlot = await dutySlotsRepository.findById(fromSlotId);
     if (!fromSlot) throw ApiError.notFound('Kíp trực nguồn không tồn tại');
 
+    const fromAttended = normalizeIdList(fromSlot.attendedUserIds || []);
+    if (fromAttended.includes(normalizeId(requesterUser.id))) {
+      throw ApiError.badRequest('Bạn đã được điểm danh trong kíp trực này, không thể đổi ca.');
+    }
+
     const created = await this.create({
       fromSlotId,
       toSlotId,

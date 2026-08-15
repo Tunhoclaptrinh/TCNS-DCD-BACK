@@ -29,10 +29,27 @@ class DutyLeaveRequestsService extends BaseService {
 
   async beforeCreate(data: GenericRecord) {
     const base = await super.beforeCreate(data);
+    const userId = normalizeId(data.userId);
+    const slotId = normalizeId(data.slotId);
+
+    const slot = await dutySlotsRepository.findById(slotId);
+    if (!slot) throw ApiError.notFound('Kíp trực không tồn tại');
+
+    const assigned = normalizeIdList(slot.assignedUserIds || []);
+    const attended = normalizeIdList(slot.attendedUserIds || []);
+
+    if (!assigned.includes(userId) && !attended.includes(userId)) {
+      throw ApiError.badRequest('Bạn không có tên trong danh sách kíp trực này');
+    }
+
+    if (attended.includes(userId)) {
+      throw ApiError.badRequest('Bạn đã được điểm danh trong kíp trực này, không thể gửi đơn xin nghỉ.');
+    }
+
     return {
       ...base,
-      userId: normalizeId(data.userId),
-      slotId: normalizeId(data.slotId),
+      userId,
+      slotId,
       status: data.status || 'pending',
     };
   }

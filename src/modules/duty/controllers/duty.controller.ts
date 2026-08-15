@@ -302,7 +302,15 @@ class DutyController extends BaseController {
   });
 
   deleteViolation = this.handle(async (req, res) => {
-    const data = await dutyService.deleteViolation({ slotId: req.params.id, userId: req.params.userId }, req.user);
+    const violationId = req.query.violationId || req.body?.violationId;
+    const data = await dutyService.deleteViolation(
+      {
+        slotId: req.params.id,
+        userId: req.params.userId,
+        violationId: violationId ? Number(violationId) : undefined,
+      },
+      req.user,
+    );
     this.ok(res, data);
   });
 

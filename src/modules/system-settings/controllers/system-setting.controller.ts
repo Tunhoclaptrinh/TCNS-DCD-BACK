@@ -72,8 +72,6 @@ class SystemSettingController extends BaseController {
       defaultimportpasswordstrategy: 'DEFAULT_IMPORT_PASSWORD_STRATEGY',
       defaultImportPassword: 'DEFAULT_IMPORT_PASSWORD',
       defaultimportpassword: 'DEFAULT_IMPORT_PASSWORD',
-      allowedIpRanges: 'ALLOWED_IP_RANGES',
-      allowedipranges: 'ALLOWED_IP_RANGES',
       departmentConfigs: 'DEPARTMENT_CONFIGS',
       departmentconfigs: 'DEPARTMENT_CONFIGS',
       DEPARTMENTCONFIGS: 'DEPARTMENT_CONFIGS',
@@ -128,25 +126,6 @@ class SystemSettingController extends BaseController {
           }
         } catch (err) {
           console.error('Failed to sync DUTY_VIOLATION_TYPES to duty_settings:', err);
-        }
-      }
-
-      if (dbKey === 'ALLOWED_IP_RANGES') {
-        try {
-          const dutySettingsRepository = (await import('@modules/duty/repositories/duty-settings.repository')).default;
-          const globalDutySettings = await dutySettingsRepository.getGlobalSettings();
-          const ipList = String(value ?? '')
-            .split(',')
-            .map((s: string) => s.trim())
-            .filter(Boolean);
-          if (globalDutySettings) {
-            await dutySettingsRepository.update(globalDutySettings.id, {
-              allowedIpRanges: ipList,
-              updatedAt: new Date().toISOString(),
-            });
-          }
-        } catch (err) {
-          console.error('Failed to sync ALLOWED_IP_RANGES to duty_settings:', err);
         }
       }
     }

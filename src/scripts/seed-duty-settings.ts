@@ -54,7 +54,7 @@ const DEFAULT_DUTY_SETTINGS = {
   currentGeneration: '',
   generations: [],
   kipLimitMode: 'quota',
-  defaultQuota: 2.5,
+  defaultQuota: 4,
   kipPrice: 0,
   quotaRules: [],
   penaltyAbsentNoPermission: 50000,
@@ -64,6 +64,7 @@ const DEFAULT_DUTY_SETTINGS = {
   violationPenaltyRate: 1,
   violationTypes: DEFAULT_VIOLATION_TYPES,
   allowedIpRanges: [] as string[],
+  selfCheckInBeforeMinutes: 15,
   updatedAt: new Date().toISOString(),
 };
 
@@ -101,6 +102,7 @@ async function seedDutySettings() {
       await db.update('duty_settings', existing.id, {
         ...DEFAULT_DUTY_SETTINGS,
         ...existingData,
+        selfCheckInBeforeMinutes: existingData.selfCheckInBeforeMinutes ?? 15,
         penaltyWrongUniform: existingData.penaltyWrongUniform ?? 10000,
         violationTypes: mergedViolationTypes,
         updatedAt: new Date().toISOString(),
@@ -132,6 +134,22 @@ async function seedDutySettings() {
         description: 'Cấu hình danh mục loại lỗi vi phạm ca trực và mức phạt mặc định',
       });
       console.log('Successfully created DUTY_VIOLATION_TYPES in system_settings!');
+    }
+
+    const existingSelfCheckIn = await db.findOne('system_settings', { key: 'SELF_CHECKIN_BEFORE_MINUTES' });
+    if (!existingSelfCheckIn) {
+      await db.create('system_settings', {
+        key: 'SELF_CHECKIN_BEFORE_MINUTES',
+        value: '15',
+        type: 'number',
+        description: 'Số phút được phép tự điểm danh trước khi kíp trực bắt đầu',
+      });
+      console.log('Successfully created SELF_CHECKIN_BEFORE_MINUTES in system_settings!');
+    } else if (existingSelfCheckIn.value !== '15') {
+      await db.update('system_settings', (existingSelfCheckIn as any)._id || (existingSelfCheckIn as any).id, {
+        value: '15',
+      });
+      console.log('Successfully synced SELF_CHECKIN_BEFORE_MINUTES to 15 in system_settings!');
     }
 
     console.log('Seeding duty settings completed successfully!');

@@ -169,10 +169,19 @@ class DutySlotsService {
         kip?.config?.privacyMaskType ||
         'masked';
 
+      const defaultLeaderId = assignedIds[0];
+      const tempLeaderId = slot.tempLeaderId;
+
       const filterUserByPrivacy = (user: any, visibilityMode: string, maskType: string) => {
         if (!user) return null;
         if (isAdmin) return user;
         if (normalizeId(user.id) === requesterId) return user;
+
+        // Shift Leader & Temp Leader are ALWAYS VISIBLE (never masked)
+        const isShiftLeader =
+          (defaultLeaderId && normalizeId(user.id) === normalizeId(defaultLeaderId)) ||
+          (tempLeaderId && normalizeId(user.id) === normalizeId(tempLeaderId));
+        if (isShiftLeader) return user;
 
         const userPermissions = options.userPermissions || [];
         if (userPermissions.includes('duty:view:private') || userPermissions.includes('*')) return user;
@@ -638,7 +647,29 @@ class DutySlotsService {
     patch.capacity = finalCapacity;
 
     if (payload.attendedUserIds !== undefined) {
-      patch.attendedUserIds = normalizeIdList(payload.attendedUserIds).map(Number);
+      const newAttended = normalizeIdList(payload.attendedUserIds).map(Number);
+      patch.attendedUserIds = newAttended;
+
+      const currentAttendanceData = { ...(slot.attendanceData || {}) };
+      const nowIso = new Date().toISOString();
+
+      newAttended.forEach((uid: number) => {
+        if (!currentAttendanceData[String(uid)] && !currentAttendanceData[uid]) {
+          currentAttendanceData[String(uid)] = {
+            time: nowIso,
+            method: 'admin',
+            markedBy: normalizeId(performerId),
+          };
+        }
+      });
+
+      Object.keys(currentAttendanceData).forEach((key) => {
+        if (!newAttended.includes(Number(key))) {
+          delete currentAttendanceData[key];
+        }
+      });
+
+      patch.attendanceData = currentAttendanceData;
     }
 
     if (payload.attendanceOverrides !== undefined) {
@@ -965,24 +996,42 @@ class DutySlotsService {
 
     const userId = getActorId(user);
     await this.assertDayNotLocked(slot, user);
+
     const assigned = normalizeIdList(slot.assignedUserIds || []);
-    if (!assigned.includes(userId)) throw ApiError.badRequest('Bạn không đăng ký kíp trực này');
+    const attended = normalizeIdList(slot.attendedUserIds || []);
+    const isInSlot = assigned.includes(userId) || attended.includes(userId);
+
+    if (!isInSlot) {
+      throw ApiError.badRequest('Bạn không có tên trong danh sách kíp trực này');
+    }
+
+    const isAdmin = typeof user === 'object' && ((user as any).role === 'admin' || (user as any).role === 'staff');
+
+    if (attended.includes(userId) && !isAdmin) {
+      throw ApiError.badRequest(
+        'Bạn đã được điểm danh trong kíp trực này, không thể tự ý hủy đăng ký. Hãy liên hệ Admin.',
+      );
+    }
 
     const settings = await dutySettingsService.getSettings();
-    const isAdmin = typeof user === 'object' && (user as any).role === 'admin';
-    const isStaff = typeof user === 'object' && (user as any).role === 'staff';
     const isFull = assigned.length >= (slot.capacity || 1);
 
-    if (slot.status === 'locked' && !isAdmin && !isStaff) {
+    if (slot.status === 'locked' && !isAdmin) {
       throw ApiError.badRequest('Kíp trực đã bị khóa, không thể tự ý hủy. Hãy liên hệ Admin.');
     }
 
-    if (!settings.allowUnregisterWhenFull && isFull && !isAdmin && !isStaff) {
+    if (!settings.allowUnregisterWhenFull && isFull && !isAdmin) {
       throw ApiError.badRequest('Kíp đã đủ người, không thể tự ý hủy theo quy định. Hãy liên hệ Admin.');
     }
 
+    const currentAttendanceData = { ...(slot.attendanceData || {}) };
+    delete currentAttendanceData[String(userId)];
+    delete currentAttendanceData[Number(userId)];
+
     const updated = await dutySlotsRepository.update(slot.id, {
       assignedUserIds: assigned.filter((id) => id !== userId),
+      attendedUserIds: attended.filter((id) => id !== userId),
+      attendanceData: currentAttendanceData,
       updatedAt: new Date().toISOString(),
     });
 
@@ -1029,9 +1078,30 @@ class DutySlotsService {
       newAssigned = Array.from(new Set([...currentAssigned, ...incomingIds]));
     }
 
+    const currentAttendanceData = { ...(slot.attendanceData || {}) };
+    const performerId = getActorId(performer);
+    const nowIso = new Date().toISOString();
+
+    newAttended.forEach((uid: number) => {
+      if (!currentAttendanceData[String(uid)] && !currentAttendanceData[uid]) {
+        currentAttendanceData[String(uid)] = {
+          time: nowIso,
+          method: performer?.role === 'admin' ? 'admin' : 'leader',
+          markedBy: performerId,
+        };
+      }
+    });
+
+    Object.keys(currentAttendanceData).forEach((key) => {
+      if (!newAttended.includes(Number(key))) {
+        delete currentAttendanceData[key];
+      }
+    });
+
     const patch: any = {
       assignedUserIds: newAssigned,
       attendedUserIds: newAttended,
+      attendanceData: currentAttendanceData,
       updatedAt: new Date().toISOString(),
     };
 
@@ -1091,48 +1161,33 @@ class DutySlotsService {
       throw ApiError.badRequest('Bạn không có lịch trực trong kíp này');
     }
 
-    // 1. Check IP (Check system_settings first, fallback to duty_settings)
-    let allowedIpRanges: string[] = [];
-    const SystemSettingModel = (db as any).getModel('system_settings');
-    if (SystemSettingModel) {
-      const ipDoc = await SystemSettingModel.findOne({ key: 'ALLOWED_IP_RANGES' }).lean();
-      if (ipDoc && ipDoc.value) {
-        allowedIpRanges = String(ipDoc.value)
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean);
-      }
-    }
-    if (allowedIpRanges.length === 0) {
-      const settings = await dutySettingsService.getSettings();
-      allowedIpRanges = Array.isArray(settings.allowedIpRanges)
-        ? settings.allowedIpRanges
-        : typeof settings.allowedIpRanges === 'string'
-          ? (settings.allowedIpRanges as string)
-              .split(',')
-              .map((s) => s.trim())
-              .filter(Boolean)
-          : [];
-    }
+    // 1. Check IP from duty_settings
+    const settings = await dutySettingsService.getSettings();
+    const allowedIpRanges: string[] = Array.isArray(settings.allowedIpRanges)
+      ? settings.allowedIpRanges
+      : typeof settings.allowedIpRanges === 'string'
+        ? (settings.allowedIpRanges as string)
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
 
     if (allowedIpRanges.length > 0 && !isIpAllowed(ip, allowedIpRanges)) {
       throw ApiError.badRequest(`Địa chỉ mạng (${ip}) không hợp lệ để điểm danh tại văn phòng.`);
     }
 
-    // 2. Check time window (+/- 2 mins) - Tạm thời comment theo yêu cầu
-    const now = dayjs();
-    /*
-    const shiftDate = dayjs(slot.shiftDate).format('YYYY-MM-DD');
-    const startTimeStr = `${shiftDate} ${slot.startTime}`;
-    const startTime = dayjs(startTimeStr);
+    const beforeMins = Math.max(0, Number(settings.selfCheckInBeforeMinutes ?? 15));
 
-    const diffMins = Math.abs(now.diff(startTime, 'minute'));
-    if (diffMins > 2) {
+    const now = dayjs();
+    const shiftDate = dayjs(slot.shiftDate).format('YYYY-MM-DD');
+    const startTime = dayjs(`${shiftDate} ${slot.startTime}`);
+    const endTime = dayjs(`${shiftDate} ${slot.endTime}`);
+
+    if (now.isBefore(startTime.subtract(beforeMins, 'minute')) || now.isAfter(endTime)) {
       throw ApiError.badRequest(
-        `Chỉ có thể tự điểm danh trong vòng 2 phút trước và sau giờ bắt đầu (${slot.startTime})`,
+        `Chỉ được phép tự điểm danh từ ${beforeMins} phút trước giờ bắt đầu kíp (${slot.startTime}) cho tới khi kíp kết thúc.`,
       );
     }
-    */
 
     const attendedIds = normalizeIdList(slot.attendedUserIds || []);
     if (attendedIds.includes(userId as number)) {

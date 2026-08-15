@@ -92,6 +92,12 @@ export default defineSchema({
     default: [],
     description: 'Danh sách quy tắc định mức phân cấp toàn hệ thống',
   },
+  selfCheckInBeforeMinutes: {
+    type: 'number',
+    required: false,
+    default: 15,
+    description: 'Số phút được phép tự điểm danh trước khi kíp trực bắt đầu',
+  },
   updatedAt: {
     type: 'date',
     required: false,
