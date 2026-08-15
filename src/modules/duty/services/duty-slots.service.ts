@@ -245,6 +245,7 @@ class DutySlotsService {
         endTime: slotEndTime,
         coefficient: slotCoefficient,
         capacity: slotCapacity,
+        attendanceOverrides: slot.attendanceOverrides || {},
         kip: kip ? { ...kip, coefficient: Number(kip.coefficient || 1) } : slot.kip,
         shift: shift ? { ...shift, coefficient: Number(shift.coefficient || 1) } : slot.shift,
         assignedUsers,
@@ -322,14 +323,24 @@ class DutySlotsService {
               normalizeIdList(s.assignedUserIds || []).includes(userId),
             );
 
-            const userKipIds = userSlotsInMonth.map((s: any) => s.kipId).filter(Boolean);
-            const userKips = kips.filter((k: any) => userKipIds.includes(normalizeId(k.id)));
-            registeredKips = userKips.reduce((acc: number, k: any) => acc + (Number(k.coefficient) || 1), 0);
+            registeredKips = userSlotsInMonth.reduce((acc: number, s: any) => {
+              const customCoeff = s.attendanceOverrides?.[String(userId)];
+              if (customCoeff !== undefined && customCoeff !== null && !isNaN(Number(customCoeff))) {
+                return acc + Number(customCoeff);
+              }
+              const kip = kips.find((k: any) => normalizeId(k.id) === normalizeId(s.kipId));
+              return acc + Number(s.coefficient ?? kip?.coefficient ?? 1);
+            }, 0);
           } else {
             const userSlotsInWeek = slots.filter((s: any) => normalizeIdList(s.assignedUserIds || []).includes(userId));
-            const userKipIds = userSlotsInWeek.map((s: any) => s.kipId).filter(Boolean);
-            const userKips = kips.filter((k: any) => userKipIds.includes(normalizeId(k.id)));
-            registeredKips = userKips.reduce((acc: number, k: any) => acc + (Number(k.coefficient) || 1), 0);
+            registeredKips = userSlotsInWeek.reduce((acc: number, s: any) => {
+              const customCoeff = s.attendanceOverrides?.[String(userId)];
+              if (customCoeff !== undefined && customCoeff !== null && !isNaN(Number(customCoeff))) {
+                return acc + Number(customCoeff);
+              }
+              const kip = kips.find((k: any) => normalizeId(k.id) === normalizeId(s.kipId));
+              return acc + Number(s.coefficient ?? kip?.coefficient ?? 1);
+            }, 0);
           }
 
           userMetadata = {
@@ -876,7 +887,13 @@ class DutySlotsService {
     return updated;
   }
 
-  async markAttendance(slotId: Identifier, userIds: Identifier[], performer: any, isIncremental: boolean = false) {
+  async markAttendance(
+    slotId: Identifier,
+    userIds: Identifier[],
+    performer: any,
+    isIncremental: boolean = false,
+    attendanceOverrides?: Record<string, number>,
+  ) {
     const slot = await dutySlotsRepository.findById(slotId);
     if (!slot) throw ApiError.notFound('Slot not found');
 
@@ -898,17 +915,23 @@ class DutySlotsService {
     } else {
       // Replace: Use the incoming list exactly as it is
       newAttended = incomingIds;
-      // For assigned, we usually don't want to remove people if we are just marking attendance
-      // but if the admin specifically uses this for assignment too, we might want to be careful.
-      // However, for attendance, we usually just want to make sure everyone attended is also assigned.
       newAssigned = Array.from(new Set([...currentAssigned, ...incomingIds]));
     }
 
-    const updated = await dutySlotsRepository.update(slotId, {
+    const patch: any = {
       assignedUserIds: newAssigned,
       attendedUserIds: newAttended,
       updatedAt: new Date().toISOString(),
-    });
+    };
+
+    if (attendanceOverrides && typeof attendanceOverrides === 'object') {
+      patch.attendanceOverrides = {
+        ...(slot.attendanceOverrides || {}),
+        ...attendanceOverrides,
+      };
+    }
+
+    const updated = await dutySlotsRepository.update(slotId, patch);
 
     const label = await this.getSlotLabel(slot);
 
@@ -1086,7 +1109,7 @@ class DutySlotsService {
     return true;
   }
 
-  async leaderMarkAttendance(slotId: Identifier, targetUserId: Identifier, performer: any) {
+  async leaderMarkAttendance(slotId: Identifier, targetUserId: Identifier, performer: any, customCoefficient?: number) {
     const slot = await dutySlotsRepository.findById(slotId);
     if (!slot) throw ApiError.notFound('Kíp không tồn tại');
     await this.assertDayNotLocked(slot, performer);
@@ -1112,6 +1135,7 @@ class DutySlotsService {
 
     let action = 'MARK';
     const newAssignedIds = [...assignedIds];
+    const attendanceOverrides = { ...(slot.attendanceOverrides || {}) };
 
     if (isAlreadyAttended) {
       // Remove attendance
@@ -1122,6 +1146,7 @@ class DutySlotsService {
       if (slot.attendanceData && slot.attendanceData[targetId]) {
         delete slot.attendanceData[targetId];
       }
+      delete attendanceOverrides[String(targetId)];
     } else {
       // Add attendance
       attendedIds.push(targetId);
@@ -1129,6 +1154,10 @@ class DutySlotsService {
       // Also add to assigned if not there (Supplementary attendance)
       if (!assignedIds.includes(targetId)) {
         newAssignedIds.push(targetId);
+      }
+
+      if (customCoefficient !== undefined && customCoefficient !== null && !isNaN(Number(customCoefficient))) {
+        attendanceOverrides[String(targetId)] = Number(customCoefficient);
       }
 
       const attendanceData = slot.attendanceData || {};
@@ -1144,6 +1173,7 @@ class DutySlotsService {
       assignedUserIds: newAssignedIds,
       attendedUserIds: attendedIds,
       attendanceData: slot.attendanceData,
+      attendanceOverrides,
       updatedAt: new Date().toISOString(),
     });
 

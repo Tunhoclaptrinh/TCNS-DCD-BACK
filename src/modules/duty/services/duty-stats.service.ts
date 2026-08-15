@@ -158,10 +158,15 @@ class DutyStatsService {
           userSlots.some((slot) => normalizeId(slot.id) === normalizeId(s.fromSlotId)),
       );
 
-      // Calculate total kips based on registered slots (userSlots) instead of attendedSlots
+      // Calculate total kips based on registered slots with per-user attendanceOverrides
       const totalKips = userSlots.reduce((acc, s) => {
+        const userIdStr = String(userId);
+        const customCoeff = s.attendanceOverrides?.[userIdStr];
+        if (customCoeff !== undefined && customCoeff !== null && !isNaN(Number(customCoeff))) {
+          return acc + Number(customCoeff);
+        }
         const kip = kipMap.get(normalizeId(s.kipId));
-        return acc + (Number(kip?.coefficient) || 1);
+        return acc + Number(s.coefficient ?? kip?.coefficient ?? 1);
       }, 0);
 
       const violationCount = userViolations.length;

@@ -287,12 +287,12 @@ class DutyController extends BaseController {
   });
 
   markAttendance = this.handle(async (req, res) => {
-    const { ids, userId, isIncremental } = req.body;
+    const { ids, userId, isIncremental, attendanceOverrides, coefficient } = req.body;
     if (userId) {
-      const data = await dutyService.leaderMarkAttendance(req.params.id, userId, req.user);
+      const data = await dutyService.leaderMarkAttendance(req.params.id, userId, req.user, coefficient);
       return this.ok(res, data);
     }
-    const data = await dutyService.markAttendance(req.params.id, ids, req.user, isIncremental);
+    const data = await dutyService.markAttendance(req.params.id, ids, req.user, isIncremental, attendanceOverrides);
     this.ok(res, data);
   });
 

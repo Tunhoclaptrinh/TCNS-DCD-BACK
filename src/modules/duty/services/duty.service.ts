@@ -271,8 +271,14 @@ class DutyService extends BaseService {
 
     return data;
   };
-  markAttendance = async (slotId: Identifier, userIds: Identifier[], performer: any, isIncremental?: boolean) => {
-    const data = await dutySlotsService.markAttendance(slotId, userIds, performer, isIncremental);
+  markAttendance = async (
+    slotId: Identifier,
+    userIds: Identifier[],
+    performer: any,
+    isIncremental?: boolean,
+    attendanceOverrides?: Record<string, number>,
+  ) => {
+    const data = await dutySlotsService.markAttendance(slotId, userIds, performer, isIncremental, attendanceOverrides);
 
     await auditLogsService.log({
       userId: Number(getActorId(performer)) || 0,
@@ -301,8 +307,8 @@ class DutyService extends BaseService {
 
   selfCheckIn = (slotId: Identifier, user: any, ip: string) => dutySlotsService.selfCheckIn(slotId, user, ip);
 
-  leaderMarkAttendance = (slotId: Identifier, targetUserId: Identifier, performer: any) =>
-    dutySlotsService.leaderMarkAttendance(slotId, targetUserId, performer);
+  leaderMarkAttendance = (slotId: Identifier, targetUserId: Identifier, performer: any, customCoefficient?: number) =>
+    dutySlotsService.leaderMarkAttendance(slotId, targetUserId, performer, customCoefficient);
 
   getStats = () => dutySlotsService.getStats();
   getComprehensiveStats = (options: any) => dutyStatsService.getComprehensiveStats(options);

@@ -37,14 +37,17 @@ export default defineSchema({
   shiftLabel: {
     type: 'string',
     required: false,
+    description: 'Nhãn ca/kíp hiển thị (e.g., Ca Sáng - Kíp 1)',
   },
   startTime: {
     type: 'string',
     required: false,
+    description: 'Giờ bắt đầu kíp trực thực tế (HH:mm)',
   },
   endTime: {
     type: 'string',
     required: false,
+    description: 'Giờ kết thúc kíp trực thực tế (HH:mm)',
   },
   capacity: {
     type: 'number',
@@ -53,16 +56,24 @@ export default defineSchema({
     min: 1,
     description: 'Sĩ số tối đa (Đè giá trị của kíp nếu có)',
   },
+  coefficient: {
+    type: 'number',
+    required: false,
+    default: 1,
+    min: 0.25,
+    description: 'Số kíp được tính cho kíp này',
+  },
   assignedUserIds: {
     type: 'array',
     required: false,
     default: [],
+    description: 'Danh sách ID người dùng được phân công/đăng ký vào kíp',
   },
   attendedUserIds: {
     type: 'array',
     required: false,
     default: [],
-    description: 'Danh sách ID người dùng có mặt',
+    description: 'Danh sách ID người dùng có mặt thực tế (đã điểm danh)',
   },
   tempLeaderId: {
     type: 'number',
@@ -73,24 +84,38 @@ export default defineSchema({
     type: 'object',
     required: false,
     default: {},
-    description: 'Dữ liệu điểm danh chi tiết (userId -> {time, ip, method})',
+    description: 'Dữ liệu điểm danh chi tiết (userId -> {time, ip, method, markedBy})',
+  },
+  attendanceOverrides: {
+    type: 'object',
+    required: false,
+    default: {},
+    description: 'Hệ số kíp thực tế tùy chỉnh theo từng nhân sự (userId -> customCoefficient)',
+  },
+  isSpecialEvent: {
+    type: 'boolean',
+    required: false,
+    default: false,
+    description: 'Đánh dấu kíp thuộc sự kiện đặc biệt',
   },
   status: {
     type: 'enum',
     enum: ['open', 'locked'],
     required: false,
     default: 'open',
+    description: 'Trạng thái kíp trực: open (mở đăng ký) | locked (đã khóa)',
   },
   createdBy: {
     type: 'number',
     required: true,
     foreignKey: 'users',
-    description: 'Người tạo',
+    description: 'ID Quản trị viên/Người tạo kíp',
   },
   note: {
     type: 'string',
     required: false,
     maxLength: 500,
+    description: 'Ghi chú công việc hoặc nhiệm vụ cụ thể của kíp',
   },
   config: {
     type: 'object',
@@ -103,6 +128,6 @@ export default defineSchema({
     type: 'array',
     required: false,
     default: [],
-    description: 'Cơ cấu nhân sự thực tế cho kíp này',
+    description: 'Cơ cấu nhân sự thực tế cho kíp này (chỉ tiêu theo ngạch/vai trò)',
   },
 });

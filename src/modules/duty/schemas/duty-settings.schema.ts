@@ -56,6 +56,30 @@ export default defineSchema({
     default: 10000,
     description: 'Tiền phạt đi trực muộn (VNĐ)',
   },
+  defaultQuota: {
+    type: 'number',
+    required: false,
+    default: 2.5,
+    description: 'Định mức kíp trực tối thiểu mặc định toàn hệ thống (kíp)',
+  },
+  kipPrice: {
+    type: 'number',
+    required: false,
+    default: 0,
+    description: 'Đơn giá tiền trực mặc định toàn hệ thống (VNĐ/kíp)',
+  },
+  violationPenaltyRate: {
+    type: 'number',
+    required: false,
+    default: 0,
+    description: 'Hệ số phạt vi phạm mặc định toàn hệ thống',
+  },
+  quotaRules: {
+    type: 'array',
+    required: false,
+    default: [],
+    description: 'Danh sách quy tắc định mức phân cấp toàn hệ thống',
+  },
   updatedAt: {
     type: 'date',
     required: false,
