@@ -128,11 +128,15 @@ class DutyStatsService {
 
       userQuota = Math.round(userQuota * 10) / 10;
 
-      // Slots where user was assigned
-      const userSlots = slots.filter((s: any) => normalizeIdList(s.assignedUserIds || []).includes(userId));
+      // Slots where user was assigned or attended (including supplementary)
+      const userSlots = slots.filter(
+        (s: any) =>
+          normalizeIdList(s.assignedUserIds || []).includes(userId) ||
+          normalizeIdList(s.attendedUserIds || []).includes(userId),
+      );
 
       // Slots where user actually attended
-      const attendedSlots = userSlots.filter((s: any) => normalizeIdList(s.attendedUserIds || []).includes(userId));
+      const attendedSlots = slots.filter((s: any) => normalizeIdList(s.attendedUserIds || []).includes(userId));
 
       // Violations within period
       const userViolations = violations.filter(
@@ -158,8 +162,8 @@ class DutyStatsService {
           userSlots.some((slot) => normalizeId(slot.id) === normalizeId(s.fromSlotId)),
       );
 
-      // Calculate total kips based on registered slots with per-user attendanceOverrides
-      const totalKips = userSlots.reduce((acc, s) => {
+      // Calculate total kips based on attended slots with per-user attendanceOverrides
+      const totalKips = attendedSlots.reduce((acc, s) => {
         const userIdStr = String(userId);
         const customCoeff = s.attendanceOverrides?.[userIdStr];
         if (customCoeff !== undefined && customCoeff !== null && !isNaN(Number(customCoeff))) {
@@ -177,13 +181,53 @@ class DutyStatsService {
 
       const totalEarnings = totalKips * userKipPrice;
 
-      // Calculate fixed penalties from violations
+      // Calculate penalties from violations (support both text labels and enum keys)
       let totalPenaltyAmount = 0;
       userViolations.forEach((v) => {
-        if (v.type === 'absent_no_permission') totalPenaltyAmount += settings.penaltyAbsentNoPermission || 50000;
-        else if (v.type === 'absent_with_permission_late')
-          totalPenaltyAmount += settings.penaltyAbsentWithPermissionLate || 20000;
-        else if (v.type === 'late') totalPenaltyAmount += settings.penaltyLate || 10000;
+        const vType = String(v.type || '').toLowerCase();
+        const coeff = Number(v.coefficient) || 1;
+        let specificAmount: number | null = null;
+
+        if ((vType.includes('vắng') && vType.includes('không phép')) || vType === 'absent_no_permission') {
+          specificAmount =
+            matchedRule?.penaltyAbsentNoPermission ??
+            (periodConfig as any)?.penaltyAbsentNoPermission ??
+            settings.penaltyAbsentNoPermission ??
+            50000;
+        } else if (vType.includes('đi muộn') || vType.includes('muộn') || vType === 'late') {
+          specificAmount =
+            matchedRule?.penaltyLate ?? (periodConfig as any)?.penaltyLate ?? settings.penaltyLate ?? 10000;
+        } else if (vType.includes('báo muộn') || vType === 'absent_with_permission_late') {
+          specificAmount =
+            matchedRule?.penaltyAbsentWithPermissionLate ??
+            (periodConfig as any)?.penaltyAbsentWithPermissionLate ??
+            settings.penaltyAbsentWithPermissionLate ??
+            20000;
+        } else if (vType.includes('tác phong') || vType.includes('trang phục') || vType === 'wrong_uniform') {
+          specificAmount =
+            matchedRule?.penaltyWrongUniform ??
+            (periodConfig as any)?.penaltyWrongUniform ??
+            (settings as any).penaltyWrongUniform ??
+            10000;
+        } else {
+          // Check custom violation types from settings
+          const customType = ((settings as any).violationTypes || []).find(
+            (vt: any) => String(vt.key).toLowerCase() === vType || String(vt.label).toLowerCase() === vType,
+          );
+          if (customType && customType.defaultPenalty !== undefined && customType.defaultPenalty !== null) {
+            specificAmount = Number(customType.defaultPenalty);
+          }
+        }
+
+        if (specificAmount !== null && specificAmount !== undefined) {
+          totalPenaltyAmount += Number(specificAmount) * coeff;
+        } else {
+          const pRate =
+            matchedRule?.violationPenaltyRate ??
+            (periodConfig as any)?.violationPenaltyRate ??
+            Number(settings.violationPenaltyRate || 1);
+          totalPenaltyAmount += userKipPrice > 0 ? userKipPrice * pRate * coeff : 0;
+        }
       });
 
       const netEarnings = totalEarnings - totalPenaltyAmount;

@@ -56,6 +56,18 @@ export default defineSchema({
     default: 10000,
     description: 'Tiền phạt đi trực muộn (VNĐ)',
   },
+  penaltyWrongUniform: {
+    type: 'number',
+    required: false,
+    default: 10000,
+    description: 'Tiền phạt sai tác phong / trang phục (VNĐ)',
+  },
+  violationTypes: {
+    type: 'array',
+    required: false,
+    default: [],
+    description: 'Danh sách cấu hình loại vi phạm',
+  },
   defaultQuota: {
     type: 'number',
     required: false,

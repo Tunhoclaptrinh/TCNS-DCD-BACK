@@ -78,6 +78,9 @@ class SystemSettingController extends BaseController {
       departmentconfigs: 'DEPARTMENT_CONFIGS',
       DEPARTMENTCONFIGS: 'DEPARTMENT_CONFIGS',
       DEPARTMENT_CONFIGS: 'DEPARTMENT_CONFIGS',
+      dutyViolationTypes: 'DUTY_VIOLATION_TYPES',
+      dutyviolationtypes: 'DUTY_VIOLATION_TYPES',
+      DUTY_VIOLATION_TYPES: 'DUTY_VIOLATION_TYPES',
     };
 
     for (const [rawKey, value] of Object.entries(settings)) {
@@ -94,7 +97,7 @@ class SystemSettingController extends BaseController {
           id: nextId,
           key: dbKey,
           value: String(value ?? ''),
-          type: 'string',
+          type: dbKey === 'DUTY_VIOLATION_TYPES' || dbKey === 'DEPARTMENT_CONFIGS' ? 'json' : 'string',
           updatedBy: req.user?.id,
         });
       }
@@ -102,6 +105,49 @@ class SystemSettingController extends BaseController {
       // Cleanup duplicate legacy keys if saving DEPARTMENT_CONFIGS
       if (dbKey === 'DEPARTMENT_CONFIGS') {
         await Model.deleteOne({ key: 'DEPARTMENTCONFIGS' });
+      }
+
+      // Bi-directional sync with duty_settings
+      if (dbKey === 'DUTY_VIOLATION_TYPES') {
+        try {
+          const dutySettingsRepository = (await import('@modules/duty/repositories/duty-settings.repository')).default;
+          const globalDutySettings = await dutySettingsRepository.getGlobalSettings();
+          const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+          if (Array.isArray(parsed)) {
+            if (globalDutySettings) {
+              await dutySettingsRepository.update(globalDutySettings.id, {
+                violationTypes: parsed,
+                updatedAt: new Date().toISOString(),
+              });
+            } else {
+              await dutySettingsRepository.create({
+                violationTypes: parsed,
+                updatedAt: new Date().toISOString(),
+              });
+            }
+          }
+        } catch (err) {
+          console.error('Failed to sync DUTY_VIOLATION_TYPES to duty_settings:', err);
+        }
+      }
+
+      if (dbKey === 'ALLOWED_IP_RANGES') {
+        try {
+          const dutySettingsRepository = (await import('@modules/duty/repositories/duty-settings.repository')).default;
+          const globalDutySettings = await dutySettingsRepository.getGlobalSettings();
+          const ipList = String(value ?? '')
+            .split(',')
+            .map((s: string) => s.trim())
+            .filter(Boolean);
+          if (globalDutySettings) {
+            await dutySettingsRepository.update(globalDutySettings.id, {
+              allowedIpRanges: ipList,
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        } catch (err) {
+          console.error('Failed to sync ALLOWED_IP_RANGES to duty_settings:', err);
+        }
       }
     }
 

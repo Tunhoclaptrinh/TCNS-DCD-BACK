@@ -305,6 +305,20 @@ class DutyService extends BaseService {
     return data;
   };
 
+  deleteViolation = async (payload: any, performer: any) => {
+    const data = await dutySlotsService.deleteViolation(payload, performer);
+
+    await auditLogsService.log({
+      userId: Number(performer?.id) || 0,
+      action: 'GỠ VI PHẠM',
+      module: 'DUTY',
+      description: `Gỡ vi phạm cho thành viên #${payload.userId} tại slot #${payload.slotId}`,
+      resourceId: String(payload.slotId),
+    });
+
+    return data;
+  };
+
   selfCheckIn = (slotId: Identifier, user: any, ip: string) => dutySlotsService.selfCheckIn(slotId, user, ip);
 
   getSlotDetails = (slotId: Identifier, performer?: any) => dutySlotsService.getSlotDetails(slotId, performer);

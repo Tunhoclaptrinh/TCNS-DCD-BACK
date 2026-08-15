@@ -12,6 +12,11 @@ class RewardPenaltyController extends BaseController {
     this.ok(res, data);
   });
 
+  deleteEntry = this.handle(async (req, res) => {
+    const data = await rewardPenaltyService.deleteEntry(req.params.id, req.user.id);
+    this.ok(res, data);
+  });
+
   getHistory = this.handle(async (req, res) => {
     const data = await rewardPenaltyService.getHistory(req.user, req.parsedQuery);
     this.ok(res, data);

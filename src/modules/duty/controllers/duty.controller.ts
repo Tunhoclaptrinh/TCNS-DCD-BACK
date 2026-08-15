@@ -301,6 +301,11 @@ class DutyController extends BaseController {
     this.ok(res, data);
   });
 
+  deleteViolation = this.handle(async (req, res) => {
+    const data = await dutyService.deleteViolation({ slotId: req.params.id, userId: req.params.userId }, req.user);
+    this.ok(res, data);
+  });
+
   // Settings
   getSettings = this.handle(async (_req, res) => {
     const data = await dutyService.getSettings();

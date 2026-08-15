@@ -109,6 +109,34 @@ class RewardPenaltyService extends BaseService {
     return updated;
   }
 
+  async deleteEntry(id: Identifier, actorId: Identifier) {
+    const existing = await this.repository.findById(id);
+    if (!existing) throw ApiError.notFound('Bản ghi thưởng/phạt không tồn tại');
+
+    // If linked to a duty violation, unlink or clean it up
+    try {
+      const dutyViolationsRepository = (await import('@modules/duty/repositories/duty-violations.repository')).default;
+      const linkedViolation = await dutyViolationsRepository.findOne({ penaltyId: normalizeId(id) });
+      if (linkedViolation) {
+        await dutyViolationsRepository.delete(linkedViolation.id);
+      }
+    } catch (err) {
+      console.error('Failed to clean linked duty violation:', err);
+    }
+
+    await this.repository.delete(id);
+
+    await auditLogsService.log({
+      userId: Number(actorId) || 0,
+      action: 'XÓA THƯỞNG/PHẠT',
+      module: 'REWARD_PENALTIES',
+      description: `Xóa bản ghi ${existing.type === 'reward' ? 'thưởng' : 'phạt'} #${id} của người dùng #${existing.userId}`,
+      resourceId: String(id),
+    });
+
+    return { success: true };
+  }
+
   async createEntry(payload: AnyRecord = {}, actorId: Identifier) {
     const userId = normalizeId(payload.userId);
     if (!userId) throw ApiError.badRequest('userId is required');

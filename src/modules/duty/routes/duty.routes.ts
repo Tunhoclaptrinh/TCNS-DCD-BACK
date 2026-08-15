@@ -36,6 +36,11 @@ router.patch('/slots/:id/cancel', requirePermission('duty:update'), dutyControll
 router.post('/slots/:id/attendance', dutyController.markAttendance);
 router.post('/slots/:id/check-in', dutyController.selfCheckIn);
 router.post('/slots/:id/violation', requirePermission('duty:violation:report'), dutyController.reportViolation);
+router.delete(
+  '/slots/:id/violation/:userId',
+  requirePermission('duty:violation:report'),
+  dutyController.deleteViolation,
+);
 router.get('/slots/:id/logs', requirePermission('duty:view'), dutyController.getSlotLogs);
 router.get('/slots/:id/requests', requirePermission('duty:view'), dutyController.getSlotRequests);
 

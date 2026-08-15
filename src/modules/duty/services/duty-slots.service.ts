@@ -30,6 +30,7 @@ import {
 import dutySettingsService from './duty-settings.service';
 import dutyLogsService from './duty-logs.service';
 import dutyViolationsRepository from '@modules/duty/repositories/duty-violations.repository';
+import rewardPenaltiesRepository from '@modules/reward-penalties/repositories/reward-penalties.repository';
 import rewardPenaltyService from '@modules/reward-penalties/services/reward-penalty.service';
 import dutyPeriodConfigsService from './duty-period-configs.service';
 
@@ -548,6 +549,23 @@ class DutySlotsService {
     const slot = await dutySlotsRepository.findById(id);
     if (!slot) throw ApiError.notFound('Phiên không tồn tại');
 
+    // Clean up violations and linked penalties
+    const violations = await dutyViolationsRepository.findMany({ slotId: normalizeId(id) });
+    for (const v of violations) {
+      if (v.penaltyId) {
+        try {
+          await rewardPenaltiesRepository.delete(v.penaltyId);
+        } catch (err) {
+          console.error('Failed to delete linked penalty on deleteSlot:', err);
+        }
+      }
+      await dutyViolationsRepository.delete(v.id);
+    }
+
+    // Clean up leave and swap requests
+    await dutyLeaveRequestsRepository.deleteMany({ slotId: normalizeId(id) });
+    await dutySwapRequestsRepository.deleteMany({ fromSlotId: normalizeId(id) });
+
     await dutyLogsService.log(
       'unassigned',
       'removed',
@@ -1028,38 +1046,25 @@ class DutySlotsService {
 
     const label = await this.getSlotLabel(slot);
 
-    // --- AUTOMATIC PENALTY FOR ABSENTEES ---
-    const settings = await dutySettingsService.getSettings();
-    const assignedIds = newAssigned;
-    const attendedIds = newAttended;
-    const absentIds = assignedIds.filter((id) => !attendedIds.includes(id));
-
-    if (absentIds.length > 0) {
-      const dateStr = dayjs(slot.shiftDate).format('YYYY-MM-DD');
-
-      await Promise.all(
-        absentIds.map(async (uid) => {
-          const leave = await dutyLeaveRequestsRepository.findOne({
-            slotId: normalizeId(slotId),
-            userId: normalizeId(uid),
-            status: 'approved',
-          });
-
-          if (!leave) {
-            await rewardPenaltyService.createEntry(
-              {
-                userId: uid,
-                type: 'penalty',
-                amount: settings.penaltyAbsentNoPermission || 50000,
-                reason: `Vắng trực không phép (${label} ngày ${dateStr})`,
-                eventDate: slot.shiftDate,
-                note: `Hệ thống tự động ghi nhận khi điểm danh.`,
-              },
-              getActorId(performer),
-            );
+    // If any marked attendee previously had an absent violation recorded, clean it up
+    for (const uid of newAttended) {
+      const userViolations = await dutyViolationsRepository.findMany({
+        slotId: normalizeId(slotId),
+        userId: normalizeId(uid),
+      });
+      for (const v of userViolations) {
+        const vType = String(v.type || '').toLowerCase();
+        if (vType === 'absent_no_permission' || (vType.includes('vắng') && vType.includes('không phép'))) {
+          if (v.penaltyId) {
+            try {
+              await rewardPenaltiesRepository.delete(v.penaltyId);
+            } catch (err) {
+              console.error('Failed to delete linked penalty on attendance update:', err);
+            }
           }
-        }),
-      );
+          await dutyViolationsRepository.delete(v.id);
+        }
+      }
     }
 
     await dutyLogsService.log(
@@ -1114,8 +1119,9 @@ class DutySlotsService {
       throw ApiError.badRequest(`Địa chỉ mạng (${ip}) không hợp lệ để điểm danh tại văn phòng.`);
     }
 
-    // 2. Check time window (+/- 2 mins)
+    // 2. Check time window (+/- 2 mins) - Tạm thời comment theo yêu cầu
     const now = dayjs();
+    /*
     const shiftDate = dayjs(slot.shiftDate).format('YYYY-MM-DD');
     const startTimeStr = `${shiftDate} ${slot.startTime}`;
     const startTime = dayjs(startTimeStr);
@@ -1126,6 +1132,7 @@ class DutySlotsService {
         `Chỉ có thể tự điểm danh trong vòng 2 phút trước và sau giờ bắt đầu (${slot.startTime})`,
       );
     }
+    */
 
     const attendedIds = normalizeIdList(slot.attendedUserIds || []);
     if (attendedIds.includes(userId as number)) {
@@ -1159,6 +1166,25 @@ class DutySlotsService {
     }
 
     const updated = await dutySlotsRepository.update(slotId, updatePayload);
+
+    // Clean up any absent violation if marked present via self-checkin
+    const userViolations = await dutyViolationsRepository.findMany({
+      slotId: normalizeId(slotId),
+      userId: normalizeId(userId),
+    });
+    for (const v of userViolations) {
+      const vType = String(v.type || '').toLowerCase();
+      if (vType === 'absent_no_permission' || (vType.includes('vắng') && vType.includes('không phép'))) {
+        if (v.penaltyId) {
+          try {
+            await rewardPenaltiesRepository.delete(v.penaltyId);
+          } catch (err) {
+            console.error('Failed to delete linked penalty on self checkin:', err);
+          }
+        }
+        await dutyViolationsRepository.delete(v.id);
+      }
+    }
 
     await dutyLogsService.log(
       'manual_update',
@@ -1270,6 +1296,27 @@ class DutySlotsService {
       updatedAt: new Date().toISOString(),
     });
 
+    // If marked present, clean up any previous absent violation
+    if (action === 'MARK') {
+      const userViolations = await dutyViolationsRepository.findMany({
+        slotId: normalizeId(slotId),
+        userId: normalizeId(targetId),
+      });
+      for (const v of userViolations) {
+        const vType = String(v.type || '').toLowerCase();
+        if (vType === 'absent_no_permission' || (vType.includes('vắng') && vType.includes('không phép'))) {
+          if (v.penaltyId) {
+            try {
+              await rewardPenaltiesRepository.delete(v.penaltyId);
+            } catch (err) {
+              console.error('Failed to delete linked penalty on leader mark attendance:', err);
+            }
+          }
+          await dutyViolationsRepository.delete(v.id);
+        }
+      }
+    }
+
     await dutyLogsService.log(
       'attendance',
       action === 'MARK' ? 'leader' : 'leader_unmark',
@@ -1283,7 +1330,7 @@ class DutySlotsService {
   }
 
   async reportViolation(payload: any, performer: any) {
-    const { slotId, userId, type, coefficient, note } = payload;
+    const { slotId, userId, type, types, coefficient = 1, note = '', violationId } = payload;
     const performerId = getActorId(performer);
 
     const slot = await dutySlotsRepository.findById(slotId);
@@ -1291,19 +1338,63 @@ class DutySlotsService {
     await this.assertDayNotLocked(slot, performer);
     await this.checkLeadership(slot, performer);
 
-    const existingViolation = await dutyViolationsRepository.findOne({
-      slotId: normalizeId(slotId),
-      userId: normalizeId(userId),
-    });
+    // If specific violationId is given, update that existing violation
+    if (violationId) {
+      const existing = await dutyViolationsRepository.findById(violationId);
+      if (!existing) throw ApiError.notFound('Vi phạm không tồn tại');
+      return await this.createOrUpdateSingleViolation({
+        slot,
+        userId,
+        type: type || existing.type,
+        coefficient: coefficient ?? existing.coefficient,
+        note: note !== undefined ? note : existing.note,
+        existingViolation: existing,
+        performerId,
+      });
+    }
 
-    const coeff = Number(coefficient) || 1;
+    // Determine list of violation types to record
+    let targetTypes: string[] = [];
+    if (Array.isArray(types) && types.length > 0) {
+      targetTypes = types;
+    } else if (Array.isArray(type) && (type as any).length > 0) {
+      targetTypes = type as any;
+    } else if (type && typeof type === 'string') {
+      targetTypes = [type];
+    } else {
+      throw ApiError.badRequest('Vui lòng chọn ít nhất một loại lỗi vi phạm');
+    }
+
+    const results = [];
+    for (const vType of targetTypes) {
+      const res = await this.createOrUpdateSingleViolation({
+        slot,
+        userId,
+        type: vType,
+        coefficient: targetTypes.length === 1 ? coefficient : undefined,
+        note,
+        performerId,
+      });
+      results.push(res);
+    }
+
+    return results.length === 1 ? results[0] : results;
+  }
+
+  private async createOrUpdateSingleViolation(params: {
+    slot: any;
+    userId: Identifier;
+    type: string;
+    coefficient?: number;
+    note: string;
+    existingViolation?: any;
+    performerId: any;
+  }) {
+    const { slot, userId, type, coefficient, note, existingViolation, performerId } = params;
 
     // Fetch configuration to determine dynamic penalty
     const periodConfig = await dutyPeriodConfigsService.getConfig(slot.shiftDate, slot.shiftDate);
     const user = await usersRepository.findById(userId);
-    const pos = String(user?.position || '').toLowerCase();
-    const role = String(user?.role || '').toLowerCase();
-    const uDept = String(user?.department?.name || user?.department || '').trim();
 
     const rule = findMatchingQuotaRule(user, periodConfig.quotaRules || [], {
       startDate: slot.shiftDate,
@@ -1311,34 +1402,73 @@ class DutySlotsService {
     });
     const settings = await dutySettingsService.getSettings();
 
-    // Map violation type to config field
-    const typeLower = String(type).toLowerCase();
+    const typeLower = String(type).toLowerCase().trim();
     let specificPenaltyAmount = null;
 
+    const customType = (settings.violationTypes || []).find(
+      (vt: any) => String(vt.key).toLowerCase() === typeLower || String(vt.label).toLowerCase() === typeLower,
+    );
+
+    // Resolve coefficient: each violation type strictly uses its own configured defaultCoeff
+    let typeCoeff = 1;
+    if (customType && customType.defaultCoeff !== undefined && customType.defaultCoeff !== null) {
+      typeCoeff = Number(customType.defaultCoeff) || 1;
+    } else if (
+      typeLower === 'absent_no_permission' ||
+      (typeLower.includes('vắng') && typeLower.includes('không phép'))
+    ) {
+      typeCoeff = 1.5;
+    }
+    const coeff =
+      coefficient !== undefined && coefficient !== null && Number(coefficient) > 0 ? Number(coefficient) : typeCoeff;
+
     const pConfig = periodConfig as any;
-    if (typeLower.includes('vắng') && typeLower.includes('không phép')) {
+    if ((typeLower.includes('vắng') && typeLower.includes('không phép')) || typeLower === 'absent_no_permission') {
       specificPenaltyAmount =
-        rule?.penaltyAbsentNoPermission ?? pConfig.penaltyAbsentNoPermission ?? settings.penaltyAbsentNoPermission;
-    } else if (typeLower.includes('đi muộn') || typeLower.includes('muộn')) {
-      specificPenaltyAmount = rule?.penaltyLate ?? pConfig.penaltyLate ?? settings.penaltyLate;
-    } else if (typeLower.includes('báo muộn')) {
+        rule?.penaltyAbsentNoPermission ??
+        pConfig.penaltyAbsentNoPermission ??
+        settings.penaltyAbsentNoPermission ??
+        50000;
+    } else if (typeLower.includes('đi muộn') || typeLower.includes('muộn') || typeLower === 'late') {
+      specificPenaltyAmount = rule?.penaltyLate ?? pConfig.penaltyLate ?? settings.penaltyLate ?? 10000;
+    } else if (typeLower.includes('báo muộn') || typeLower === 'absent_with_permission_late') {
       specificPenaltyAmount =
         rule?.penaltyAbsentWithPermissionLate ??
         pConfig.penaltyAbsentWithPermissionLate ??
-        settings.penaltyAbsentWithPermissionLate;
+        settings.penaltyAbsentWithPermissionLate ??
+        20000;
+    } else if (typeLower.includes('tác phong') || typeLower.includes('trang phục') || typeLower === 'wrong_uniform') {
+      specificPenaltyAmount =
+        rule?.penaltyWrongUniform ?? pConfig.penaltyWrongUniform ?? settings.penaltyWrongUniform ?? 10000;
+    } else {
+      if (customType && customType.defaultPenalty !== undefined && customType.defaultPenalty !== null) {
+        specificPenaltyAmount = Number(customType.defaultPenalty);
+      }
     }
 
     const penaltyRate =
-      rule?.violationPenaltyRate ?? pConfig.violationPenaltyRate ?? (Number(settings.violationPenaltyRate) || 0);
+      rule?.violationPenaltyRate ?? pConfig.violationPenaltyRate ?? (Number(settings.violationPenaltyRate) || 1);
     const kipPrice = rule?.kipPrice ?? pConfig.kipPrice ?? (Number(settings.kipPrice) || 0);
 
     // Calculation logic: If specific amount exists, use it * coeff. Else use kipPrice * penaltyRate * coeff.
     const penaltyAmount =
       specificPenaltyAmount !== null && specificPenaltyAmount !== undefined
         ? Number(specificPenaltyAmount) * coeff
-        : kipPrice * penaltyRate * coeff;
+        : kipPrice > 0
+          ? kipPrice * penaltyRate * coeff
+          : 0;
 
-    const reason = `Vi phạm kíp trực: ${type} (Hệ số x${coeff})`;
+    const typeLabelMap: Record<string, string> = {
+      absent_no_permission: 'Vắng mặt không phép',
+      late: 'Đi muộn',
+      absent_with_permission_late: 'Báo muộn',
+      wrong_uniform: 'Sai tác phong / trang phục',
+      other: 'Khác',
+    };
+    const humanTypeLabel =
+      typeLabelMap[type] || (settings.violationTypes || []).find((vt: any) => vt.key === type)?.label || type;
+
+    const reason = `Phạt vi phạm kíp trực: ${humanTypeLabel}${coeff !== 1 ? ` (Hệ số x${coeff})` : ''}`;
 
     let violation;
     if (existingViolation) {
@@ -1383,7 +1513,7 @@ class DutySlotsService {
     } else {
       // Create new violation
       violation = await dutyViolationsRepository.create({
-        slotId: normalizeId(slotId),
+        slotId: normalizeId(slot.id),
         userId: normalizeId(userId),
         type,
         coefficient: coeff,
@@ -1416,13 +1546,93 @@ class DutySlotsService {
     await dutyLogsService.log(
       'violation',
       'report',
-      `Ghi nhận vi phạm [${type}] cho thành viên: ${userId}. Hệ số: ${coefficient}`,
+      `Ghi nhận vi phạm [${humanTypeLabel}] cho thành viên #${userId}. Hệ số: ${coeff}`,
+      performerId,
+      userId,
+      slot.id,
+    );
+
+    return violation;
+  }
+
+  async deleteViolation(
+    payload: { slotId?: Identifier; userId?: Identifier; violationId?: Identifier },
+    performer: any,
+  ) {
+    const { slotId, userId, violationId } = payload;
+    const performerId = getActorId(performer);
+
+    if (violationId) {
+      const existingViolation = await dutyViolationsRepository.findById(violationId);
+      if (!existingViolation) throw ApiError.notFound('Vi phạm không tồn tại');
+
+      const slot = await dutySlotsRepository.findById(existingViolation.slotId);
+      if (slot) {
+        await this.assertDayNotLocked(slot, performer);
+        await this.checkLeadership(slot, performer);
+      }
+
+      if (existingViolation.penaltyId) {
+        try {
+          await rewardPenaltiesRepository.delete(existingViolation.penaltyId);
+        } catch (err) {
+          console.error('Failed to delete linked penalty:', err);
+        }
+      }
+
+      await dutyViolationsRepository.delete(existingViolation.id);
+
+      await dutyLogsService.log(
+        'violation',
+        'removed',
+        `Gỡ vi phạm [${existingViolation.type}] #${existingViolation.id} của thành viên #${existingViolation.userId}`,
+        performerId,
+        existingViolation.userId,
+        existingViolation.slotId,
+      );
+
+      return { success: true, message: 'Đã gỡ vi phạm thành công' };
+    }
+
+    if (!slotId || !userId) {
+      throw ApiError.badRequest('Vui lòng cung cấp violationId hoặc slotId và userId');
+    }
+
+    const slot = await dutySlotsRepository.findById(slotId);
+    if (!slot) throw ApiError.notFound('Kíp không tồn tại');
+    await this.assertDayNotLocked(slot, performer);
+    await this.checkLeadership(slot, performer);
+
+    const violations = await dutyViolationsRepository.findMany({
+      slotId: normalizeId(slotId),
+      userId: normalizeId(userId),
+    });
+
+    if (!violations || violations.length === 0) {
+      throw ApiError.notFound('Không tìm thấy bản ghi vi phạm');
+    }
+
+    for (const v of violations) {
+      if (v.penaltyId) {
+        try {
+          await rewardPenaltiesRepository.delete(v.penaltyId);
+        } catch (err) {
+          console.error('Failed to delete linked penalty:', err);
+        }
+      }
+      await dutyViolationsRepository.delete(v.id);
+    }
+
+    await dutyLogsService.log(
+      'violation',
+      'removed',
+      `Gỡ toàn bộ vi phạm (${violations.length} lỗi) của thành viên #${userId}`,
       performerId,
       userId,
       slotId,
     );
 
-    return violation;
+    return { success: true, message: 'Đã gỡ vi phạm thành công' };
   }
 
   async updateActualShift(shiftId: number, data: GenericRecord) {

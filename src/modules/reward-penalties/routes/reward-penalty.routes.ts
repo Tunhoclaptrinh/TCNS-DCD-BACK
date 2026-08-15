@@ -11,5 +11,6 @@ router.get('/', requirePermission('reward_penalty:view'), rewardPenaltyControlle
 router.get('/stats/financial', requirePermission('reward_penalty:view'), rewardPenaltyController.getFinancialStats);
 router.post('/', requirePermission('reward_penalty:manage'), rewardPenaltyController.createEntry);
 router.put('/:id', requirePermission('reward_penalty:manage'), rewardPenaltyController.updateEntry);
+router.delete('/:id', requirePermission('reward_penalty:manage'), rewardPenaltyController.deleteEntry);
 
 export default router;
