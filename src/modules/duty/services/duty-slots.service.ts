@@ -236,7 +236,11 @@ class DutySlotsService {
       }
 
       const slotCoefficient = Number(slot.coefficient ?? kip?.coefficient ?? shift?.coefficient ?? 1);
-      const slotCapacity = Number(slot.capacity ?? kip?.capacity ?? shift?.capacity ?? 1);
+      const structure = slot.slotStructure || kip?.slotStructure || shift?.slotStructure || [];
+      const structureTotal = Array.isArray(structure)
+        ? structure.reduce((a: number, c: any) => a + Number(c?.slots || c?.count || 0), 0)
+        : 0;
+      const slotCapacity = Math.max(Number(slot.capacity ?? kip?.capacity ?? shift?.capacity ?? 1), structureTotal);
 
       return {
         ...slot,
@@ -506,7 +510,11 @@ class DutySlotsService {
     }
 
     const slotCoefficient = Number(slot.coefficient ?? kip?.coefficient ?? shift?.coefficient ?? 1);
-    const slotCapacity = Number(slot.capacity ?? kip?.capacity ?? shift?.capacity ?? 1);
+    const structure = slot.slotStructure || kip?.slotStructure || shift?.slotStructure || [];
+    const structureTotal = Array.isArray(structure)
+      ? structure.reduce((a: number, c: any) => a + Number(c?.slots || c?.count || 0), 0)
+      : 0;
+    const slotCapacity = Math.max(Number(slot.capacity ?? kip?.capacity ?? shift?.capacity ?? 1), structureTotal);
 
     const [violations, leaveRequests, swapRequests] = await Promise.all([
       dutyViolationsRepository.findMany({ slotId: slot.id }),
@@ -584,15 +592,22 @@ class DutySlotsService {
     const patch: GenericRecord = { ...payload, updatedAt: new Date().toISOString() };
     if (payload.shiftDate) patch.shiftDate = toUTCMidnight(payload.shiftDate);
 
+    const structure = payload.slotStructure || slot.slotStructure || [];
+    const structureTotal = Array.isArray(structure)
+      ? structure.reduce((a: number, c: any) => a + Number(c?.slots || c?.count || 0), 0)
+      : 0;
+    let finalCapacity = payload.capacity !== undefined ? Number(payload.capacity) : Number(slot.capacity || 1);
+    if (structureTotal > finalCapacity) {
+      finalCapacity = structureTotal;
+    }
+
     const oldAssignedIds = normalizeIdList(slot.assignedUserIds || []).map(Number);
     if (payload.assignedUserIds) {
       const newIds = normalizeIdList(payload.assignedUserIds).map(Number);
       patch.assignedUserIds = newIds;
 
-      // Auto-increment capacity if assigned users exceed current capacity
-      const currentCapacity = payload.capacity !== undefined ? payload.capacity : slot.capacity || 0;
-      if (newIds.length > currentCapacity) {
-        patch.capacity = newIds.length;
+      if (newIds.length > finalCapacity) {
+        finalCapacity = newIds.length;
       }
 
       // Mark these users as Admin-Assigned in config
@@ -602,6 +617,7 @@ class DutySlotsService {
         adminAssignedUserIds: newIds,
       };
     }
+    patch.capacity = finalCapacity;
 
     if (payload.attendedUserIds !== undefined) {
       patch.attendedUserIds = normalizeIdList(payload.attendedUserIds).map(Number);

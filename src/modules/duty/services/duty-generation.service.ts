@@ -62,6 +62,12 @@ class DutyGenerationService {
       const existingSlot = await dutySlotsRepository.findOne({ kipId: ak.id });
       if (!existingSlot) {
         const weekStart = dayjs.utc(date).startOf('isoWeek').toDate();
+        const structure = ak.slotStructure || tk.slotStructure || [];
+        const structureTotal = Array.isArray(structure)
+          ? structure.reduce((a: number, c: any) => a + Number(c?.slots || c?.count || 0), 0)
+          : 0;
+        const capacity = Math.max(Number(ak.capacity || tk.capacity || 1), structureTotal);
+
         await dutySlotsRepository.create({
           kipId: ak.id,
           shiftId: actualShift.id,
@@ -70,10 +76,10 @@ class DutyGenerationService {
           shiftDate: date,
           startTime: ak.startTime,
           endTime: ak.endTime,
-          capacity: ak.capacity,
+          capacity,
           coefficient: Number(ak.coefficient ?? tk.coefficient ?? 1),
-          slotStructure: ak.slotStructure || [],
-          config: ak.config || {},
+          slotStructure: ak.slotStructure || tk.slotStructure || [],
+          config: ak.config || tk.config || {},
           status: 'open',
           createdBy: normalizeId(actorId),
           note: 'INSTANCE',
