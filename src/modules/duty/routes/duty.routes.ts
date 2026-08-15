@@ -8,7 +8,7 @@ const router = Router();
 router.use(requireAuth);
 
 router.get('/week', requirePermission('duty:view'), dutyController.getWeeklySchedule);
-router.get('/week/export', requirePermission('duty:view'), dutyController.exportWeeklyExcel);
+router.get('/week/export', requirePermission('duty:export'), dutyController.exportWeeklyExcel);
 router.get('/stats/summary', requirePermission('duty:view'), dutyController.getStats);
 router.get('/stats/comprehensive', requirePermission('duty:manage'), dutyController.getComprehensiveStats);
 router.get('/stats/export', requirePermission('duty:manage'), dutyController.exportStats);

@@ -45,6 +45,7 @@ function hasDirectPermission(userPermissions: string[], permission: string) {
 
     // Duty (alias để tương thích)
     'duty:view': ['duty:view', 'duty:view:all'],
+    'duty:export': ['duty:export', 'duty:view', 'duty:manage'],
 
     // Meetings (meetings routes đang dùng nhầm duty:*)
     'meeting:view': ['meeting:view'],
