@@ -19,9 +19,14 @@ class AuthService {
   }
 
   async buildAuthResponse(user: AnyRecord, token?: string, refreshToken?: string) {
+    const computedPermissions = await userAccessService.computePermissions(user);
+    const cleanUser = sanitizeUser(user);
+    if (cleanUser) {
+      cleanUser.permissions = computedPermissions;
+    }
     return {
-      user: sanitizeUser(user),
-      permissions: await userAccessService.computePermissions(user),
+      user: cleanUser,
+      permissions: computedPermissions,
       ...(token ? { token } : {}),
       ...(refreshToken ? { refreshToken } : {}),
     };
