@@ -13,6 +13,23 @@ import dutyLogsService from './duty-logs.service';
 import dutySlotsService from './duty-slots.service';
 import dutyTemplatesService from './duty-templates.service';
 
+const deduplicateStructure = (structArr: any[]) => {
+  if (!Array.isArray(structArr)) return [];
+  return structArr.reduce((acc: any[], item: any) => {
+    if (!item) return acc;
+    const key = `${(item.label || '').toLowerCase().trim()}_${(item.positions || []).sort().join(',')}`;
+    const existing = acc.find(
+      (x) => `${(x.label || '').toLowerCase().trim()}_${(x.positions || []).sort().join(',')}` === key,
+    );
+    if (existing) {
+      existing.slots = (Number(existing.slots || existing.count) || 0) + (Number(item.slots || item.count) || 0);
+    } else {
+      acc.push({ ...item });
+    }
+    return acc;
+  }, []);
+};
+
 class DutyGenerationService {
   async stampTemplateShift(date: string, templateShiftId: Identifier, actorId: Identifier, mode: string = 'all') {
     const dayRecord = await dutySlotsService.findOrCreateDay(date, actorId);
@@ -29,7 +46,7 @@ class DutyGenerationService {
         endTime: ts.endTime,
         isSpecialEvent: !!ts.isSpecialEvent,
         fromTemplateShiftId: ts.id,
-        slotStructure: ts.slotStructure || [],
+        slotStructure: deduplicateStructure(ts.slotStructure || []),
         status: 'open',
         createdBy: normalizeId(actorId),
       });
@@ -53,7 +70,7 @@ class DutyGenerationService {
           startTime: tk.startTime,
           endTime: tk.endTime,
           fromTemplateKipId: tk.id,
-          slotStructure: tk.slotStructure || [],
+          slotStructure: deduplicateStructure(tk.slotStructure || []),
           config: tk.config || {},
           status: 'open',
         });
@@ -62,7 +79,7 @@ class DutyGenerationService {
       const existingSlot = await dutySlotsRepository.findOne({ kipId: ak.id });
       if (!existingSlot) {
         const weekStart = dayjs.utc(date).startOf('isoWeek').toDate();
-        const structure = ak.slotStructure || tk.slotStructure || [];
+        const structure = deduplicateStructure(ak.slotStructure || tk.slotStructure || []);
         const structureTotal = Array.isArray(structure)
           ? structure.reduce((a: number, c: any) => a + Number(c?.slots || c?.count || 0), 0)
           : 0;
@@ -78,7 +95,7 @@ class DutyGenerationService {
           endTime: ak.endTime,
           capacity,
           coefficient: Number(ak.coefficient ?? tk.coefficient ?? 1),
-          slotStructure: ak.slotStructure || tk.slotStructure || [],
+          slotStructure: structure,
           config: ak.config || tk.config || {},
           status: 'open',
           createdBy: normalizeId(actorId),
@@ -233,41 +250,54 @@ class DutyGenerationService {
         .utc(targetIso)
         .add(dayjs.utc(ss.date).diff(dayjs.utc(srcIso), 'day'), 'day')
         .toISOString();
-      if (ss.fromTemplateShiftId) {
-        await this.stampTemplateShift(targetDate, ss.fromTemplateShiftId, actorId);
-      } else {
-        const dayRecord = await dutySlotsService.findOrCreateDay(targetDate, actorId);
-        const newShift = await dutyShiftsRepository.create({
-          ...ss,
+
+      const dayRecord = await dutySlotsService.findOrCreateDay(targetDate, actorId);
+      const newShift = await dutyShiftsRepository.create({
+        ...ss,
+        id: undefined,
+        _id: undefined,
+        dayId: dayRecord.id,
+        date: targetDate,
+        slotStructure: deduplicateStructure(ss.slotStructure || []),
+        status: 'open',
+        createdBy: normalizeId(actorId),
+      });
+
+      const kips = await dutyKipsRepository.findMany({ shiftId: ss.id });
+      for (const k of kips) {
+        const newKip = await dutyKipsRepository.create({
+          ...k,
           id: undefined,
           _id: undefined,
-          dayId: dayRecord.id,
+          shiftId: newShift.id,
           date: targetDate,
-          createdBy: normalizeId(actorId),
+          slotStructure: deduplicateStructure(k.slotStructure || []),
+          config: k.config || {},
+          status: 'open',
         });
-        const kips = await dutyKipsRepository.findMany({ shiftId: ss.id });
-        for (const k of kips) {
-          const newKip = await dutyKipsRepository.create({
-            ...k,
+
+        const slots = await dutySlotsRepository.findMany({ kipId: k.id });
+        for (const s of slots) {
+          await dutySlotsRepository.create({
+            ...s,
             id: undefined,
             _id: undefined,
+            kipId: newKip.id,
             shiftId: newShift.id,
-            date: targetDate,
+            dayId: dayRecord.id,
+            shiftDate: targetDate,
+            startTime: s.startTime || k.startTime,
+            endTime: s.endTime || k.endTime,
+            capacity: s.capacity || k.capacity || 1,
+            coefficient: Number(s.coefficient ?? k.coefficient ?? 1),
+            slotStructure: deduplicateStructure(s.slotStructure || k.slotStructure || []),
+            config: s.config || k.config || {},
+            assignedUserIds: [],
+            attendedUserIds: [],
+            status: 'open',
+            createdBy: normalizeId(actorId),
+            note: 'COPIED_INSTANCE',
           });
-          const slots = await dutySlotsRepository.findMany({ kipId: k.id });
-          for (const s of slots) {
-            await dutySlotsRepository.create({
-              ...s,
-              id: undefined,
-              _id: undefined,
-              kipId: newKip.id,
-              coefficient: Number(s.coefficient ?? k.coefficient ?? newKip.coefficient ?? 1),
-              shiftDate: targetDate,
-              assignedUserIds: [],
-              status: 'open',
-              createdBy: normalizeId(actorId),
-            });
-          }
         }
       }
     }

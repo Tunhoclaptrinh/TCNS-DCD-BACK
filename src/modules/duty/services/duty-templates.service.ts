@@ -1,7 +1,7 @@
 import BaseService from '@shared/common/base-service';
 import dutyTemplatesRepository from '@modules/duty/repositories/duty-templates.repository';
 import ApiError from '@utils/api-error';
-import { Identifier, GenericRecord, normalizeId } from './duty-utils';
+import { Identifier, GenericRecord, normalizeId, adjustKipTimeWindow } from './duty-utils';
 
 class DutyTemplatesService extends BaseService {
   constructor() {
@@ -75,13 +75,9 @@ class DutyTemplatesService extends BaseService {
   }
 
   async getShiftTemplates(templateId?: Identifier | null) {
-    let filter: any = { type: 'shift' };
-    if (templateId !== undefined) {
-      if (templateId) {
-        filter.parentId = normalizeId(templateId);
-      } else if (templateId === null) {
-        filter.parentId = null;
-      }
+    const filter: any = { type: 'shift' };
+    if (templateId && templateId !== 'null' && templateId !== 'undefined') {
+      filter.parentId = normalizeId(templateId);
     }
 
     const shifts = await dutyTemplatesRepository.findMany(filter);
@@ -110,6 +106,8 @@ class DutyTemplatesService extends BaseService {
   }
 
   async updateShiftTemplate(id: Identifier, data: GenericRecord) {
+    const oldShift = await dutyTemplatesRepository.findById(id);
+
     const newDays = Array.isArray(data.daysOfWeek) ? data.daysOfWeek.map(Number) : undefined;
     if (newDays) {
       const kips = await dutyTemplatesRepository.findKipsByShiftId(id);
@@ -122,6 +120,24 @@ class DutyTemplatesService extends BaseService {
             `Không thể cập nhật: Kíp '${kip.name}' đang có ngày trực (${invalidNames}) không nằm trong danh sách ngày mới của Ca.`,
           );
         }
+      }
+    }
+
+    // Tự động điều chỉnh khung giờ các Kíp con thuộc Ca nếu thời gian Ca thay đổi
+    if (oldShift && (data.startTime || data.endTime)) {
+      const newStart = data.startTime || oldShift.startTime;
+      const newEnd = data.endTime || oldShift.endTime;
+      const kips = await dutyTemplatesRepository.findKipsByShiftId(id);
+      for (const kip of kips) {
+        const adjustedTime = adjustKipTimeWindow(
+          kip.startTime,
+          kip.endTime,
+          oldShift.startTime,
+          oldShift.endTime,
+          newStart,
+          newEnd,
+        );
+        await dutyTemplatesRepository.update(kip.id, adjustedTime);
       }
     }
 

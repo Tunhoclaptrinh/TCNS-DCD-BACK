@@ -76,6 +76,64 @@ export function isTimeInShiftRange(target: string, shiftStart: string, shiftEnd:
   return target >= shiftStart || target <= shiftEnd;
 }
 
+export function timeToMinutes(timeStr?: string | null): number {
+  if (!timeStr || !timeStr.includes(':')) return 0;
+  const [h, m] = timeStr.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+export function minutesToTime(totalMins: number): string {
+  const normalized = ((totalMins % 1440) + 1440) % 1440;
+  const h = Math.floor(normalized / 60);
+  const m = Math.floor(normalized % 60);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/**
+ * Tự động điều chỉnh khung giờ Kíp trực sao cho LUÔN NẰM TRONG khung giờ Ca (và bảo toàn vị trí tương đối)
+ */
+export function adjustKipTimeWindow(
+  kipStart?: string | null,
+  kipEnd?: string | null,
+  oldShiftStart?: string | null,
+  oldShiftEnd?: string | null,
+  newShiftStart?: string | null,
+  newShiftEnd?: string | null,
+): { startTime: string; endTime: string } {
+  if (!newShiftStart || !newShiftEnd) {
+    return { startTime: kipStart || '08:00', endTime: kipEnd || '12:00' };
+  }
+
+  const oldS = timeToMinutes(oldShiftStart || newShiftStart);
+  const oldE = timeToMinutes(oldShiftEnd || newShiftEnd);
+  const newS = timeToMinutes(newShiftStart);
+  const newE = timeToMinutes(newShiftEnd);
+
+  let kStart = timeToMinutes(kipStart || newShiftStart);
+  let kEnd = timeToMinutes(kipEnd || newShiftEnd);
+
+  const startDelta = newS - oldS;
+  const endDelta = newE - oldE;
+
+  if (startDelta === endDelta && startDelta !== 0) {
+    kStart = kStart + startDelta;
+    kEnd = kEnd + startDelta;
+  }
+
+  // Strict Clamping: Đảm bảo Kíp LUÔN nằm trong [newS, newE]
+  if (kStart < newS) kStart = newS;
+  if (kEnd > newE) kEnd = newE;
+  if (kStart >= kEnd) {
+    kStart = newS;
+    kEnd = newE;
+  }
+
+  return {
+    startTime: minutesToTime(kStart),
+    endTime: minutesToTime(kEnd),
+  };
+}
+
 /**
  * Check if the provided IP is within the allowed ranges.
  * Ranges are comma-separated. Supports exact IP or simple wildcard (e.g., 192.168.1.*)

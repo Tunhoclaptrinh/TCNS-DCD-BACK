@@ -27,6 +27,7 @@ import {
   isIpAllowed,
   findMatchingQuotaRule,
   getActiveLeaderId,
+  adjustKipTimeWindow,
 } from './duty-utils';
 import dutySettingsService from './duty-settings.service';
 import dutyLogsService from './duty-logs.service';
@@ -1679,6 +1680,30 @@ class DutySlotsService {
   async updateActualShift(shiftId: number, data: GenericRecord) {
     const shift = await dutyShiftsRepository.findById(shiftId);
     if (!shift) throw ApiError.notFound('Ca thực tế không tồn tại');
+
+    // Tự động điều chỉnh khung giờ các Kíp & Slot con trực thuộc nếu khung giờ Ca thay đổi
+    if (data.startTime || data.endTime) {
+      const newStart = data.startTime || shift.startTime;
+      const newEnd = data.endTime || shift.endTime;
+
+      const childKips = await dutyKipsRepository.findMany({ shiftId: shift.id });
+      for (const kip of childKips) {
+        const adjustedTime = adjustKipTimeWindow(
+          kip.startTime,
+          kip.endTime,
+          shift.startTime,
+          shift.endTime,
+          newStart,
+          newEnd,
+        );
+        await dutyKipsRepository.update(kip.id, adjustedTime);
+        const childSlots = await dutySlotsRepository.findMany({ kipId: kip.id });
+        for (const slotItem of childSlots) {
+          await dutySlotsRepository.update(slotItem.id, adjustedTime);
+        }
+      }
+    }
+
     return await dutyShiftsRepository.update(shiftId, { ...data, updatedAt: new Date().toISOString() });
   }
 
