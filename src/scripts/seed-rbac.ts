@@ -46,7 +46,7 @@ const PERMISSIONS = [
   { key: 'users:read:self', name: 'Xem hồ sơ chi tiết (Cá nhân)', module: 'users' },
   { key: 'users:create', name: 'Thêm mới thành viên', module: 'users' },
   { key: 'users:update:profile', name: 'Sửa Profile (Họ tên, SĐT, ...)', module: 'users' },
-  { key: 'users:update:org', name: 'Sửa Chức vụ / Ban / Khóa', module: 'users' },
+  { key: 'users:update:org', name: 'Sửa Chức vụ / Ban chuyên môn', module: 'users' },
   { key: 'users:promote', name: 'Nâng hạng (Promote)', module: 'users' },
   { key: 'users:expel', name: 'Khai trừ (Expel)', module: 'users' },
   { key: 'users:manage_status', name: 'Kích hoạt / Vô hiệu hóa tài khoản', module: 'users' },

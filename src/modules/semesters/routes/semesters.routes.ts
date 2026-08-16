@@ -7,8 +7,8 @@ const router = Router();
 
 router.use(requireAuth);
 
-router.get('/', requirePermission('settings:view'), semestersController.getAll);
-router.get('/:id', requirePermission('settings:view'), semestersController.getById);
+router.get('/', semestersController.getAll);
+router.get('/:id', semestersController.getById);
 router.post('/', requirePermission('settings:manage'), semestersController.create);
 router.put('/:id', requirePermission('settings:manage'), semestersController.update);
 router.delete('/:id', requirePermission('settings:manage'), semestersController.delete);

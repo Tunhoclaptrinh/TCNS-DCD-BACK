@@ -40,7 +40,6 @@ export default defineSchema({
     required: false,
     default: { extra: [], denied: [] },
     label: 'Quyền tùy chỉnh',
-    hidden: true, // managed separately, not imported
   },
   lastLogin: {
     type: 'date',

@@ -79,6 +79,8 @@ class UserController extends BaseController {
       'lastName',
       'firstName',
       'dob',
+      'generationId',
+      'joinDate',
       'studentId',
       'classId',
       'hometown',
@@ -120,7 +122,15 @@ class UserController extends BaseController {
     }
 
     const result = await this.service.findAll(query);
-    result.data = result.data.map((user) => sanitizeUser(user));
+    result.data = await Promise.all(
+      (result.data || []).map(async (user: any) => {
+        const clean = sanitizeUser(user);
+        if (clean && user) {
+          clean.permissions = await userAccessService.computePermissions(user);
+        }
+        return clean;
+      }),
+    );
     this.ok(res, result);
   });
 
@@ -131,12 +141,20 @@ class UserController extends BaseController {
     }
 
     userAccessService.assertCanReadProfile(req.user, targetUser.data);
-    this.ok(res, sanitizeUser(targetUser.data));
+    const clean = sanitizeUser(targetUser.data);
+    if (clean) {
+      clean.permissions = await userAccessService.computePermissions(targetUser.data);
+    }
+    this.ok(res, clean);
   });
 
   create = this.handle(async (req, res) => {
     const data = await this.service.create(req.body, req.user);
-    this.ok(res, sanitizeUser(data));
+    const clean = sanitizeUser(data);
+    if (clean && data) {
+      clean.permissions = await userAccessService.computePermissions(data);
+    }
+    this.ok(res, clean);
   });
 
   update = this.handle(async (req, res) => {
@@ -168,7 +186,11 @@ class UserController extends BaseController {
       this.getUploadedFile(req),
       req.user.id,
     );
-    this.ok(res, sanitizeUser(data));
+    const clean = sanitizeUser(data);
+    if (clean && data) {
+      clean.permissions = await userAccessService.computePermissions(data);
+    }
+    this.ok(res, clean);
   });
 
   delete = this.handle(async (req, res) => {

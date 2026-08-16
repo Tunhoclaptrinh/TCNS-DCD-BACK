@@ -8,9 +8,9 @@ const router = express.Router();
 // Tất cả các route yêu cầu đăng nhập
 router.use(requireAuth);
 
-// GET: chỉ cần quyền xem để lọc danh sách, dropdown (settings:view hoặc system:manage:gen)
-router.get('/', requirePermission('settings:view'), generationController.getAll);
-router.get('/:id', requirePermission('settings:view'), generationController.getById);
+// GET: tất cả tài khoản đăng nhập đều được lấy danh sách khóa để lọc nhân sự
+router.get('/', generationController.getAll);
+router.get('/:id', generationController.getById);
 
 // WRITE: chỉ admin mới được tạo/sửa/xóa khóa
 router.post('/', requirePermission('system:manage:gen'), generationController.create);

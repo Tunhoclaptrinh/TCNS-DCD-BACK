@@ -1258,22 +1258,10 @@ class DutySlotsService {
     const isAdmin = performer.role === 'admin' || performer.role === 'staff';
     if (isAdmin) return true;
 
-    // Check if within shift time
-    const now = dayjs();
-    const shiftDate = dayjs(slot.shiftDate).format('YYYY-MM-DD');
-    const startTime = dayjs(`${shiftDate} ${slot.startTime}`);
-    const endTime = dayjs(`${shiftDate} ${slot.endTime}`);
-
-    if (now.isBefore(startTime) || now.isAfter(endTime)) {
-      throw ApiError.forbidden('Thao tác quản lý chỉ được thực hiện trong thời gian diễn ra kíp trực.');
-    }
-
     const assignedIds = normalizeIdList(slot.assignedUserIds || []);
-    const attendedIds = normalizeIdList(slot.attendedUserIds || []);
     const defaultLeaderId = assignedIds[0];
 
-    const isDefaultLeader =
-      normalizeId(performerId) === normalizeId(defaultLeaderId) && attendedIds.includes(performerId as number);
+    const isDefaultLeader = normalizeId(performerId) === normalizeId(defaultLeaderId);
     const isTempLeader = normalizeId(performerId) === normalizeId(slot.tempLeaderId);
 
     if (!isDefaultLeader && !isTempLeader) {
