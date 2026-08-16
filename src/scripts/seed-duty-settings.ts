@@ -65,6 +65,7 @@ const DEFAULT_DUTY_SETTINGS = {
   violationTypes: DEFAULT_VIOLATION_TYPES,
   allowedIpRanges: [] as string[],
   selfCheckInBeforeMinutes: 15,
+  selfCheckInAfterMinutes: 15,
   updatedAt: new Date().toISOString(),
 };
 

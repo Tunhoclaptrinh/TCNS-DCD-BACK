@@ -102,8 +102,14 @@ class UserController extends BaseController {
 
   getAll = this.handle(async (req, res) => {
     const actorPermissions = req.user.permissions || [];
-    const canReadAll = actorPermissions.includes('*') || actorPermissions.includes('users:list:all');
-    const canReadDept = actorPermissions.includes('users:list:dept');
+    const canSeeAll =
+      actorPermissions.includes('*') ||
+      actorPermissions.includes('users:list:all') ||
+      actorPermissions.includes('users:list:dept') ||
+      actorPermissions.includes('users:read:all') ||
+      actorPermissions.includes('duty:attendance') ||
+      actorPermissions.includes('duty:manage') ||
+      actorPermissions.includes('duty:view');
 
     const query = { ...req.parsedQuery };
 
@@ -116,8 +122,8 @@ class UserController extends BaseController {
       };
     }
 
-    // Strict rule: if the user's position is CTV, they can ONLY see CTVs, regardless of other permissions
-    if (req.user.position === 'ctv') {
+    // Restrict ONLY unprivileged CTVs who lack any duty or list permissions
+    if (req.user.position === 'ctv' && !canSeeAll) {
       query.filter = { ...(query.filter || {}), position: 'ctv' };
     }
 

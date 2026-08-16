@@ -35,6 +35,7 @@ class DutySettingsService extends BaseService {
       violationPenaltyRate: 0,
       allowedIpRanges: [] as string[],
       selfCheckInBeforeMinutes: 15,
+      selfCheckInAfterMinutes: 15,
       updatedAt: new Date().toISOString(),
     };
 
@@ -146,6 +147,12 @@ class DutySettingsService extends BaseService {
           : data.SELF_CHECKIN_BEFORE_MINUTES !== undefined
             ? Number(data.SELF_CHECKIN_BEFORE_MINUTES)
             : (settings?.selfCheckInBeforeMinutes ?? 15),
+      selfCheckInAfterMinutes:
+        data.selfCheckInAfterMinutes !== undefined
+          ? Number(data.selfCheckInAfterMinutes)
+          : data.SELF_CHECKIN_AFTER_MINUTES !== undefined
+            ? Number(data.SELF_CHECKIN_AFTER_MINUTES)
+            : (settings?.selfCheckInAfterMinutes ?? 15),
       updatedAt: new Date().toISOString(),
     };
     return payload;

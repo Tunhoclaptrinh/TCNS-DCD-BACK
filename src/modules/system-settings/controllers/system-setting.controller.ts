@@ -76,6 +76,10 @@ class SystemSettingController extends BaseController {
       departmentconfigs: 'DEPARTMENT_CONFIGS',
       DEPARTMENTCONFIGS: 'DEPARTMENT_CONFIGS',
       DEPARTMENT_CONFIGS: 'DEPARTMENT_CONFIGS',
+      positionConfigs: 'POSITION_CONFIGS',
+      positionconfigs: 'POSITION_CONFIGS',
+      POSITIONCONFIGS: 'POSITION_CONFIGS',
+      POSITION_CONFIGS: 'POSITION_CONFIGS',
       dutyViolationTypes: 'DUTY_VIOLATION_TYPES',
       dutyviolationtypes: 'DUTY_VIOLATION_TYPES',
       DUTY_VIOLATION_TYPES: 'DUTY_VIOLATION_TYPES',
@@ -95,7 +99,7 @@ class SystemSettingController extends BaseController {
           id: nextId,
           key: dbKey,
           value: String(value ?? ''),
-          type: dbKey === 'DUTY_VIOLATION_TYPES' || dbKey === 'DEPARTMENT_CONFIGS' ? 'json' : 'string',
+          type: ['DUTY_VIOLATION_TYPES', 'DEPARTMENT_CONFIGS', 'POSITION_CONFIGS'].includes(dbKey) ? 'json' : 'string',
           updatedBy: req.user?.id,
         });
       }

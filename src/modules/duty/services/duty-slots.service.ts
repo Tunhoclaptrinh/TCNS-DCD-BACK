@@ -26,6 +26,7 @@ import {
   isTimeInShiftRange,
   isIpAllowed,
   findMatchingQuotaRule,
+  getActiveLeaderId,
 } from './duty-utils';
 import dutySettingsService from './duty-settings.service';
 import dutyLogsService from './duty-logs.service';
@@ -1177,15 +1178,19 @@ class DutySlotsService {
     }
 
     const beforeMins = Math.max(0, Number(settings.selfCheckInBeforeMinutes ?? 15));
+    const afterMins = Math.max(0, Number(settings.selfCheckInAfterMinutes ?? 15));
 
     const now = dayjs();
     const shiftDate = dayjs(slot.shiftDate).format('YYYY-MM-DD');
     const startTime = dayjs(`${shiftDate} ${slot.startTime}`);
     const endTime = dayjs(`${shiftDate} ${slot.endTime}`);
 
-    if (now.isBefore(startTime.subtract(beforeMins, 'minute')) || now.isAfter(endTime)) {
+    const earliestCheckIn = startTime.subtract(beforeMins, 'minute');
+    const latestCheckIn = endTime.add(afterMins, 'minute');
+
+    if (now.isBefore(earliestCheckIn) || now.isAfter(latestCheckIn)) {
       throw ApiError.badRequest(
-        `Chỉ được phép tự điểm danh từ ${beforeMins} phút trước giờ bắt đầu kíp (${slot.startTime}) cho tới khi kíp kết thúc.`,
+        `Chỉ được phép tự điểm danh từ ${beforeMins} phút trước giờ bắt đầu (${slot.startTime}) tới ${afterMins} phút sau khi ca kết thúc (${slot.endTime}).`,
       );
     }
 
@@ -1258,13 +1263,8 @@ class DutySlotsService {
     const isAdmin = performer.role === 'admin' || performer.role === 'staff';
     if (isAdmin) return true;
 
-    const assignedIds = normalizeIdList(slot.assignedUserIds || []);
-    const defaultLeaderId = assignedIds[0];
-
-    const isDefaultLeader = normalizeId(performerId) === normalizeId(defaultLeaderId);
-    const isTempLeader = normalizeId(performerId) === normalizeId(slot.tempLeaderId);
-
-    if (!isDefaultLeader && !isTempLeader) {
+    const activeLeaderId = getActiveLeaderId(slot);
+    if (!activeLeaderId || normalizeId(performerId) !== normalizeId(activeLeaderId)) {
       throw ApiError.forbidden('Bạn không có quyền quản lý kíp trực này.');
     }
 
@@ -1278,16 +1278,14 @@ class DutySlotsService {
 
     const performerId = getActorId(performer);
     const assignedIds = normalizeIdList(slot.assignedUserIds || []);
-    const originalLeaderId = assignedIds[0];
     const attendedIds = normalizeIdList(slot.attendedUserIds || []);
 
     // Authorization check
-    const isOriginalLeader =
-      normalizeId(performerId) === normalizeId(originalLeaderId) && attendedIds.includes(performerId);
-    const isTempLeader = normalizeId(performerId) === normalizeId(slot.tempLeaderId);
+    const activeLeaderId = getActiveLeaderId(slot);
+    const isLeader = activeLeaderId !== null && normalizeId(performerId) === normalizeId(activeLeaderId);
     const isAdmin = performer.role === 'admin' || performer.role === 'staff';
 
-    if (!isOriginalLeader && !isTempLeader && !isAdmin) {
+    if (!isLeader && !isAdmin) {
       throw ApiError.forbidden('Bạn không có quyền điểm danh cho người khác trong kíp này.');
     }
 

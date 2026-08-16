@@ -98,6 +98,12 @@ export default defineSchema({
     default: 15,
     description: 'Số phút được phép tự điểm danh trước khi kíp trực bắt đầu',
   },
+  selfCheckInAfterMinutes: {
+    type: 'number',
+    required: false,
+    default: 15,
+    description: 'Số phút được phép tự điểm danh sau khi kíp trực kết thúc',
+  },
   updatedAt: {
     type: 'date',
     required: false,

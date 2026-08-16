@@ -158,3 +158,14 @@ export function findMatchingQuotaRule(user: any, rules: any[], options: { startD
 
   return null;
 }
+
+export function getActiveLeaderId(slot: GenericRecord | null | undefined): Identifier | null {
+  if (!slot) return null;
+  if (slot.tempLeaderId) return normalizeId(slot.tempLeaderId);
+  const assignedIds = normalizeIdList(slot.assignedUserIds || slot.config?.assignedUserIds || []);
+  if (assignedIds.length > 0) return assignedIds[0];
+  if (Array.isArray(slot.assignedUsers) && slot.assignedUsers.length > 0) {
+    return normalizeId(slot.assignedUsers[0].id);
+  }
+  return null;
+}

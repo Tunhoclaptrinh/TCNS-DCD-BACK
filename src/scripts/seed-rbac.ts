@@ -104,9 +104,9 @@ const PERMISSIONS = [
   { key: 'system:manage:gen', name: 'Cấu hình Niên khóa / Thế hệ', module: 'system' },
   { key: 'system:notify:all', name: 'Gửi thông báo toàn hệ thống', module: 'system' },
   { key: 'system:notify:dept', name: 'Gửi thông báo theo Ban', module: 'system' },
-  { key: 'system:manage', name: 'Quản lý cấu hình hệ thống & Học kỳ', module: 'system' },
+  { key: 'system:manage', name: 'Quản lý cấu hình hệ thống, Phạt tự động & Ban chuyên môn', module: 'system' },
   { key: 'settings:view', name: 'Xem cấu hình hệ thống', module: 'system' },
-  { key: 'settings:manage', name: 'Quản lý cấu hình (Alias cho system:manage)', module: 'system' },
+  { key: 'settings:manage', name: 'Cài đặt chung & Phạt tự động (Alias cho system:manage)', module: 'system' },
 
   // Tài liệu
   { key: 'file:upload', name: 'Upload tài liệu minh chứng', module: 'file' },

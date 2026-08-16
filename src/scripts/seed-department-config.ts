@@ -47,6 +47,15 @@ const DEFAULT_DEPARTMENTS = [
   },
 ];
 
+const DEFAULT_POSITIONS = [
+  { id: 'ctv', name: 'Cộng tác viên', requiresDept: false, noDeptAllowed: false, isDefault: true },
+  { id: 'tv', name: 'Thành viên thường', requiresDept: false, noDeptAllowed: false, isDefault: true },
+  { id: 'tvb', name: 'Thành viên ban', requiresDept: true, noDeptAllowed: false, isDefault: true },
+  { id: 'pb', name: 'Phó ban', requiresDept: true, noDeptAllowed: false, isDefault: true },
+  { id: 'tb', name: 'Trưởng ban', requiresDept: true, noDeptAllowed: false, isDefault: true },
+  { id: 'dt', name: 'Đội trưởng', requiresDept: false, noDeptAllowed: true, isDefault: true },
+];
+
 async function seedDepartmentConfig() {
   try {
     const mongoUrl = process.env.DATABASE_URL;
@@ -59,11 +68,11 @@ async function seedDepartmentConfig() {
 
     console.log('Seeding DEPARTMENT_CONFIGS into system_settings...');
 
-    // Check if it already exists
-    const existing = await db.findOne('system_settings', { key: 'DEPARTMENT_CONFIGS' });
-    if (existing) {
+    // Check if DEPARTMENT_CONFIGS exists
+    const existingDept = await db.findOne('system_settings', { key: 'DEPARTMENT_CONFIGS' });
+    if (existingDept) {
       console.log('DEPARTMENT_CONFIGS already exists, updating...');
-      await db.update('system_settings', existing.id, {
+      await db.update('system_settings', existingDept.id, {
         value: JSON.stringify(DEFAULT_DEPARTMENTS),
         type: 'json',
       });
@@ -74,6 +83,26 @@ async function seedDepartmentConfig() {
         value: JSON.stringify(DEFAULT_DEPARTMENTS),
         type: 'json',
         description: 'Cấu hình danh sách phòng ban và RBAC tự động theo chức vụ',
+      });
+    }
+
+    console.log('Seeding POSITION_CONFIGS into system_settings...');
+
+    // Check if POSITION_CONFIGS exists
+    const existingPos = await db.findOne('system_settings', { key: 'POSITION_CONFIGS' });
+    if (existingPos) {
+      console.log('POSITION_CONFIGS already exists, updating...');
+      await db.update('system_settings', existingPos.id, {
+        value: JSON.stringify(DEFAULT_POSITIONS),
+        type: 'json',
+      });
+    } else {
+      console.log('Creating new POSITION_CONFIGS...');
+      await db.create('system_settings', {
+        key: 'POSITION_CONFIGS',
+        value: JSON.stringify(DEFAULT_POSITIONS),
+        type: 'json',
+        description: 'Cấu hình danh sách chức vụ hệ thống và quy tắc gán ban chuyên môn',
       });
     }
 
